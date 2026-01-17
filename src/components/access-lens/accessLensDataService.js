@@ -473,9 +473,9 @@ export function buildContextsLane(contexts, filters = {}) {
   return {
     laneType: LaneTypes.CONTEXTS,
     totalCount: items.length,
-    items: filters.showAll ? items : items.slice(0, 10),
+    items: items,  // Show ALL items - lane card handles scrolling
     allItemsData: items,  // All items for maximize view
-    canLoadMore: items.length > 10
+    canLoadMore: false
   };
 }
 
@@ -691,9 +691,9 @@ function buildSystemsLane(assignments, filters, systemDetailsMap = {}) {
   return {
     laneType: LaneTypes.SYSTEMS,
     totalCount: items.length,
-    items: filters.showAll ? items : items.slice(0, 10),
+    items: items,  // Show ALL items - lane card handles scrolling
     allItemsData: items,
-    canLoadMore: items.length > 10
+    canLoadMore: false
   };
 }
 
@@ -854,9 +854,9 @@ function buildLogicalApplicationsLane(assignments, filters, systemDetailsMap = {
   return {
     laneType: LaneTypes.LOGICAL_APPLICATIONS,
     totalCount: items.length,
-    items: filters.showAll ? items : items.slice(0, 10),
+    items: items,  // Show ALL items - lane card handles scrolling
     allItemsData: items,
-    canLoadMore: items.length > 10
+    canLoadMore: false
   };
 }
 
@@ -971,9 +971,9 @@ function buildAccountsLane(assignments, filters) {
   return {
     laneType: LaneTypes.ACCOUNTS,
     totalCount: items.length,
-    items: filters.showAll ? items : items.slice(0, 10),
+    items: items,  // Show ALL items - lane card handles scrolling
     allItemsData: items,  // All items for maximize view
-    canLoadMore: items.length > 10
+    canLoadMore: false
   };
 }
 
@@ -1068,9 +1068,9 @@ function buildIdentitiesLane(assignments, filters) {
   return {
     laneType: LaneTypes.IDENTITIES,
     totalCount: items.length,
-    items: filters.showAll ? items : items.slice(0, 10),
+    items: items,  // Show ALL items - lane card handles scrolling
     allItemsData: items,  // All items for maximize view
-    canLoadMore: items.length > 10
+    canLoadMore: false
   };
 }
 
@@ -1133,27 +1133,53 @@ function buildEntitlementsLane(assignments, filters) {
   console.log('=== buildEntitlementsLane: Starting ===');
   console.log('Total assignments received:', assignments.length);
 
+  // Debug: Show ALL assignments by system to understand the data
+  const bySystem = {};
+  assignments.forEach(a => {
+    const sysName = a.resource?.system?.name || 'Unknown';
+    if (!bySystem[sysName]) bySystem[sysName] = [];
+    bySystem[sysName].push(a.resource?.name);
+  });
+  console.log('Assignments by system:');
+  Object.entries(bySystem).forEach(([sys, resources]) => {
+    console.log(`  ${sys}: ${resources.length} resources`);
+    if (sys.toLowerCase().includes('servicenow')) {
+      console.log('    ServiceNow resources:', resources.slice(0, 10));
+    }
+  });
+
   // Get lane config for exclusion rules
   const laneConfig = LaneDisplayConfig[LaneTypes.EFFECTIVE_ENTITLEMENTS] || {};
 
   // Apply exclusion rules from lane config
   const filteredAssignments = applyExclusionRules(assignments, laneConfig.exclusionList);
 
-  console.log('After exclusion rules:', filteredAssignments.length, 'assignments');
+  console.log('After exclusion rules:', filteredAssignments.length, 'assignments (excluded:', assignments.length - filteredAssignments.length, ')');
 
   // Debug: Show what was excluded
   if (assignments.length !== filteredAssignments.length) {
     const excluded = assignments.filter(a => !filteredAssignments.includes(a));
-    console.log('Excluded assignments:');
-    excluded.slice(0, 5).forEach((a, i) => {
-      console.log(`  ${i}: "${a.resource?.name}" - type: "${a.resource?.resourceType?.name}", category: "${a.resource?.resourceCategory?.name}"`);
+    console.log('Excluded assignments (' + excluded.length + ' total):');
+    excluded.slice(0, 10).forEach((a, i) => {
+      console.log(`  ${i}: "${a.resource?.name}" - type: "${a.resource?.resourceType?.name}", category: "${a.resource?.resourceCategory?.name}", system: "${a.resource?.system?.name}"`);
     });
+
+    // Check if any ServiceNow resources were excluded
+    const excludedServiceNow = excluded.filter(a =>
+      (a.resource?.system?.name || '').toLowerCase().includes('servicenow')
+    );
+    if (excludedServiceNow.length > 0) {
+      console.log('WARNING: ServiceNow resources excluded:', excludedServiceNow.length);
+      excludedServiceNow.slice(0, 5).forEach((a, i) => {
+        console.log(`  ${i}: "${a.resource?.name}" - type: "${a.resource?.resourceType?.name}"`);
+      });
+    }
   }
 
   // Debug: Show sample of included assignments
-  console.log('Sample included assignments:');
-  filteredAssignments.slice(0, 5).forEach((a, i) => {
-    console.log(`  ${i}: "${a.resource?.name}" - type: "${a.resource?.resourceType?.name}", category: "${a.resource?.resourceCategory?.name}"`);
+  console.log('Included assignments (' + filteredAssignments.length + ' total):');
+  filteredAssignments.slice(0, 10).forEach((a, i) => {
+    console.log(`  ${i}: "${a.resource?.name}" - type: "${a.resource?.resourceType?.name}", system: "${a.resource?.system?.name}"`);
   });
 
   const items = filteredAssignments.map((assignment, index) => {
@@ -1222,10 +1248,13 @@ function buildEntitlementsLane(assignments, filters) {
     );
   }
 
+  console.log('=== buildEntitlementsLane: Final ===');
+  console.log('Total entitlement items:', filteredItems.length);
+
   return {
     laneType: LaneTypes.EFFECTIVE_ENTITLEMENTS,
     totalCount: filteredItems.length,
-    items: filteredItems.slice(0, filters.showAll ? 100 : 10),
+    items: filteredItems,  // Show ALL items - lane card handles scrolling
     allItemsData: filteredItems,  // All items for maximize view
     canLoadMore: filteredItems.length > 10
   };
