@@ -1,0 +1,13 @@
+{
+  "name": "omada-log-server",
+  "version": "1.0.0",
+  "description": "Backend logging server for Omada API calls",
+  "main": "log-server.js",
+  "scripts": {
+    "log-server": "node log-server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5"
+  }
+}

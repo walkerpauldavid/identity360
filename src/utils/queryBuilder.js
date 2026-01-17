@@ -1,0 +1,473 @@
+/**
+ * OData and GraphQL Query Builders
+ * Helper functions to construct API queries
+ */
+
+/**
+ * Build OData query URL
+ * @param {string} baseUrl - Base API URL
+ * @param {string} entityType - Entity type (Identity, Resource, etc.)
+ * @param {Object} options - Query options
+ * @returns {string} Complete OData URL
+ */
+export const buildODataQuery = (baseUrl, entityType, options = {}) => {
+  const {
+    filter,
+    select,
+    top,
+    skip,
+    orderBy,
+    expand,
+    count = false,
+  } = options;
+
+  const params = new URLSearchParams();
+
+  if (filter) params.append('$filter', filter);
+  if (select) params.append('$select', select);
+  if (top !== undefined && top !== null) params.append('$top', top.toString());
+  if (skip !== undefined && skip !== null) params.append('$skip', skip.toString());
+  if (orderBy) params.append('$orderby', orderBy);
+  if (expand) params.append('$expand', expand);
+  if (count) params.append('$count', 'true');
+
+  const queryString = params.toString();
+  const separator = queryString ? '?' : '';
+
+  return `${baseUrl}/OData/DataObjects/${entityType}${separator}${queryString}`;
+};
+
+/**
+ * Build OData filter string from field filters
+ * @param {Object} filters - Key-value pairs for filtering
+ * @returns {string} OData filter string
+ */
+export const buildODataFilter = (filters) => {
+  if (!filters || Object.keys(filters).length === 0) return '';
+
+  const filterParts = [];
+
+  Object.entries(filters).forEach(([field, value]) => {
+    if (value === null || value === undefined) return;
+
+    // Handle different filter types
+    if (typeof value === 'string') {
+      // Use contains for string searches
+      filterParts.push(`contains(tolower(${field}), tolower('${value}'))`);
+    } else if (typeof value === 'number') {
+      filterParts.push(`${field} eq ${value}`);
+    } else if (typeof value === 'boolean') {
+      filterParts.push(`${field} eq ${value}`);
+    } else if (value.operator && value.value) {
+      // Custom operator (eq, ne, gt, lt, etc.)
+      filterParts.push(`${field} ${value.operator} '${value.value}'`);
+    }
+  });
+
+  return filterParts.join(' and ');
+};
+
+/**
+ * GraphQL Query Templates
+ */
+export const GraphQLQueries = {
+  /**
+   * Get contexts for identity
+   */
+  getContextsForIdentity: (identityId) => ({
+    query: `
+      query GetContextsForIdentity {
+        accessRequestComponents {
+          contexts(identityIds: "${identityId}") {
+            id
+            displayName
+            type
+          }
+        }
+      }
+    `
+  }),
+
+  /**
+   * Get resources for beneficiary
+   */
+  getResourcesForBeneficiary: (identityId, filters = {}) => {
+    const filterStr = JSON.stringify({
+      beneficiaryIds: identityId,
+      ...(filters.systemId && { systemId: filters.systemId }),
+      ...(filters.contextId && { contextId: filters.contextId }),
+      ...(filters.name && { name: filters.name })
+    });
+
+    return {
+      query: `
+        query GetResourcesForBeneficiary {
+          accessRequestComponents {
+            resources(filters: ${filterStr.replace(/"([^"]+)":/g, '$1:')}) {
+              data {
+                name
+                id
+                description
+                system {
+                  name
+                  id
+                }
+                resourceType {
+                  name
+                  id
+                }
+              }
+            }
+          }
+        }
+      `
+    };
+  },
+
+  /**
+   * Get access requests total (summary only)
+   */
+  getAccessRequestsTotal: () => ({
+    query: `
+      query GetAccessRequestsTotal {
+        accessRequests {
+          pages
+          total
+        }
+      }
+    `
+  }),
+
+  /**
+   * Get access requests
+   */
+  getAccessRequests: () => ({
+    query: `
+      query GetAccessRequests {
+        accessRequests {
+          pages
+          total
+          data {
+            id
+            reason
+            validFrom
+            validTo
+            status {
+              approvalStatus
+              provisioningStatus
+            }
+            beneficiary {
+              firstName
+              lastName
+              identityId
+              id
+              displayName
+              accounts {
+                accountName
+              }
+            }
+            resource {
+              name
+              id
+              system {
+                name
+                id
+              }
+            }
+          }
+        }
+      }
+    `
+  }),
+
+  /**
+   * Create access request
+   */
+  createAccessRequest: (identityId, resourceId, contextId, reason, validFrom, validTo) => ({
+    query: `
+      mutation CreateAccessRequest {
+        createAccessRequest(accessRequest: {
+          reason: "${reason}",
+          identities: {id: "${identityId}"},
+          resources: {id: "${resourceId}"},
+          context: "${contextId}"
+          ${validFrom ? `, validFrom: "${validFrom}"` : ''}
+          ${validTo ? `, validTo: "${validTo}"` : ''}
+        }) {
+          id
+          status {
+            approvalStatus
+            requestAssignmentState
+          }
+          resource {
+            name
+            id
+            system {
+              name
+              id
+            }
+          }
+          validFrom
+          validTo
+        }
+      }
+    `
+  }),
+
+  /**
+   * Get pending approvals
+   */
+  getPendingApprovals: (workflowStep = null, summaryMode = true) => {
+    const filterClause = workflowStep
+      ? `filters: {workflowStep: {filterValue: "${workflowStep}", operator: EQUALS}}`
+      : '';
+
+    return {
+      query: `
+        query myAccessRequestApprovalSurveyQuestions {
+          accessRequestApprovalSurveyQuestions(${filterClause}) {
+            pages
+            total
+            data {
+              reason
+              ${!summaryMode ? 'surveyId\n              surveyObjectKey' : ''}
+              workflowStep
+              workflowStepTitle
+              history
+              resourceAssignment {
+                resource {
+                  id
+                  name
+                  system {
+                    id
+                    name
+                  }
+                  resourceType {
+                    name
+                    id
+                  }
+                }
+              }
+            }
+          }
+        }
+      `
+    };
+  },
+
+  /**
+   * Make approval decision
+   */
+  makeApprovalDecision: (surveyId, surveyObjectKey, decision) => ({
+    query: `
+      mutation makeApprovalDecision {
+        submitRequestQuestions(
+          submitRequestQuestionsInput: {
+            accessApprovals: {
+              questions: {
+                decision: ${decision},
+                surveyObjectKey: "${surveyObjectKey}"
+              },
+              surveyId: "${surveyId}"
+            }
+          }
+        ) {
+          questionsSuccessfullySubmitted
+        }
+      }
+    `
+  }),
+
+  /**
+   * Get calculated assignments detailed
+   * Can filter by identityIds OR systemId (not both)
+   * @param {string|string[]|null} identityIds - Identity UUID(s) to filter by
+   * @param {Object} filters - Additional filters
+   * @param {string} filters.systemId - System UUID to filter by (alternative to identityIds)
+   * @param {string} filters.resourceTypeName - Filter by resource type name
+   * @param {string} filters.complianceStatus - Filter by compliance status
+   * @param {string} filters.accountName - Filter by account name
+   * @param {string} filters.systemName - Filter by system name
+   * @param {Object} pagination - Pagination options
+   */
+  getCalculatedAssignmentsDetailed: (identityIds = null, filters = {}, pagination = {}) => {
+    const { page = 1, rows = 50 } = pagination;
+    const { sortBy = 'RESOURCE_NAME', sortOrder = 'ASCENDING' } = filters;
+
+    const filterParts = [];
+
+    // Primary filter: either systemId or identityIds
+    if (filters.systemId) {
+      // Filter by system ID
+      filterParts.push(`systemId: "${filters.systemId}"`);
+    } else if (identityIds) {
+      // Filter by identity ID(s)
+      const identityIdsStr = Array.isArray(identityIds)
+        ? `["${identityIds.join('","')}"]`
+        : `["${identityIds}"]`;
+      filterParts.push(`multipleIdentityIds: ${identityIdsStr}`);
+    }
+
+    // Additional filters
+    if (filters.resourceTypeName) {
+      filterParts.push(`resourceTypeName: {filterValue: "${filters.resourceTypeName}", operator: CONTAINS}`);
+    }
+    if (filters.complianceStatus) {
+      filterParts.push(`complianceStatus: {filterValue: "${filters.complianceStatus}", operator: CONTAINS}`);
+    }
+    if (filters.accountName) {
+      filterParts.push(`accountName: {filterValue: "${filters.accountName}", operator: CONTAINS}`);
+    }
+    if (filters.systemName) {
+      filterParts.push(`systemName: {filterValue: "${filters.systemName}", operator: CONTAINS}`);
+    }
+
+    const filterClause = filterParts.join(', ');
+
+    return {
+      query: `
+        query GetCalculatedAssignmentsDetailed {
+          calculatedAssignments(
+            sorting: {sortOrder: ${sortOrder}, sortBy: ${sortBy}}
+            pagination: {page: ${page}, rows: ${rows}}
+            filters: {${filterClause}}
+          ) {
+            pages
+            total
+            data {
+              id
+              complianceStatus
+              disabled
+              validFrom
+              validTo
+              violations {
+                description
+                violationStatus
+              }
+              account {
+                id
+                accountName
+                accountType {
+                  name
+                  id
+                }
+                system {
+                  name
+                  id
+                }
+              }
+              identity {
+                identityId
+                lastName
+                firstName
+                displayName
+                id
+                riskLevel {
+                  name
+                }
+                accounts {
+                  accountName
+                  id
+                  accountType {
+                    name
+                    id
+                  }
+                  system {
+                    name
+                    id
+                  }
+                }
+                contexts {
+                  displayName
+                  id
+                  type
+                }
+              }
+              resource {
+                name
+                id
+                description
+                maxValidity
+                system {
+                  id
+                  name
+                }
+                resourceType {
+                  id
+                  name
+                }
+                resourceCategory {
+                  name
+                  id
+                }
+                resourceFolder {
+                  name
+                  id
+                }
+              }
+              reason {
+                description
+                reasonType
+                causeObjectKey
+              }
+            }
+          }
+        }
+      `
+    };
+  }
+};
+
+/**
+ * Execute GraphQL query
+ * @param {string} endpoint - GraphQL endpoint URL
+ * @param {Object} queryObject - Query object with 'query' property
+ * @param {Object} headers - Request headers
+ * @returns {Promise<Object>} API response with data, headers, status, and rawResponse
+ */
+export const executeGraphQL = async (endpoint, queryObject, headers) => {
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(queryObject),
+      referrerPolicy: 'no-referrer'  // Don't send Referer header to avoid origin validation issues
+    });
+
+    // Capture response headers and status
+    const responseHeaders = Object.fromEntries(response.headers.entries());
+    const statusCode = response.status;
+
+    // Clone response to read raw text
+    const responseClone = response.clone();
+    const rawResponseText = await responseClone.text();
+
+    if (!response.ok) {
+      const error = new Error(`HTTP ${response.status}: ${response.statusText}`);
+      error.responseHeaders = responseHeaders;
+      error.statusCode = statusCode;
+      error.rawResponse = rawResponseText;
+      throw error;
+    }
+
+    const data = await response.json();
+
+    if (data.errors) {
+      const error = new Error(`GraphQL Error: ${JSON.stringify(data.errors)}`);
+      error.responseHeaders = responseHeaders;
+      error.statusCode = statusCode;
+      error.rawResponse = rawResponseText;
+      throw error;
+    }
+
+    return {
+      data,
+      headers: responseHeaders,
+      status: statusCode,
+      rawResponse: rawResponseText // Include raw response text
+    };
+  } catch (error) {
+    console.error('GraphQL execution error:', error);
+    throw error;
+  }
+};

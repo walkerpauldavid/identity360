@@ -1,0 +1,219 @@
+/* Access Lens Page Styles */
+
+.access-lens-page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background-color: #0d0d0d;
+  color: #e0e0e0;
+}
+
+.access-lens-page-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  background-color: #1a1a1a;
+  border-bottom: 1px solid #2a2a2a;
+}
+
+.access-lens-page-header h1 {
+  margin: 0;
+  font-size: 1.1rem;
+  color: #88c0d0;
+  font-weight: 500;
+}
+
+.access-lens-page-header .back-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.75rem;
+  background: rgba(136, 192, 208, 0.1);
+  border: 1px solid rgba(136, 192, 208, 0.3);
+  border-radius: 4px;
+  color: #88c0d0;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.access-lens-page-header .back-btn:hover {
+  background: rgba(136, 192, 208, 0.2);
+  border-color: #88c0d0;
+}
+
+.access-lens-page-header .search-container {
+  flex: 1;
+  max-width: 400px;
+  margin-left: auto;
+}
+
+.access-lens-page-header .identity-search {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  background-color: #0d0d0d;
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+  color: #e0e0e0;
+  font-size: 0.8rem;
+}
+
+.access-lens-page-header .identity-search:focus {
+  outline: none;
+  border-color: #88c0d0;
+}
+
+.access-lens-page-header .identity-search::placeholder {
+  color: #666;
+}
+
+.access-lens-page-content {
+  flex: 1;
+  overflow: hidden;
+}
+
+.access-lens-page-content .access-lens {
+  height: 100%;
+}
+
+.access-lens-page-content .access-lens.fullscreen {
+  position: relative;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+
+/* Selected Identity Info */
+.selected-identity-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-left: auto;
+  padding: 0.4rem 0.75rem;
+  background: rgba(136, 192, 208, 0.1);
+  border: 1px solid rgba(136, 192, 208, 0.2);
+  border-radius: 6px;
+}
+
+.selected-identity-info .identity-name {
+  color: #e0e0e0;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.selected-identity-info .change-identity-btn {
+  padding: 0.25rem 0.5rem;
+  background: transparent;
+  border: 1px solid #3a3a3a;
+  border-radius: 4px;
+  color: #888;
+  font-size: 0.7rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.selected-identity-info .change-identity-btn:hover {
+  border-color: #88c0d0;
+  color: #88c0d0;
+}
+
+/* Data Loading Overlay */
+.data-loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(13, 13, 13, 0.9);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.data-loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #2a2a2a;
+  border-top-color: #88c0d0;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-bottom: 1rem;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.data-loading-overlay p {
+  color: #888;
+  font-size: 0.9rem;
+}
+
+/* Data Load Error */
+.data-load-error {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: rgba(191, 97, 106, 0.1);
+  border-bottom: 1px solid rgba(191, 97, 106, 0.3);
+  color: #bf616a;
+  font-size: 0.85rem;
+}
+
+.data-load-error .error-icon {
+  font-size: 1rem;
+}
+
+/* No Identity Selected State */
+.no-identity-selected {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 3rem;
+}
+
+.empty-state .empty-icon {
+  font-size: 4rem;
+  opacity: 0.3;
+  display: block;
+  margin-bottom: 1.5rem;
+}
+
+.empty-state h2 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.5rem;
+  font-weight: 500;
+  color: #e0e0e0;
+}
+
+.empty-state p {
+  margin: 0 0 1.5rem 0;
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.select-identity-btn {
+  padding: 0.75rem 1.5rem;
+  background: #88c0d0;
+  border: none;
+  border-radius: 6px;
+  color: white;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.select-identity-btn:hover {
+  background: #9dcfe0;
+}

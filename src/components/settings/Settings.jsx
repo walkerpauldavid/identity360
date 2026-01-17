@@ -1,0 +1,542 @@
+/**
+ * Settings Page
+ * Tabbed interface for bearer token management and user preferences
+ */
+
+import { useState, useEffect } from 'react';
+import { useAuth } from '../../contexts/AuthContext';
+import { usePreferences } from '../../contexts/PreferencesContext';
+import DashboardLayoutTab from './DashboardLayoutTab';
+import './Settings.css';
+
+const Settings = () => {
+  const { getBearerToken, getAccessToken } = useAuth();
+  const { preferences, setPreference } = usePreferences();
+  const [activeTab, setActiveTab] = useState('token');
+
+  // Token management state
+  const [currentToken, setCurrentToken] = useState('');
+  const [decodedToken, setDecodedToken] = useState(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [newToken, setNewToken] = useState('');
+  const [copySuccess, setCopySuccess] = useState(false);
+
+  // User preferences state
+  const [selectedLocale, setSelectedLocale] = useState(preferences.locale || 'en-US');
+  const [selectedTimezone, setSelectedTimezone] = useState(preferences.timezone || 'America/New_York');
+  const [welcomeAnimationSpeed, setWelcomeAnimationSpeed] = useState(preferences.welcomeAnimationSpeed || 5000);
+  const [dashboardTileLayout, setDashboardTileLayout] = useState(preferences.dashboardTileLayout || 'horizontal');
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
+  useEffect(() => {
+    loadCurrentToken();
+  }, []);
+
+  const loadCurrentToken = () => {
+    // Check for override token first
+    const overrideToken = localStorage.getItem('bearer_token_override');
+    const token = overrideToken || getAccessToken();
+    setCurrentToken(token || '');
+
+    if (token) {
+      const decoded = decodeJWT(token);
+      setDecodedToken(decoded);
+    }
+  };
+
+  // Decode JWT token
+  const decodeJWT = (token) => {
+    try {
+      // JWT has 3 parts separated by dots
+      const parts = token.split('.');
+      if (parts.length !== 3) {
+        return { error: 'Invalid JWT format - must have 3 parts' };
+      }
+
+      // Decode the payload (second part)
+      const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+
+      // Decode the header (first part)
+      const header = JSON.parse(atob(parts[0].replace(/-/g, '+').replace(/_/g, '/')));
+
+      return {
+        header,
+        payload,
+        signature: parts[2]
+      };
+    } catch (error) {
+      console.error('Error decoding token:', error);
+      return { error: error.message };
+    }
+  };
+
+  const formatDate = (timestamp) => {
+    if (!timestamp) return 'N/A';
+    const date = new Date(timestamp * 1000);
+    return date.toLocaleString();
+  };
+
+  const isTokenExpired = (exp) => {
+    if (!exp) return false;
+    return Date.now() >= exp * 1000;
+  };
+
+  const getTimeRemaining = (exp) => {
+    if (!exp) return 'N/A';
+    const now = Date.now();
+    const expTime = exp * 1000;
+    const diff = expTime - now;
+
+    if (diff <= 0) return 'Expired';
+
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+    return `${hours}h ${minutes}m ${seconds}s`;
+  };
+
+  const handleSaveToken = () => {
+    if (!newToken.trim()) {
+      alert('Please enter a token');
+      return;
+    }
+
+    // Validate token format
+    const decoded = decodeJWT(newToken.trim());
+    if (decoded.error) {
+      alert(`Invalid token: ${decoded.error}`);
+      return;
+    }
+
+    // Save override token
+    localStorage.setItem('bearer_token_override', newToken.trim());
+
+    // Reload the token
+    loadCurrentToken();
+    setIsEditing(false);
+    setNewToken('');
+
+    alert('Bearer token updated successfully!\n\nAll future API calls will use this token.');
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditing(false);
+    setNewToken('');
+  };
+
+  const handleResetToOriginal = () => {
+    if (window.confirm('Reset to original OAuth token? This will remove the override token.')) {
+      localStorage.removeItem('bearer_token_override');
+      loadCurrentToken();
+      alert('Token reset to original OAuth token');
+    }
+  };
+
+  const handleCopyToken = () => {
+    navigator.clipboard.writeText(currentToken);
+    setCopySuccess(true);
+    setTimeout(() => setCopySuccess(false), 2000);
+  };
+
+  const handleSavePreferences = () => {
+    setPreference('locale', selectedLocale);
+    setPreference('timezone', selectedTimezone);
+    setPreference('welcomeAnimationSpeed', welcomeAnimationSpeed);
+    setPreference('dashboardTileLayout', dashboardTileLayout);
+    setSaveSuccess(true);
+    setTimeout(() => setSaveSuccess(false), 2000);
+  };
+
+  const isOverridden = !!localStorage.getItem('bearer_token_override');
+
+  // Available locales
+  const locales = [
+    { value: 'en-US', label: 'English (United States)' },
+    { value: 'en-GB', label: 'English (United Kingdom)' },
+    { value: 'en-CA', label: 'English (Canada)' },
+    { value: 'en-AU', label: 'English (Australia)' },
+    { value: 'fr-FR', label: 'French (France)' },
+    { value: 'fr-CA', label: 'French (Canada)' },
+    { value: 'de-DE', label: 'German (Germany)' },
+    { value: 'es-ES', label: 'Spanish (Spain)' },
+    { value: 'es-MX', label: 'Spanish (Mexico)' },
+    { value: 'it-IT', label: 'Italian (Italy)' },
+    { value: 'pt-BR', label: 'Portuguese (Brazil)' },
+    { value: 'pt-PT', label: 'Portuguese (Portugal)' },
+    { value: 'nl-NL', label: 'Dutch (Netherlands)' },
+    { value: 'ja-JP', label: 'Japanese (Japan)' },
+    { value: 'zh-CN', label: 'Chinese (Simplified)' },
+    { value: 'zh-TW', label: 'Chinese (Traditional)' },
+    { value: 'ko-KR', label: 'Korean (Korea)' },
+    { value: 'ru-RU', label: 'Russian (Russia)' },
+    { value: 'ar-SA', label: 'Arabic (Saudi Arabia)' },
+    { value: 'hi-IN', label: 'Hindi (India)' }
+  ];
+
+  // Available timezones
+  const timezones = [
+    { value: 'America/New_York', label: 'Eastern Time (ET)' },
+    { value: 'America/Chicago', label: 'Central Time (CT)' },
+    { value: 'America/Denver', label: 'Mountain Time (MT)' },
+    { value: 'America/Los_Angeles', label: 'Pacific Time (PT)' },
+    { value: 'America/Anchorage', label: 'Alaska Time (AKT)' },
+    { value: 'Pacific/Honolulu', label: 'Hawaii Time (HST)' },
+    { value: 'America/Toronto', label: 'Toronto (ET)' },
+    { value: 'America/Vancouver', label: 'Vancouver (PT)' },
+    { value: 'America/Mexico_City', label: 'Mexico City (CST)' },
+    { value: 'Europe/London', label: 'London (GMT/BST)' },
+    { value: 'Europe/Paris', label: 'Paris (CET/CEST)' },
+    { value: 'Europe/Berlin', label: 'Berlin (CET/CEST)' },
+    { value: 'Europe/Rome', label: 'Rome (CET/CEST)' },
+    { value: 'Europe/Madrid', label: 'Madrid (CET/CEST)' },
+    { value: 'Europe/Amsterdam', label: 'Amsterdam (CET/CEST)' },
+    { value: 'Europe/Moscow', label: 'Moscow (MSK)' },
+    { value: 'Asia/Tokyo', label: 'Tokyo (JST)' },
+    { value: 'Asia/Shanghai', label: 'Shanghai (CST)' },
+    { value: 'Asia/Hong_Kong', label: 'Hong Kong (HKT)' },
+    { value: 'Asia/Singapore', label: 'Singapore (SGT)' },
+    { value: 'Asia/Seoul', label: 'Seoul (KST)' },
+    { value: 'Asia/Dubai', label: 'Dubai (GST)' },
+    { value: 'Asia/Kolkata', label: 'India (IST)' },
+    { value: 'Australia/Sydney', label: 'Sydney (AEDT/AEST)' },
+    { value: 'Australia/Melbourne', label: 'Melbourne (AEDT/AEST)' },
+    { value: 'Pacific/Auckland', label: 'Auckland (NZDT/NZST)' },
+    { value: 'UTC', label: 'UTC (Coordinated Universal Time)' }
+  ];
+
+  return (
+    <div className="settings-page">
+      {/* Header */}
+      <div className="settings-header">
+        <h1>⚙️ Settings</h1>
+      </div>
+
+      {/* Tabs */}
+      <div className="settings-tabs">
+        <button
+          className={`tab-button ${activeTab === 'token' ? 'active' : ''}`}
+          onClick={() => setActiveTab('token')}
+        >
+          🔑 Token Management
+        </button>
+        <button
+          className={`tab-button ${activeTab === 'preferences' ? 'active' : ''}`}
+          onClick={() => setActiveTab('preferences')}
+        >
+          👤 User Preferences
+        </button>
+        <button
+          className={`tab-button ${activeTab === 'layout' ? 'active' : ''}`}
+          onClick={() => setActiveTab('layout')}
+        >
+          📊 Dashboard Layout
+        </button>
+      </div>
+
+      {/* Tab Content */}
+      <div className="settings-content">
+        {/* Token Management Tab */}
+        {activeTab === 'token' && (
+          <section className="settings-section">
+            <div className="section-header">
+              <h2>Bearer Token Management</h2>
+              {isOverridden && (
+                <span className="override-badge">OVERRIDDEN</span>
+              )}
+            </div>
+
+            {/* Current Token Display */}
+            <div className="token-display-section">
+              <h3>Current Bearer Token</h3>
+              <div className="token-box">
+                <code className="token-value">{currentToken || 'No token available'}</code>
+                {currentToken && (
+                  <button className="btn-copy" onClick={handleCopyToken}>
+                    {copySuccess ? '✓ Copied' : 'Copy'}
+                  </button>
+                )}
+              </div>
+              {isOverridden && (
+                <div className="override-notice">
+                  <p>⚠️ You are using a manually overridden token.</p>
+                  <button onClick={handleResetToOriginal} className="btn btn-warning">
+                    Reset to Original OAuth Token
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Token Analysis */}
+            {decodedToken && !decodedToken.error && (
+              <div className="token-analysis">
+                <h3>Token Analysis</h3>
+
+                {/* Token Status */}
+                <div className="token-status">
+                  <div className={`status-indicator ${isTokenExpired(decodedToken.payload.exp) ? 'expired' : 'valid'}`}>
+                    {isTokenExpired(decodedToken.payload.exp) ? '❌ EXPIRED' : '✅ VALID'}
+                  </div>
+                  {!isTokenExpired(decodedToken.payload.exp) && (
+                    <div className="time-remaining">
+                      Expires in: {getTimeRemaining(decodedToken.payload.exp)}
+                    </div>
+                  )}
+                </div>
+
+                {/* Header */}
+                <div className="token-section">
+                  <h4>Header</h4>
+                  <div className="token-claims">
+                    <div className="claim-item">
+                      <span className="claim-label">Algorithm:</span>
+                      <span className="claim-value">{decodedToken.header.alg || 'N/A'}</span>
+                    </div>
+                    <div className="claim-item">
+                      <span className="claim-label">Type:</span>
+                      <span className="claim-value">{decodedToken.header.typ || 'N/A'}</span>
+                    </div>
+                    {decodedToken.header.kid && (
+                      <div className="claim-item">
+                        <span className="claim-label">Key ID:</span>
+                        <span className="claim-value mono">{decodedToken.header.kid}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Payload - Key Claims */}
+                <div className="token-section">
+                  <h4>Key Claims</h4>
+                  <div className="token-claims">
+                    {decodedToken.payload.sub && (
+                      <div className="claim-item">
+                        <span className="claim-label">Subject (sub):</span>
+                        <span className="claim-value">{decodedToken.payload.sub}</span>
+                      </div>
+                    )}
+                    {decodedToken.payload.iss && (
+                      <div className="claim-item">
+                        <span className="claim-label">Issuer (iss):</span>
+                        <span className="claim-value">{decodedToken.payload.iss}</span>
+                      </div>
+                    )}
+                    {decodedToken.payload.aud && (
+                      <div className="claim-item">
+                        <span className="claim-label">Audience (aud):</span>
+                        <span className="claim-value">{decodedToken.payload.aud}</span>
+                      </div>
+                    )}
+                    {decodedToken.payload.azp && (
+                      <div className="claim-item">
+                        <span className="claim-label">Authorized Party (azp):</span>
+                        <span className="claim-value">{decodedToken.payload.azp}</span>
+                      </div>
+                    )}
+                    {decodedToken.payload.exp && (
+                      <div className="claim-item">
+                        <span className="claim-label">Expires At (exp):</span>
+                        <span className="claim-value">{formatDate(decodedToken.payload.exp)}</span>
+                      </div>
+                    )}
+                    {decodedToken.payload.iat && (
+                      <div className="claim-item">
+                        <span className="claim-label">Issued At (iat):</span>
+                        <span className="claim-value">{formatDate(decodedToken.payload.iat)}</span>
+                      </div>
+                    )}
+                    {decodedToken.payload.nbf && (
+                      <div className="claim-item">
+                        <span className="claim-label">Not Before (nbf):</span>
+                        <span className="claim-value">{formatDate(decodedToken.payload.nbf)}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* All Claims */}
+                <div className="token-section">
+                  <h4>All Claims (Payload)</h4>
+                  <pre className="json-display">{JSON.stringify(decodedToken.payload, null, 2)}</pre>
+                </div>
+              </div>
+            )}
+
+            {decodedToken && decodedToken.error && (
+              <div className="error-message">
+                <p>Error decoding token: {decodedToken.error}</p>
+              </div>
+            )}
+
+            {/* Edit Token Section */}
+            <div className="token-edit-section">
+              {!isEditing ? (
+                <button onClick={() => setIsEditing(true)} className="btn btn-primary">
+                  Replace Bearer Token
+                </button>
+              ) : (
+                <div className="token-edit-form">
+                  <h3>Enter New Bearer Token</h3>
+                  <p className="edit-instruction">
+                    Paste your new bearer token below. This will override the current token for all API calls.
+                  </p>
+                  <textarea
+                    className="token-input"
+                    value={newToken}
+                    onChange={(e) => setNewToken(e.target.value)}
+                    placeholder="Paste bearer token here (without 'Bearer ' prefix)..."
+                    rows={6}
+                  />
+                  <div className="edit-actions">
+                    <button onClick={handleSaveToken} className="btn btn-primary">
+                      Save Token
+                    </button>
+                    <button onClick={handleCancelEdit} className="btn btn-secondary">
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </section>
+        )}
+
+        {/* User Preferences Tab */}
+        {activeTab === 'preferences' && (
+          <section className="settings-section">
+            <div className="section-header">
+              <h2>User Preferences</h2>
+            </div>
+
+            <div className="preferences-form">
+              {/* Locale Selection */}
+              <div className="form-group">
+                <label htmlFor="locale-select">
+                  <span className="label-icon">🌐</span>
+                  Locale / Language
+                </label>
+                <p className="form-description">
+                  Select your preferred language and regional format for dates, numbers, and text.
+                </p>
+                <select
+                  id="locale-select"
+                  className="form-select"
+                  value={selectedLocale}
+                  onChange={(e) => setSelectedLocale(e.target.value)}
+                >
+                  {locales.map(locale => (
+                    <option key={locale.value} value={locale.value}>
+                      {locale.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Timezone Selection */}
+              <div className="form-group">
+                <label htmlFor="timezone-select">
+                  <span className="label-icon">🕐</span>
+                  Timezone
+                </label>
+                <p className="form-description">
+                  Select your timezone. All dates and times will be displayed in this timezone.
+                </p>
+                <select
+                  id="timezone-select"
+                  className="form-select"
+                  value={selectedTimezone}
+                  onChange={(e) => setSelectedTimezone(e.target.value)}
+                >
+                  {timezones.map(timezone => (
+                    <option key={timezone.value} value={timezone.value}>
+                      {timezone.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Welcome Animation Speed */}
+              <div className="form-group">
+                <label htmlFor="welcome-speed-select">
+                  <span className="label-icon">🎭</span>
+                  Welcome Animation Speed
+                </label>
+                <p className="form-description">
+                  Control how fast the welcome message cycles through different languages on the home page.
+                </p>
+                <select
+                  id="welcome-speed-select"
+                  className="form-select"
+                  value={welcomeAnimationSpeed}
+                  onChange={(e) => setWelcomeAnimationSpeed(Number(e.target.value))}
+                >
+                  <option value={0}>Disabled (no animation)</option>
+                  <option value={3000}>Fast (3 seconds)</option>
+                  <option value={5000}>Normal (5 seconds)</option>
+                  <option value={7000}>Slow (7 seconds)</option>
+                  <option value={10000}>Very Slow (10 seconds)</option>
+                </select>
+              </div>
+
+              {/* Dashboard Tile Layout */}
+              <div className="form-group">
+                <label htmlFor="tile-layout-select">
+                  <span className="label-icon">📊</span>
+                  Dashboard Tile Layout
+                </label>
+                <p className="form-description">
+                  Choose how tiles are displayed on the dashboard home page.
+                </p>
+                <select
+                  id="tile-layout-select"
+                  className="form-select"
+                  value={dashboardTileLayout}
+                  onChange={(e) => setDashboardTileLayout(e.target.value)}
+                >
+                  <option value="horizontal">Horizontal (side by side)</option>
+                  <option value="vertical">Vertical (stacked)</option>
+                </select>
+              </div>
+
+              {/* Current Settings Display */}
+              <div className="current-settings">
+                <h3>Current Settings</h3>
+                <div className="settings-grid">
+                  <div className="setting-item">
+                    <span className="setting-label">Locale:</span>
+                    <span className="setting-value">{selectedLocale}</span>
+                  </div>
+                  <div className="setting-item">
+                    <span className="setting-label">Timezone:</span>
+                    <span className="setting-value">{selectedTimezone}</span>
+                  </div>
+                  <div className="setting-item">
+                    <span className="setting-label">Current Time:</span>
+                    <span className="setting-value">
+                      {new Date().toLocaleString(selectedLocale, { timeZone: selectedTimezone })}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Save Button */}
+              <div className="form-actions">
+                <button
+                  onClick={handleSavePreferences}
+                  className={`btn btn-primary ${saveSuccess ? 'success' : ''}`}
+                >
+                  {saveSuccess ? '✓ Preferences Saved!' : 'Save Preferences'}
+                </button>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* Dashboard Layout Tab */}
+        {activeTab === 'layout' && <DashboardLayoutTab />}
+      </div>
+    </div>
+  );
+};
+
+export default Settings;

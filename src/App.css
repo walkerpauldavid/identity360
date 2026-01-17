@@ -1,0 +1,269 @@
+#root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  min-height: 100vh;
+  background: #000000;
+  box-sizing: border-box;
+}
+
+.app-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+  min-height: 100vh;
+  box-sizing: border-box;
+  background: #000000;
+  width: 100%;
+}
+
+.page-title-inline {
+  margin: 0;
+  font-size: 1rem;
+  color: #fff;
+  font-weight: 500;
+  margin-right: 1.5rem;
+  white-space: nowrap;
+}
+
+.user-section {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding-right: 0.5rem;
+}
+
+.user-email-header {
+  font-size: 0.9rem;
+  color: #e0e0e0;
+  font-weight: 500;
+}
+
+.logout-icon-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: #e0e0e0;
+}
+
+.logout-icon-button:hover {
+  background: rgba(255, 68, 68, 0.1);
+  border-color: #f44;
+  color: #f44;
+}
+
+.logout-icon-button svg {
+  display: block;
+}
+
+.header-nav-buttons {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.header-nav-button {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.8rem;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: #e0e0e0;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.header-nav-button:hover {
+  background: rgba(136, 192, 208, 0.1);
+  border-color: #88c0d0;
+  color: #88c0d0;
+}
+
+.header-nav-button.active {
+  background: rgba(136, 192, 208, 0.15);
+  border-color: #88c0d0;
+  color: #88c0d0;
+}
+
+.header-nav-button svg {
+  display: block;
+  flex-shrink: 0;
+}
+
+.header-nav-button span {
+  font-weight: 500;
+}
+
+.datetime-frame {
+  padding: 1rem;
+  background: #1a1a1a;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  border-radius: 0;
+}
+
+.datetime-content {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 1rem;
+  width: 100%;
+  justify-content: space-between;
+}
+
+.datetime-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  text-align: left;
+}
+
+.datetime-value {
+  font-size: 0.75rem;
+  color: #e0e0e0;
+  padding: 0.3rem;
+  background: rgba(100, 108, 255, 0.1);
+  border-radius: 4px;
+  border-left: 3px solid #88c0d0;
+  white-space: nowrap;
+}
+
+.datetime-value.time {
+  font-family: 'Courier New', monospace;
+  font-size: 0.8rem;
+  font-weight: bold;
+  letter-spacing: 1px;
+}
+
+.main-content {
+  flex: 1;
+  padding: 1rem;
+  width: 100%;
+  box-sizing: border-box;
+  max-width: 100%;
+}
+
+.welcome-section {
+  background: white;
+  border-radius: 8px;
+  padding: 2rem;
+  margin-bottom: 2rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.welcome-section h2 {
+  margin: 0;
+  color: #333;
+}
+
+.info-card {
+  background: white;
+  border-radius: 8px;
+  padding: 2rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.info-card h3 {
+  margin: 0 0 1rem 0;
+  color: #333;
+}
+
+.info-card p {
+  color: #666;
+  line-height: 1.6;
+  margin-bottom: 1rem;
+}
+
+.token-info {
+  background: #f5f5f5;
+  padding: 1rem;
+  border-radius: 6px;
+  margin: 1.5rem 0;
+}
+
+.token-info strong {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: #333;
+}
+
+.token-info code {
+  font-family: 'Courier New', monospace;
+  font-size: 0.85rem;
+  color: #666;
+  word-break: break-all;
+}
+
+.next-steps {
+  margin-top: 2rem;
+  padding-top: 2rem;
+  border-top: 1px solid #eee;
+}
+
+.next-steps h4 {
+  margin: 0 0 1rem 0;
+  color: #333;
+}
+
+.next-steps ul {
+  list-style: none;
+  padding: 0;
+}
+
+.next-steps li {
+  padding: 0.5rem 0;
+  padding-left: 1.5rem;
+  position: relative;
+  color: #666;
+}
+
+.next-steps li:before {
+  content: "→";
+  position: absolute;
+  left: 0;
+  color: #88c0d0;
+  font-weight: bold;
+}
+
+.next-steps code {
+  background: #f5f5f5;
+  padding: 0.2rem 0.4rem;
+  border-radius: 3px;
+  font-size: 0.85rem;
+}
+
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+}
+
+.spinner {
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #88c0d0;
+  border-radius: 50%;
+  width: 50px;
+  height: 50px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}

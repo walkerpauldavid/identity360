@@ -1,0 +1,60 @@
+/* Breadcrumbs Component Styles */
+
+.breadcrumbs {
+  padding: 0.5rem 1rem;
+  background-color: #0d0d0d;
+  border-bottom: 1px solid #2a2a2a;
+}
+
+.breadcrumbs-list {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+  font-size: 0.75rem; /* Small font as requested */
+  color: #b0b0b0;
+}
+
+.breadcrumb-item {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.breadcrumb-item a {
+  color: #88c0d0;
+  text-decoration: none;
+  transition: color 0.2s ease;
+  padding: 0.15rem 0.3rem;
+  border-radius: 3px;
+}
+
+.breadcrumb-item a:hover {
+  color: #a0d0f0;
+  background-color: #1a1a1a;
+}
+
+.breadcrumb-separator {
+  color: #5a5a5a;
+  font-weight: normal;
+  margin: 0 0.1rem;
+}
+
+.breadcrumb-item.active .breadcrumb-current {
+  color: #e0e0e0;
+  font-weight: 600;
+  padding: 0.15rem 0.3rem;
+}
+
+/* Responsive - hide on very small screens */
+@media (max-width: 480px) {
+  .breadcrumbs {
+    padding: 0.25rem 0.5rem;
+  }
+
+  .breadcrumbs-list {
+    font-size: 0.7rem;
+  }
+}

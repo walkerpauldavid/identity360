@@ -1,0 +1,95 @@
+.dashboard {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.dashboard-header {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 1rem;
+}
+
+.download-logs-button {
+  padding: 0.5rem 1rem;
+  background: #646cff;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.download-logs-button:hover {
+  background: #535bf2;
+}
+
+.dashboard-controls {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 0.75rem;
+}
+
+.toggle-all-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.4rem;
+  background: transparent;
+  border: 1px solid #3a3a4a;
+  border-radius: 4px;
+  color: #a0a0b0;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.toggle-all-btn:hover {
+  border-color: #88c0d0;
+  color: #88c0d0;
+  background: rgba(136, 192, 208, 0.1);
+}
+
+.dashboard-grid {
+  display: grid;
+  gap: 1rem;
+  width: 100%;
+  max-width: 100%;
+  grid-auto-rows: minmax(100px, auto);
+  box-sizing: border-box;
+  min-height: 150px;
+}
+
+/* Horizontal layout - tiles side by side */
+.dashboard-grid.layout-horizontal {
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+/* Vertical layout - tiles stacked */
+.dashboard-grid.layout-vertical {
+  grid-template-columns: 1fr;
+  max-width: 600px;
+}
+
+.dashboard-empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 3rem;
+  color: #606070;
+  background: #1a1a1a;
+  border-radius: 8px;
+  border: 2px dashed #3a3a4a;
+}
+
+.dashboard-empty p {
+  margin: 0.5rem 0;
+}
+
+.dashboard-empty a {
+  color: #88c0d0;
+  text-decoration: underline;
+}
+
+.dashboard-empty a:hover {
+  color: #a3d5e3;
+}

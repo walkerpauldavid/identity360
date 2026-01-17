@@ -1,0 +1,243 @@
+/* My Access Page Styles */
+
+.my-access-page {
+  min-height: 100vh;
+  background-color: #000000;
+  color: #e0e0e0;
+}
+
+.my-access-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+/* Page Header */
+.page-header {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 2px solid #2a2a2a;
+}
+
+.header-icon {
+  width: 60px;
+  height: 60px;
+  background-color: #1a1a1a;
+  border: 2px solid #88c0d0;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.header-icon svg {
+  stroke: #88c0d0;
+}
+
+.page-header h1 {
+  margin: 0;
+  font-size: 2rem;
+  color: #88c0d0;
+}
+
+.page-subtitle {
+  margin: 0.5rem 0 0 0;
+  color: #b0b0b0;
+  font-size: 1rem;
+}
+
+/* Access Sections */
+.access-section {
+  background-color: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.section-title {
+  font-size: 1.25rem;
+  color: #88c0d0;
+  margin: 0 0 1.5rem 0;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #2a2a2a;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 600;
+}
+
+/* Info Grid */
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.5rem;
+}
+
+.info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.info-label {
+  font-size: 0.8rem;
+  color: #b0b0b0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 500;
+}
+
+.info-value {
+  font-size: 1rem;
+  color: #e0e0e0;
+  font-weight: 500;
+  background-color: #0d0d0d;
+  padding: 0.75rem;
+  border-radius: 4px;
+  border: 1px solid #2a2a2a;
+}
+
+/* Permissions Grid */
+.permissions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 1rem;
+}
+
+.permission-card {
+  background-color: #0d0d0d;
+  border: 1px solid #2a2a2a;
+  border-radius: 6px;
+  padding: 1.25rem;
+  transition: all 0.2s ease;
+}
+
+.permission-card:hover {
+  background-color: #1f1f1f;
+  border-color: #88c0d0;
+  transform: translateY(-2px);
+}
+
+.permission-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  margin-bottom: 0.75rem;
+  font-weight: bold;
+}
+
+.permission-icon.granted {
+  background-color: #1a3d1a;
+  color: #4caf50;
+  border: 2px solid #4caf50;
+}
+
+.permission-icon.denied {
+  background-color: #3d1a1a;
+  color: #f44336;
+  border: 2px solid #f44336;
+}
+
+.permission-card h3 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1rem;
+  color: #e0e0e0;
+}
+
+.permission-card p {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #b0b0b0;
+}
+
+/* Scopes List */
+.scopes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.scope-item {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  background-color: #0d0d0d;
+  padding: 1rem;
+  border-radius: 6px;
+  border: 1px solid #2a2a2a;
+  flex-wrap: wrap;
+}
+
+.scope-badge {
+  background-color: #88c0d0;
+  color: white;
+  padding: 0.4rem 0.8rem;
+  border-radius: 4px;
+  font-family: 'Courier New', monospace;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.scope-description {
+  color: #b0b0b0;
+  font-size: 0.9rem;
+  flex: 1;
+}
+
+/* Access Notice */
+.access-notice {
+  display: flex;
+  gap: 1rem;
+  background-color: #1a1a2e;
+  border: 1px solid #3a3a5e;
+  border-left: 4px solid #88c0d0;
+  border-radius: 6px;
+  padding: 1.25rem;
+  margin-top: 2rem;
+}
+
+.notice-icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.access-notice strong {
+  color: #88c0d0;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .my-access-content {
+    padding: 1rem;
+  }
+
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+
+  .page-header h1 {
+    font-size: 1.5rem;
+  }
+
+  .permissions-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .info-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .scope-item {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
