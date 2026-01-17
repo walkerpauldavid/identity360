@@ -199,13 +199,14 @@ const AccessLensPage = () => {
 
       // Fetch full identity details via OData
       // Note: DESCRIPTION is not available on Identity entity type
+      // IDENTITYID is the employee/identity ID displayed to users (e.g., EMP12345)
       const identityResult = await omadaApi.identity.searchIdentities(
         null, // No filter
         bearerToken,
         impersonateUser,
         {
           filter: `UId eq ${identity.UId}`,
-          select: 'UId,Id,FIRSTNAME,LASTNAME,DISPLAYNAME,EMAIL,EMPLOYEEID,JOBTITLE,OUREF,IDENTITYCATEGORY,IDENTITYSTATUS,RISKLEVEL'
+          select: 'UId,Id,FIRSTNAME,LASTNAME,DISPLAYNAME,EMAIL,EMPLOYEEID,IDENTITYID,JOBTITLE,OUREF,IDENTITYCATEGORY,IDENTITYSTATUS,RISKLEVEL'
         }
       );
 

@@ -37,8 +37,10 @@ const identityToNode = (identity) => {
     id: identity.UId || identity.Id || 'identity-current',
     type: NodeTypes.IDENTITY,
     displayName: `${identity.FIRSTNAME || ''} ${identity.LASTNAME || ''}`.trim() || identity.DISPLAYNAME || 'Unknown',
+    identityId: identity.IDENTITYID,  // Employee/Identity ID (e.g., EMP12345)
     status: statusStr === 'active' ? 'active' :
-            statusStr === 'disabled' ? 'disabled' : 'active',
+            statusStr === 'disabled' ? 'disabled' :
+            statusStr === 'inactive' ? 'inactive' : statusStr,  // Pass actual status value
     riskScore: getStringValue(identity.RISKLEVEL) === 'High' ? 75 :
                getStringValue(identity.RISKLEVEL) === 'Medium' ? 50 :
                getStringValue(identity.RISKLEVEL) === 'Low' ? 25 : undefined,
@@ -53,6 +55,7 @@ const identityToNode = (identity) => {
       email: identity.EMAIL,
       department: identity.OUREF?.DisplayName || getStringValue(identity.OUREF),
       employeeId: identity.EMPLOYEEID,
+      identityId: identity.IDENTITYID,
       title: identity.JOBTITLE
     }
   };

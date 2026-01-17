@@ -119,6 +119,37 @@ const LaneCard = ({
       <div className="lane-header" style={{ borderLeftColor: displayConfig.color }}>
         <span className="lane-icon">{displayConfig.icon}</span>
         <span className="lane-title">{displayConfig.label}</span>
+
+        {/* Search filter - inline in header, only for Effective Entitlements lane */}
+        {showSearch && isExpanded && (
+          <div className="lane-search-inline">
+            <input
+              type="text"
+              className="lane-search-input-inline"
+              placeholder="Filter..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+            />
+            {searchQuery && (
+              <button
+                className="lane-search-clear-inline"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSearchQuery('');
+                }}
+                onMouseDown={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
+                title="Clear search"
+              >
+                ×
+              </button>
+            )}
+          </div>
+        )}
+
         <span className="lane-count">
           ({searchQuery.trim() ? `${displayItems.length}/${totalCount}` : totalCount})
         </span>
@@ -159,36 +190,6 @@ const LaneCard = ({
           {isExpanded ? '▼' : '▶'}
         </button>
       </div>
-
-      {/* Search filter - only for Effective Entitlements lane */}
-      {showSearch && isExpanded && (
-        <div className="lane-search">
-          <input
-            type="text"
-            className="lane-search-input"
-            placeholder="Filter entitlements..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onClick={(e) => e.stopPropagation()}
-            onMouseDown={(e) => e.stopPropagation()}
-            onPointerDown={(e) => e.stopPropagation()}
-          />
-          {searchQuery && (
-            <button
-              className="lane-search-clear"
-              onClick={(e) => {
-                e.stopPropagation();
-                setSearchQuery('');
-              }}
-              onMouseDown={(e) => e.stopPropagation()}
-              onPointerDown={(e) => e.stopPropagation()}
-              title="Clear search"
-            >
-              ×
-            </button>
-          )}
-        </div>
-      )}
 
       {/* Content */}
       {isExpanded && (

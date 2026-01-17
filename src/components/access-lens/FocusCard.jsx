@@ -103,8 +103,15 @@ const FocusCard = ({ node, onNavigateBack }) => {
         </span>
       </div>
 
-      {/* Display Name */}
-      <h2 className="focus-name">{node.displayName}</h2>
+      {/* Display Name - with IDENTITYID for Identity nodes */}
+      <h2 className="focus-name">
+        {node.displayName}
+        {node.type === NodeTypes.IDENTITY && (node.identityId || node.rawData?.IDENTITYID || node.metadata?.identityId) && (
+          <span className="focus-identity-id">
+            ({node.identityId || node.rawData?.IDENTITYID || node.metadata?.identityId})
+          </span>
+        )}
+      </h2>
 
       {/* Status and Risk */}
       <div className="focus-meta">
