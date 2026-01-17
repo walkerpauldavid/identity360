@@ -37,6 +37,7 @@ const LaneCard = ({
   const [isMaximized, setIsMaximized] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [allItems, setAllItems] = useState(null); // Cache for all items when maximized
+  const [searchQuery, setSearchQuery] = useState(''); // Search filter for entitlements
 
   // Respond to forceCollapsed changes from parent (e.g., Reset Layout)
   useEffect(() => {
@@ -54,9 +55,20 @@ const LaneCard = ({
   const displayConfig = getLaneDisplayConfig(laneType);
   const showReasons = laneType === LaneTypes.EFFECTIVE_ENTITLEMENTS && focusNodeType === 'Identity';
   const isMultiColumn = displayConfig.columns > 1;
+  const showSearch = laneType === LaneTypes.EFFECTIVE_ENTITLEMENTS; // Only show search for Entitlements
 
-  // Determine which items to display
-  const displayItems = isMaximized && allItems ? allItems : (isMaximized && allItemsData ? allItemsData : items);
+  // Determine which items to display (before search filtering)
+  const baseItems = isMaximized && allItems ? allItems : (isMaximized && allItemsData ? allItemsData : items);
+
+  // Apply search filter for entitlements lane
+  const displayItems = showSearch && searchQuery.trim()
+    ? baseItems.filter(item => {
+        const name = (item.node?.displayName || '').toLowerCase();
+        const query = searchQuery.toLowerCase().trim();
+        return name.includes(query);
+      })
+    : baseItems;
+
   const hasMoreItems = totalCount > items.length;
 
   const handleLoadMore = async () => {
@@ -107,7 +119,9 @@ const LaneCard = ({
       <div className="lane-header" style={{ borderLeftColor: displayConfig.color }}>
         <span className="lane-icon">{displayConfig.icon}</span>
         <span className="lane-title">{displayConfig.label}</span>
-        <span className="lane-count">({totalCount})</span>
+        <span className="lane-count">
+          ({searchQuery.trim() ? `${displayItems.length}/${totalCount}` : totalCount})
+        </span>
         {laneIsFiltered && !isFilterSource && <span className="lane-filter-badge">Filtered</span>}
         {isFilterSource && <span className="lane-filter-badge active">Filtering</span>}
 
@@ -145,6 +159,36 @@ const LaneCard = ({
           {isExpanded ? '▼' : '▶'}
         </button>
       </div>
+
+      {/* Search filter - only for Effective Entitlements lane */}
+      {showSearch && isExpanded && (
+        <div className="lane-search">
+          <input
+            type="text"
+            className="lane-search-input"
+            placeholder="Filter entitlements..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+          />
+          {searchQuery && (
+            <button
+              className="lane-search-clear"
+              onClick={(e) => {
+                e.stopPropagation();
+                setSearchQuery('');
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+              title="Clear search"
+            >
+              ×
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Content */}
       {isExpanded && (

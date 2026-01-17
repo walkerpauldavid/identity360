@@ -844,6 +844,58 @@
   color: #c5dba8;
 }
 
+/* Lane search filter */
+.lane-search {
+  display: flex;
+  align-items: center;
+  padding: 0.4rem 0.75rem;
+  background: #151515;
+  border-bottom: 1px solid #2a2a2a;
+  gap: 0.5rem;
+}
+
+.lane-search-input {
+  flex: 1;
+  padding: 0.4rem 0.6rem;
+  background: #0d0d0d;
+  border: 1px solid #3b4252;
+  border-radius: 4px;
+  color: #e0e0e0;
+  font-size: 0.8rem;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.lane-search-input::placeholder {
+  color: #606070;
+}
+
+.lane-search-input:focus {
+  border-color: #88c0d0;
+  box-shadow: 0 0 0 2px rgba(136, 192, 208, 0.15);
+}
+
+.lane-search-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  background: rgba(191, 97, 106, 0.2);
+  border: 1px solid rgba(191, 97, 106, 0.3);
+  border-radius: 50%;
+  color: #bf616a;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.lane-search-clear:hover {
+  background: rgba(191, 97, 106, 0.3);
+  border-color: #bf616a;
+}
+
 /* Lane card filter states */
 .lane-card.filter-source {
   border-color: #a3be8c;
