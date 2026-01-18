@@ -12,7 +12,9 @@ const FilterBar = ({
   onViewModeChange,
   onSearch,
   availableReasonTypes = [], // Dynamic reason types from API
-  availableComplianceStatuses = [] // Compliance statuses from API
+  availableComplianceStatuses = [], // Compliance statuses from API
+  showObjectInspector = true, // Whether to show Object Inspector on item click
+  onToggleObjectInspector // Callback to toggle Object Inspector visibility
 }) => {
   const {
     visibleLanes = Object.values(LaneTypes),
@@ -92,6 +94,14 @@ const FilterBar = ({
             {icon}
           </button>
         ))}
+        {/* Object Inspector Toggle */}
+        <button
+          className={`toggle-btn inspector-toggle ${showObjectInspector ? 'active' : ''}`}
+          onClick={onToggleObjectInspector}
+          title={showObjectInspector ? 'Hide Object Inspector' : 'Show Object Inspector'}
+        >
+          🔍
+        </button>
       </div>
 
       {/* Divider */}
@@ -100,9 +110,12 @@ const FilterBar = ({
       {/* Entitlement Type Filter */}
       <div className="filter-group">
         <select
+          id="entitlement-type-filter"
+          name="entitlement-type-filter"
           className="filter-select"
           value={entitlementType}
           onChange={(e) => onFilterChange({ ...filters, entitlementType: e.target.value })}
+          autoComplete="off"
         >
           <option value="all">All Entitlements</option>
           <option value="direct">Direct Only</option>
@@ -118,16 +131,21 @@ const FilterBar = ({
           </button>
           <div className="dropdown-menu">
             {/* Base reason types - always shown */}
-            {Object.values(BaseReasonTypes).map((type) => (
-              <label key={type} className="dropdown-item">
-                <input
-                  type="checkbox"
-                  checked={reasonTypes.includes(type)}
-                  onChange={() => toggleReasonType(type)}
-                />
-                {type}
-              </label>
-            ))}
+            {Object.values(BaseReasonTypes).map((type) => {
+              const sanitizedId = `reason-type-${type.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-]/g, '')}`;
+              return (
+                <label key={type} className="dropdown-item" htmlFor={sanitizedId}>
+                  <input
+                    type="checkbox"
+                    id={sanitizedId}
+                    name={sanitizedId}
+                    checked={reasonTypes.includes(type)}
+                    onChange={() => toggleReasonType(type)}
+                  />
+                  {type}
+                </label>
+              );
+            })}
             {/* Dynamic reason types from API */}
             {availableReasonTypes.length > 0 && (
               <>
@@ -135,16 +153,21 @@ const FilterBar = ({
                 {availableReasonTypes
                   .filter(type => !Object.values(BaseReasonTypes).includes(type))
                   .sort((a, b) => a.localeCompare(b))
-                  .map((type) => (
-                    <label key={type} className="dropdown-item">
-                      <input
-                        type="checkbox"
-                        checked={reasonTypes.includes(type)}
-                        onChange={() => toggleReasonType(type)}
-                      />
-                      {type.replace(/([A-Z])/g, ' $1').trim()}
-                    </label>
-                  ))}
+                  .map((type) => {
+                    const sanitizedId = `reason-type-${type.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-]/g, '')}`;
+                    return (
+                      <label key={type} className="dropdown-item" htmlFor={sanitizedId}>
+                        <input
+                          type="checkbox"
+                          id={sanitizedId}
+                          name={sanitizedId}
+                          checked={reasonTypes.includes(type)}
+                          onChange={() => toggleReasonType(type)}
+                        />
+                        {type.replace(/([A-Z])/g, ' $1').trim()}
+                      </label>
+                    );
+                  })}
               </>
             )}
             {reasonTypes.length > 0 && (
@@ -167,16 +190,21 @@ const FilterBar = ({
               Compliance {complianceStatuses.length > 0 && `(${complianceStatuses.length})`} ▾
             </button>
             <div className="dropdown-menu">
-              {availableComplianceStatuses.map((status) => (
-                <label key={status} className="dropdown-item">
-                  <input
-                    type="checkbox"
-                    checked={complianceStatuses.includes(status)}
-                    onChange={() => toggleComplianceStatus(status)}
-                  />
-                  {status}
-                </label>
-              ))}
+              {availableComplianceStatuses.map((status) => {
+                const sanitizedId = `compliance-status-${status.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-]/g, '')}`;
+                return (
+                  <label key={status} className="dropdown-item" htmlFor={sanitizedId}>
+                    <input
+                      type="checkbox"
+                      id={sanitizedId}
+                      name={sanitizedId}
+                      checked={complianceStatuses.includes(status)}
+                      onChange={() => toggleComplianceStatus(status)}
+                    />
+                    {status}
+                  </label>
+                );
+              })}
               {complianceStatuses.length > 0 && (
                 <button
                   className="dropdown-clear"
@@ -194,8 +222,11 @@ const FilterBar = ({
       <div className="filter-group search-group">
         <input
           type="text"
+          id="access-lens-search"
+          name="access-lens-search"
           className="filter-search"
           placeholder="Search..."
+          autoComplete="off"
           onChange={(e) => onSearch?.(e.target.value)}
         />
       </div>

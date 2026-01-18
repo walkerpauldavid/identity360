@@ -12,7 +12,7 @@
  * - Maximize/Restore: Show all items in a larger scrollable view
  */
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { LaneTypes, getLaneDisplayConfig } from './accessLensTypes';
 import LaneItemRow from './LaneItemRow';
 
@@ -41,6 +41,9 @@ const LaneCard = ({
   const [searchQuery, setSearchQuery] = useState(''); // Search filter for entitlements
   const [selectedResourceTypes, setSelectedResourceTypes] = useState([]); // Multi-select resource type filter
   const [showResourceTypeDropdown, setShowResourceTypeDropdown] = useState(false); // Dropdown visibility
+  const [calculatedMaxHeight, setCalculatedMaxHeight] = useState(null); // Dynamic max height for maximized state
+
+  const cardRef = useRef(null); // Ref to track card position for max height calculation
 
   // Respond to forceCollapsed changes from parent (e.g., Reset Layout)
   useEffect(() => {
@@ -81,23 +84,30 @@ const LaneCard = ({
   const laneIsFiltered = isFiltered || lane.isFiltered;
   const displayConfig = getLaneDisplayConfig(laneType);
   const showReasons = laneType === LaneTypes.EFFECTIVE_ENTITLEMENTS && focusNodeType === 'Identity';
-  const isMultiColumn = displayConfig.columns > 1;
+  // When maximized, always use 2 columns for better display
+  const effectiveColumns = isMaximized ? 2 : displayConfig.columns;
+  const isMultiColumn = effectiveColumns > 1;
   const showFilters = laneType === LaneTypes.EFFECTIVE_ENTITLEMENTS; // Only show filters for Entitlements
 
   // Determine which items to display (before filtering)
-  const baseItems = isMaximized && allItems ? allItems : (isMaximized && allItemsData ? allItemsData : items);
+  // IMPORTANT: When the lane is filtered by cross-lane filtering (laneIsFiltered),
+  // we must use the filtered `items` even in maximized mode, not `allItemsData` which is unfiltered
+  const baseItems = laneIsFiltered
+    ? items  // Use filtered items when cross-lane filtering is active
+    : (isMaximized && allItems ? allItems : (isMaximized && allItemsData ? allItemsData : items));
 
-  // Extract unique resource types from items for the dropdown
+  // Extract unique resource types from items for the dropdown (memoized for performance)
   // When lane is filtered by cross-lane filtering, only show resource types from filtered items
   // When not filtered, show all resource types from all items
   const resourceTypeSource = laneIsFiltered ? items : (allItemsData || items || []);
-  const allResourceTypes = showFilters
-    ? [...new Set(
-        resourceTypeSource
-          .map(item => item.node?.metadata?.type || item.rawData?.resourceType?.name)
-          .filter(Boolean)
-      )].sort()
-    : [];
+  const allResourceTypes = useMemo(() => {
+    if (!showFilters) return [];
+    return [...new Set(
+      resourceTypeSource
+        .map(item => item.node?.metadata?.type || item.rawData?.resourceType?.name)
+        .filter(Boolean)
+    )].sort();
+  }, [showFilters, resourceTypeSource]);
 
   // Apply filters for entitlements lane
   let displayItems = baseItems;
@@ -119,7 +129,8 @@ const LaneCard = ({
     });
   }
 
-  const hasMoreItems = totalCount > items.length;
+  // When cross-lane filtered, all filtered items are already in `items`, so no "more" to show
+  const hasMoreItems = !laneIsFiltered && totalCount > items.length;
 
   // Toggle resource type selection
   const toggleResourceType = (type) => {
@@ -145,30 +156,51 @@ const LaneCard = ({
     }
   };
 
-  // Handle maximize - show all items
+  // Handle maximize - show all items with constrained height
   const handleMaximize = useCallback(() => {
+    // Calculate available space to prevent card from going off-screen
+    if (cardRef.current) {
+      const rect = cardRef.current.getBoundingClientRect();
+      const viewportHeight = window.innerHeight;
+
+      // Calculate how much space is available below the card header
+      // Leave some padding (40px) at the bottom of the viewport
+      const headerHeight = 50; // Approximate header height
+      const filterBarHeight = showFilters && allResourceTypes.length > 0 ? 40 : 0;
+      const availableHeight = viewportHeight - rect.top - headerHeight - filterBarHeight - 60;
+
+      // Clamp between minimum (200px) and maximum (600px) heights
+      const constrainedHeight = Math.max(200, Math.min(600, availableHeight));
+
+      setCalculatedMaxHeight(constrainedHeight);
+    } else {
+      // Fallback if ref not available
+      setCalculatedMaxHeight(400);
+    }
+
     setIsMaximized(true);
     // If allItemsData is available from lane, use it
     if (lane.allItemsData) {
       setAllItems(lane.allItemsData);
     }
-  }, [lane.allItemsData]);
+  }, [lane.allItemsData, showFilters, allResourceTypes.length]);
 
   // Handle restore - back to normal view
   const handleRestore = useCallback(() => {
     setIsMaximized(false);
+    setCalculatedMaxHeight(null);
   }, []);
 
   const isCollapsed = !isExpanded;
 
   // Use width from displayConfig (350px for single column, 700px for multi-column)
-  // Maximized mode uses larger width
+  // Maximized mode uses 700px (2 columns), normal mode uses displayConfig width
   const normalWidth = displayConfig.width;
-  const maximizedWidth = isMultiColumn ? 900 : 500;
-  const laneWidth = isMaximized ? `${maximizedWidth}px` : `${normalWidth}px`;
+  const laneWidth = isMaximized ? '700px' : `${normalWidth}px`;
 
   return (
     <div
+      ref={cardRef}
       className={`lane-card ${isExpanded ? 'expanded' : 'collapsed'} ${isMaximized ? 'maximized' : ''} ${isFilterSource ? 'filter-source' : ''} ${laneIsFiltered ? 'filtered' : ''} ${isMultiColumn ? 'multi-column' : ''} columns-${displayConfig.columns}`}
       data-collapsed={isCollapsed}
       data-maximized={isMaximized}
@@ -189,8 +221,11 @@ const LaneCard = ({
           <div className="lane-search-inline">
             <input
               type="text"
+              id={`lane-search-${laneType}`}
+              name={`lane-search-${laneType}`}
               className="lane-search-input-inline"
               placeholder="Search..."
+              autoComplete="off"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onClick={(e) => e.stopPropagation()}
@@ -217,7 +252,9 @@ const LaneCard = ({
         )}
 
         <span className="lane-count">
-          ({(searchQuery.trim() || selectedResourceTypes.length > 0) ? `${displayItems.length}/${totalCount}` : totalCount})
+          ({(searchQuery.trim() || selectedResourceTypes.length > 0)
+            ? `${displayItems.length}/${laneIsFiltered ? items.length : totalCount}`
+            : (laneIsFiltered ? items.length : totalCount)})
         </span>
         {laneIsFiltered && !isFilterSource && <span className="lane-filter-badge">Filtered</span>}
         {isFilterSource && <span className="lane-filter-badge active">Filtering</span>}
@@ -304,9 +341,9 @@ const LaneCard = ({
           style={{
             display: isMultiColumn ? 'grid' : 'flex',
             flexDirection: isMultiColumn ? undefined : 'column',
-            gridTemplateColumns: isMultiColumn ? `repeat(${displayConfig.columns}, 1fr)` : undefined,
+            gridTemplateColumns: isMultiColumn ? `repeat(${effectiveColumns}, 1fr)` : undefined,
             gap: '0.5rem',
-            maxHeight: isMaximized ? '80vh' : undefined,
+            maxHeight: isMaximized && calculatedMaxHeight ? `${calculatedMaxHeight}px` : undefined,
             overflowY: isMaximized ? 'auto' : undefined,
             overflowX: 'hidden',
             paddingBottom: isMaximized ? '1rem' : undefined

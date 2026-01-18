@@ -177,9 +177,27 @@ export const LaneSchema = {
       compass: CompassOrientation.NE,  // North-East
       priority: 1
     },
+    // Default sort configuration
+    defaultSort: {
+      field: 'displayName',  // Sort by account name
+      order: 'asc'           // Ascending (alphabetical A-Z)
+    },
+    // Cross-lane filtering configuration
+    // When this lane is clicked, filter these other lanes
+    crossLaneFilters: {
+      [LaneTypes.IDENTITIES]: {
+        filterField: 'identity.id',      // Field in this item that identifies related identity
+        targetField: 'id'                 // Field in Identities lane to match against
+      },
+      [LaneTypes.SYSTEMS]: {
+        filterField: 'system.id',
+        targetField: 'id'
+      }
+    },
     apiSource: {
       type: 'OData',
       endpoint: 'Account',
+      filterField: 'AccountName',  // Field to use in OData $filter
       idField: 'Id',
       selectFields: 'Id,AccountName,DisplayName,Description,AccountType,SystemRef,IdentityRef,Status,LastLogin,Created'
     }
@@ -218,9 +236,18 @@ export const LaneSchema = {
       compass: CompassOrientation.W,  // West (for system-centric view)
       priority: 1
     },
+    // Cross-lane filtering configuration
+    // When this lane is clicked, filter these other lanes
+    crossLaneFilters: {
+      [LaneTypes.ACCOUNTS]: {
+        filterField: 'id',                // Field in this item (identity.id)
+        targetField: 'identity.id'        // Field in Accounts lane to match against
+      }
+    },
     apiSource: {
       type: 'OData',
       endpoint: 'Identity',
+      filterField: 'DISPLAYNAME',  // Field to use in OData $filter
       idField: 'UId',
       selectFields: 'UId,Id,FIRSTNAME,LASTNAME,DISPLAYNAME,EMAIL,EMPLOYEEID,JOBTITLE,OUREF,IDENTITYCATEGORY,IDENTITYSTATUS,RISKLEVEL'
     }
@@ -242,6 +269,7 @@ export const LaneSchema = {
     apiSource: {
       type: 'OData',
       endpoint: 'Role',
+      filterField: 'Name',  // Field to use in OData $filter
       idField: 'UId',
       selectFields: 'UId,Id,DisplayName,Name,Description,RoleType,MemberCount,EntitlementCount,Status,RiskScore'
     }
@@ -263,6 +291,7 @@ export const LaneSchema = {
     apiSource: {
       type: 'OData',
       endpoint: 'Policy',
+      filterField: 'Name',  // Field to use in OData $filter
       idField: 'Id',
       selectFields: 'Id,Name,DisplayName,Description,PolicyType,Scope,Status'
     }
@@ -295,8 +324,13 @@ export const LaneSchema = {
     apiSource: {
       type: 'OData',
       endpoint: 'Resource',
+      filterField: 'Name',  // Field to use in OData $filter
       idField: 'Id',
       selectFields: 'Id,Name,DisplayName,Description,ResourceType,SystemRef,Status,RiskScore'
+    },
+    // Inspector configuration - hide technical/internal fields
+    inspectorConfig: {
+      hideAttributes: ['id', 'Id', 'ID', 'system.id', 'systemId', 'SystemId', 'resourceType.id', 'resourceCategory.id', 'resourceFolder.id']
     }
   },
   [LaneTypes.DIRECT_ENTITLEMENTS]: {
@@ -316,6 +350,7 @@ export const LaneSchema = {
     apiSource: {
       type: 'OData',
       endpoint: 'Resource',
+      filterField: 'Name',  // Field to use in OData $filter
       idField: 'Id',
       selectFields: 'Id,Name,DisplayName,Description,ResourceType,SystemRef,Status,RiskScore'
     }
@@ -508,10 +543,10 @@ export const FocusNodeSchema = {
     title: 'Entitlement',
     icon: '🔑',
     primaryField: 'Name|DisplayName',
+    // Note: System and Type are shown as badges, so they're excluded from attributes to avoid duplication
+    // Note: Compliance is shown separately when an Identity is selected, not as a schema attribute
     attributes: [
-      { field: 'Description', label: 'Description', type: 'text', required: false },
-      { field: 'System.Name|SystemName', label: 'System', type: 'badge', required: true },
-      { field: 'ResourceType.Name|Type', label: 'Type', type: 'badge', required: false },
+      { field: 'Description|description', label: 'Description', type: 'text', required: false },
       { field: 'Status', label: 'Status', type: 'status', required: true },
       { field: 'RiskScore', label: 'Risk', type: 'risk', required: false },
       { field: 'validFrom|ValidFrom', label: 'Valid From', type: 'date', required: false },
@@ -521,6 +556,22 @@ export const FocusNodeSchema = {
       type: 'GraphQL',
       query: 'getResourceById',
       idField: 'id'
+    },
+    // Hide internal IDs and fields that duplicate badges when Entitlement is the central node
+    // System name and Resource Type are shown as badges, so hide them from attributes
+    inspectorConfig: {
+      hideAttributes: [
+        // IDs - internal/technical
+        'id', 'Id', 'ID',
+        'systemId', 'SystemId', 'system.id',
+        'resourceTypeId', 'ResourceTypeId', 'resourceType.id',
+        'resourceCategoryId', 'resourceCategory.id',
+        'resourceFolderId', 'resourceFolder.id',
+        // System - already shown as badge
+        'system', 'System', 'system.name', 'systemName', 'SystemName',
+        // Resource Type - already shown as badge
+        'resourceType', 'ResourceType', 'resourceType.name', 'resourceTypeName', 'ResourceTypeName', 'type', 'Type'
+      ]
     }
   },
 
@@ -648,18 +699,21 @@ export const LaneConfigSchema = {
       {
         laneType: LaneTypes.IDENTITIES,
         title: 'Who Has This',
-        apiSource: { type: 'GraphQL', query: 'getIdentitiesWithEntitlement', idParam: 'resourceId' },
+        description: 'Identities that have access to this entitlement',
+        apiSource: { type: 'GraphQL', query: 'getIdentitiesHavingResource', idParam: 'resourceId' },
         position: { x: -380, y: 0 }
       },
       {
-        laneType: LaneTypes.ROLES,
-        title: 'Granted By Roles',
-        apiSource: { type: 'OData', endpoint: 'RoleEntitlement', filter: 'EntitlementId eq {id}' },
+        laneType: LaneTypes.ACCOUNTS,
+        title: 'Accounts',
+        description: 'Accounts through which this entitlement is accessed',
+        apiSource: { type: 'derived', from: 'calculatedAssignments', extract: 'accounts' },
         position: { x: 380, y: 0 }
       },
       {
         laneType: LaneTypes.SYSTEMS,
         title: 'System',
+        description: 'System where this entitlement resides',
         apiSource: { type: 'derived', from: 'focusNode', extract: 'system' },
         position: { x: 0, y: 250 }
       }
@@ -798,9 +852,11 @@ export const getLanesForNodeType = (nodeType) => {
     case NodeTypes.ROLE:
       return [LaneTypes.IDENTITIES, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.POLICIES];
     case NodeTypes.ENTITLEMENT:
-      return [LaneTypes.IDENTITIES, LaneTypes.ROLES, LaneTypes.SYSTEMS];
+      return [LaneTypes.IDENTITIES, LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS];
     case NodeTypes.SYSTEM:
       return [LaneTypes.ACCOUNTS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.IDENTITIES];
+    case NodeTypes.ACCOUNT:
+      return [LaneTypes.IDENTITIES, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.SYSTEMS];
     default:
       return [LaneTypes.IDENTITIES];
   }

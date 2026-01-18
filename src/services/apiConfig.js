@@ -19,8 +19,10 @@ export const API_CONFIG = {
     // GraphQL API - Different versions for different operations
     graphql: {
       v1_1: '/api/Domain/1.1',   // For mutations (createAccessRequest)
-      v2_19: '/api/Domain/2.19', // For calculatedAssignments queries
-      v3_0: '/api/Domain/3.0',   // For most queries (default)
+      v2_19: '/api/Domain/2.19', // Legacy version
+      v3_0: '/api/Domain/3.0',   // Legacy version
+      v3_2: '/api/Domain/3.2',   // Default version - supports resourceIds filter
+      default: '/api/Domain/3.2' // Default GraphQL API version
     }
   },
 

@@ -15,25 +15,64 @@ import {
 } from './accessLensTypes';
 
 /**
- * Get a string value from a field that might be an object
+ * Format a date value for display
+ * Handles special case where year 9999 means "no expiration"
  */
-const getDisplayValue = (value) => {
+const formatDateValue = (value) => {
+  if (!value) return null;
+  try {
+    const date = new Date(value);
+    if (isNaN(date.getTime())) return value; // Return original if invalid
+
+    // Check for year 9999 which means "no expiration" / "no ValidTo exists"
+    if (date.getFullYear() === 9999) {
+      return 'No Expiration';
+    }
+
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+  } catch {
+    return value;
+  }
+};
+
+/**
+ * Get a string value from a field that might be an object
+ * @param {any} value - The value to format
+ * @param {string} type - Optional type hint (e.g., 'date')
+ */
+const getDisplayValue = (value, type = null) => {
   if (value === null || value === undefined) return null;
-  if (typeof value === 'string') return value;
+
+  // Handle date type specifically
+  if (type === 'date') {
+    return formatDateValue(value);
+  }
+
+  if (typeof value === 'string') {
+    // Check if it looks like a date string (ISO format)
+    if (/^\d{4}-\d{2}-\d{2}/.test(value)) {
+      return formatDateValue(value);
+    }
+    return value;
+  }
   if (typeof value === 'object') {
     return value.DisplayName || value.Name || value.Value || value.displayName || value.name || null;
   }
   return String(value);
 };
 
-const FocusCard = ({ node, onNavigateBack, isLoading = false }) => {
+const FocusCard = ({ node, onNavigateBack, isLoading = false, selectedIdentityCompliance = null }) => {
   // Show loading placeholder when loading or no node
   if (isLoading || !node) {
     return (
       <div className="focus-card focus-card-loading">
         <div className="focus-loading-content">
           <div className="focus-loading-spinner"></div>
-          <span className="focus-loading-text">Loading identity...</span>
+          <span className="focus-loading-text">Populating Access Lens... please wait</span>
         </div>
       </div>
     );
@@ -73,8 +112,8 @@ const FocusCard = ({ node, onNavigateBack, isLoading = false }) => {
         value = node.metadata[simpleKey.toLowerCase()] || node.metadata[simpleKey];
       }
 
-      // Convert object values to display strings
-      value = getDisplayValue(value);
+      // Convert object values to display strings, passing type for proper formatting
+      value = getDisplayValue(value, attr.type);
 
       // Only add if we have a value, or if it's a required field
       if (value) {
@@ -87,9 +126,18 @@ const FocusCard = ({ node, onNavigateBack, isLoading = false }) => {
     }
   }
 
+  // Get list of attributes to hide from schema inspectorConfig
+  const hideAttributes = schema?.inspectorConfig?.hideAttributes || [];
+
   // Fallback: if no schema attributes found, use metadata directly
   if (displayAttributes.length === 0 && node.metadata) {
     Object.entries(node.metadata).forEach(([key, value]) => {
+      // Skip hidden attributes (check case-insensitive)
+      const keyLower = key.toLowerCase();
+      if (hideAttributes.some(h => h.toLowerCase() === keyLower)) {
+        return;
+      }
+
       const displayVal = getDisplayValue(value);
       if (displayVal) {
         displayAttributes.push({
@@ -149,6 +197,38 @@ const FocusCard = ({ node, onNavigateBack, isLoading = false }) => {
           {node.badges.map((badge, i) => (
             <span key={i} className="focus-badge">{badge}</span>
           ))}
+        </div>
+      )}
+
+      {/* Resource Owners (only shown for Entitlement when owner info is available) */}
+      {node.type === NodeTypes.ENTITLEMENT && (node.metadata?.allOwners?.length > 0 || node.rawData?.allOwners?.length > 0) && (
+        <div className="focus-owners">
+          <div className="owners-row">
+            <span className="owner-icon" title="Resource Owners">👤</span>
+            <div className="owners-list">
+              {(node.metadata?.allOwners || node.rawData?.allOwners || []).map((owner, i) => (
+                <span key={i} className={`owner-name ${owner.type === 'EXPLICITOWNER' ? 'explicit-owner' : ''}`} title={owner.type === 'EXPLICITOWNER' ? 'Explicit Owner' : 'Owner'}>
+                  {owner.displayName}
+                  {owner.type === 'EXPLICITOWNER' && <span className="owner-badge">explicit</span>}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Selected Identity's Compliance Status (only shown for Entitlement when Identity is selected) */}
+      {selectedIdentityCompliance && node.type === NodeTypes.ENTITLEMENT && (
+        <div className="focus-identity-compliance">
+          <div className="compliance-header">
+            <span className="compliance-identity-name">{selectedIdentityCompliance.identityName}</span>
+          </div>
+          <div className="compliance-status-row">
+            <span className="compliance-label">Compliance:</span>
+            <span className={`compliance-value compliance-${(selectedIdentityCompliance.complianceStatus || 'unknown').toLowerCase().replace(/\s+/g, '-')}`}>
+              {selectedIdentityCompliance.complianceStatus || 'Unknown'}
+            </span>
+          </div>
         </div>
       )}
 

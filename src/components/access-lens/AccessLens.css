@@ -129,6 +129,25 @@
   white-space: nowrap;
 }
 
+.breadcrumb-remove {
+  display: inline-block;
+  margin-left: 0.35rem;
+  padding: 0.1rem 0.25rem;
+  font-size: 0.75rem;
+  font-weight: bold;
+  line-height: 1;
+  color: #5a5a6a;
+  cursor: pointer;
+  border-radius: 3px;
+  background: rgba(100, 100, 120, 0.15);
+  transition: all 0.15s;
+}
+
+.breadcrumb-remove:hover {
+  color: #fff;
+  background: #bf616a;
+}
+
 .breadcrumb-back {
   margin-left: 0.5rem;
   padding: 0.25rem 0.5rem;
@@ -404,6 +423,29 @@
   z-index: 10;
 }
 
+/* Staggered reveal animation for central node */
+.fulcrum-wrapper.hidden {
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.8);
+}
+
+.fulcrum-wrapper.revealed {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+  animation: revealCentralNode 0.4s ease-out forwards;
+}
+
+@keyframes revealCentralNode {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.8);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
 .fulcrum-wrapper .focus-card {
   max-width: 330px;
   width: 308px;
@@ -423,6 +465,19 @@
   /* GPU acceleration hints */
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
+  /* Staggered reveal animation for lanes - use opacity only to avoid transform conflicts */
+  animation: revealLane 0.4s ease-out forwards;
+}
+
+@keyframes revealLane {
+  0% {
+    opacity: 0;
+    filter: blur(4px);
+  }
+  100% {
+    opacity: 1;
+    filter: blur(0);
+  }
 }
 
 .draggable-lane:hover {
@@ -466,7 +521,8 @@
 }
 
 /* Ensure lane toggle button stays above drag handle */
-.lane-toggle-btn {
+.lane-toggle-btn,
+.lane-maximize-btn {
   position: relative;
   z-index: 20 !important;
 }
@@ -645,6 +701,120 @@
   color: #88c0d0;
 }
 
+/* Resource Owners (shown for Entitlement central node) */
+.focus-owners {
+  background: rgba(163, 190, 140, 0.1);
+  border: 1px solid rgba(163, 190, 140, 0.25);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.focus-owners .owners-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.focus-owners .owner-icon {
+  font-size: 1rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.focus-owners .owners-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.focus-owners .owner-name {
+  padding: 0.15rem 0.5rem;
+  background: rgba(163, 190, 140, 0.15);
+  border: 1px solid rgba(163, 190, 140, 0.3);
+  border-radius: 3px;
+  font-size: 0.75rem;
+  color: #a3be8c;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.focus-owners .owner-name.explicit-owner {
+  background: rgba(180, 142, 173, 0.15);
+  border-color: rgba(180, 142, 173, 0.3);
+  color: #b48ead;
+}
+
+.focus-owners .owner-badge {
+  font-size: 0.6rem;
+  padding: 0.1rem 0.25rem;
+  background: rgba(180, 142, 173, 0.3);
+  border-radius: 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+/* Selected Identity's Compliance Status (shown when Identity selected in Entitlement-centric view) */
+.focus-identity-compliance {
+  background: rgba(235, 203, 139, 0.1);
+  border: 1px solid rgba(235, 203, 139, 0.3);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.focus-identity-compliance .compliance-header {
+  font-size: 0.7rem;
+  color: #707080;
+  margin-bottom: 0.35rem;
+}
+
+.focus-identity-compliance .compliance-identity-name {
+  color: #88c0d0;
+  font-weight: 500;
+}
+
+.focus-identity-compliance .compliance-status-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.focus-identity-compliance .compliance-label {
+  font-size: 0.75rem;
+  color: #707080;
+}
+
+.focus-identity-compliance .compliance-value {
+  padding: 0.15rem 0.5rem;
+  border-radius: 3px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+/* Compliance status colors */
+.focus-identity-compliance .compliance-approved {
+  background: rgba(163, 190, 140, 0.2);
+  color: #a3be8c;
+}
+
+.focus-identity-compliance .compliance-not-approved {
+  background: rgba(191, 97, 106, 0.2);
+  color: #bf616a;
+}
+
+.focus-identity-compliance .compliance-pending {
+  background: rgba(235, 203, 139, 0.2);
+  color: #ebcb8b;
+}
+
+.focus-identity-compliance .compliance-unknown {
+  background: rgba(76, 86, 106, 0.2);
+  color: #4c566a;
+}
+
 .focus-metadata {
   display: flex;
   flex-direction: column;
@@ -678,6 +848,18 @@
 .meta-value.meta-email:hover {
   color: #a3d4e0;
   text-decoration: underline;
+}
+
+/* ID field styling (for Resource ID, etc.) */
+.meta-value.meta-id {
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 0.7rem;
+  background: rgba(136, 192, 208, 0.1);
+  padding: 0.15rem 0.35rem;
+  border-radius: 3px;
+  color: #88c0d0;
+  user-select: all;  /* Easy to select/copy */
+  cursor: text;
 }
 
 /* Focus Card Loading Placeholder */
@@ -1124,6 +1306,13 @@
   border-color: #a3be8c;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 2px rgba(163, 190, 140, 0.2);
   z-index: 50;
+  /* Anchor expansion from top - prevent header from flying upward */
+  transform-origin: top center;
+}
+
+/* Ensure draggable lane also anchors from top when maximized */
+.draggable-lane:has(.lane-card.maximized) {
+  transform-origin: top center;
 }
 
 .lane-card.maximized .lane-header {
@@ -1142,10 +1331,11 @@
   scrollbar-color: rgba(163, 190, 140, 0.4) transparent;
   /* Ensure content can scroll properly - min-height allows content to expand */
   min-height: 200px;
-  /* Max height relative to viewport for proper scrolling */
-  max-height: 80vh !important;
+  /* Max height is set dynamically by LaneCard.jsx based on viewport position */
+  /* Fallback max-height if JS calculation fails */
+  max-height: 400px;
   /* Ensure overflow is visible and scrollable */
-  overflow-y: auto !important;
+  overflow-y: auto;
   overflow-x: hidden;
 }
 
@@ -1287,6 +1477,51 @@
   gap: 0.2rem;
   color: #909090;
   font-style: italic;
+}
+
+/* Identity details in access cards */
+.lane-item-identity-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.25rem;
+  font-size: 0.7rem;
+}
+
+.lane-item-identity-details .identity-employee-id {
+  color: #88c0d0;
+  font-weight: 500;
+}
+
+.lane-item-identity-details .identity-title {
+  color: #a8a8a8;
+  font-style: italic;
+}
+
+.lane-item-identity-details .identity-email {
+  color: #81a1c1;
+}
+
+.lane-item-identity-details .identity-risk {
+  padding: 0.1rem 0.3rem;
+  border-radius: 3px;
+  font-size: 0.65rem;
+  font-weight: 500;
+}
+
+.lane-item-identity-details .identity-risk-high {
+  background: rgba(191, 97, 106, 0.2);
+  color: #bf616a;
+}
+
+.lane-item-identity-details .identity-risk-medium {
+  background: rgba(235, 203, 139, 0.2);
+  color: #ebcb8b;
+}
+
+.lane-item-identity-details .identity-risk-low {
+  background: rgba(163, 190, 140, 0.2);
+  color: #a3be8c;
 }
 
 .lane-item-badges {
@@ -1879,6 +2114,55 @@
   font-weight: 500;
 }
 
+/* ID field styling (Resource ID, etc.) - monospace, easily selectable */
+.fact-value.fact-id {
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 0.7rem;
+  background: rgba(136, 192, 208, 0.1);
+  padding: 0.15rem 0.35rem;
+  border-radius: 3px;
+  color: #88c0d0;
+  user-select: all;
+  cursor: text;
+  word-break: break-all;
+}
+
+/* Group header for nested JSON fields */
+.fact-group-header {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.fact-group-label {
+  font-weight: 600;
+  color: #a0a0b0;
+  font-size: 0.85rem;
+}
+
+/* Nested items under a group header */
+.fact-nested {
+  padding-left: 1rem;
+  border-left: 2px solid rgba(136, 192, 208, 0.3);
+  margin-left: 0.25rem;
+}
+
+.fact-nested .fact-label {
+  font-size: 0.75rem;
+  color: #808090;
+}
+
+.fact-nested .fact-value {
+  font-size: 0.75rem;
+}
+
+/* Separator between array items */
+.fact-separator {
+  height: 1px;
+  background: linear-gradient(to right, rgba(255, 255, 255, 0.1), transparent);
+  margin: 0.5rem 0;
+}
+
 /* Loading States */
 .access-lens-loading,
 .access-lens-error {
@@ -1913,6 +2197,53 @@
   border-radius: 4px;
   color: #88c0d0;
   cursor: pointer;
+}
+
+/* Pivot Loading Overlay - shows when changing central node */
+.pivot-loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(13, 13, 13, 0.92);
+  z-index: 100;
+  backdrop-filter: blur(4px);
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.pivot-loading-spinner {
+  width: 48px;
+  height: 48px;
+  border: 3px solid rgba(136, 192, 208, 0.2);
+  border-top-color: #88c0d0;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 1.5rem;
+}
+
+.pivot-loading-title {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #88c0d0;
+}
+
+.pivot-loading-status {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #a0a0b0;
+  text-align: center;
+  max-width: 400px;
 }
 
 /* Responsive */

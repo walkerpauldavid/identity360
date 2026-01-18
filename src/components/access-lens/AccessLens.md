@@ -123,6 +123,35 @@ As a user, I want to click a pivot button on a system to make it the central nod
 **US-071: Pivot to Entitlement**
 As a user, I want to click a pivot button on an entitlement to make it the central node, so that I can see all identities who have that entitlement.
 
+### System-Centric View
+
+**US-080: System as Central Node**
+As a user, when I pivot to a System, I want to see three lanes: Identities (users with access), Accounts (accounts on this system), and Entitlements (resources on this system), so that I can understand all access to this system.
+
+**US-081: System-Centric Identity Filtering**
+As a user, when viewing a System as the central node and I click on an identity in the Identities lane, I want to see:
+- The Accounts lane filtered to show only accounts belonging to that identity
+- The Entitlements lane filtered to show only entitlements assigned to that identity
+
+**US-082: System-Centric Account Filtering**
+As a user, when viewing a System as the central node and I click on an account in the Accounts lane, I want to see:
+- The Identities lane filtered to show only the identity that owns that account
+- The Entitlements lane filtered to show only entitlements assigned through that account
+
+**US-083: Loading Overlay During Pivot**
+As a user, when pivoting to a different central node (System, Entitlement, Identity), I want to see a loading overlay with status messages (e.g., "Fetching access data for [name]..."), so that I know the system is loading new data.
+
+### Entitlement-Centric View
+
+**US-090: Entitlement Resource Owner**
+As a user, when viewing an Entitlement as the central node, I want to see the resource owner information (from OWNERREF field in OData), so that I know who is responsible for managing this entitlement.
+
+**US-091: Entitlement-Centric Identity Filtering**
+As a user, when viewing an Entitlement as the central node and I click on an identity in the Identities lane, I want to see the Accounts lane filtered to show only accounts belonging to that identity.
+
+**US-092: Entitlement-Centric Account Filtering**
+As a user, when viewing an Entitlement as the central node and I click on an account in the Accounts lane, I want to see the Identities lane filtered to show only the identity that owns that account.
+
 ---
 
 ## Business Rules
@@ -130,7 +159,12 @@ As a user, I want to click a pivot button on an entitlement to make it the centr
 ### Data Display Rules
 
 **BR-001: Lane Visibility**
-Lanes shall only be displayed if they contain at least one item. Empty lanes shall be hidden.
+Lanes shall only be displayed if they contain at least one item, EXCEPT for required lanes per focus node type which shall always be visible.
+
+**BR-001a: Required Lanes by Focus Node Type**
+- **Identity Focus**: Systems, Accounts, Effective Entitlements, Contexts, Logical Applications (as available)
+- **System Focus**: Identities, Accounts, Effective Entitlements (always visible even if empty)
+- **Entitlement Focus**: Identities, Accounts (always visible even if empty)
 
 **BR-002: Item Counts**
 Each lane header shall display the total count of items. When filtered, the count shall show "filtered/total" format (e.g., "5/25").
@@ -234,3 +268,4 @@ Search input shall filter as the user types without requiring explicit submissio
 | 1.2 | 2024-01 | Added search and resource type filters to Entitlements lane |
 | 1.3 | 2024-01 | Added Expand All button, loading placeholders, filter source glow |
 | 1.4 | 2024-01 | Added Omada Navbar, dynamic resource type chips, IDENTITYID display |
+| 1.5 | 2025-01 | Added System-centric view with cross-lane filtering (Identity<->Account<->Entitlement), pivot loading overlay, required lanes per focus node type, resource owner display for Entitlement-centric view |

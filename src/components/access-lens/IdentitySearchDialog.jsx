@@ -308,8 +308,11 @@ const IdentitySearchDialog = ({ isOpen, onClose, onSelectIdentity }) => {
             <input
               ref={inputRef}
               type="text"
+              id="identity-search-input"
+              name="identity-search-input"
               className="dropdown-input"
               placeholder="Type to filter or scroll to browse..."
+              autoComplete="off"
               value={searchQuery}
               onChange={handleInputChange}
               onFocus={handleInputFocus}

@@ -29,6 +29,26 @@ const LaneItemRow = ({
   const systemOwner = node.metadata?.owner || null;
   const systemClassification = node.metadata?.classification || null;
 
+  // Check if this is an Identity type node (for enhanced display in access cards)
+  const isIdentityNode = node.type === 'Identity';
+  // Employee ID: try metadata.identityId (from GraphQL), metadata.employeeId (from OData), or rawData variants
+  const identityEmployeeId = node.metadata?.identityId || node.metadata?.employeeId || rawData?.identityId || rawData?.employeeId || rawData?.IDENTITYID || rawData?.EMPLOYEEID || null;
+  // Job title: try metadata.title (from OData enrichment), or rawData variants
+  const identityTitle = node.metadata?.title || rawData?.title || rawData?.JOBTITLE || rawData?.jobTitle || rawData?.TITLE || null;
+  // Email: try metadata.email (from OData enrichment), or rawData variants
+  const identityEmail = node.metadata?.email || rawData?.email || rawData?.EMAIL || rawData?.mail || null;
+
+  // Debug: Log identity node data to trace attribute flow
+  if (isIdentityNode) {
+    console.log(`[LaneItemRow] Identity "${node.displayName}":`, {
+      employeeId: identityEmployeeId,
+      title: identityTitle,
+      email: identityEmail,
+      metadata: node.metadata,
+      rawData: rawData
+    });
+  }
+
   // Get system description from multiple possible sources (OData enrichment)
   const systemDescription = node.description ||
     node.metadata?.description ||
@@ -120,6 +140,22 @@ const LaneItemRow = ({
         {isSystemNode && systemOwner && (
           <div className="lane-item-subtitle">
             <span className="system-owner">👤 {systemOwner}</span>
+          </div>
+        )}
+
+        {/* Identity details (for identity nodes in access cards) */}
+        {/* Note: riskLevel is shown as a badge, so not duplicated here */}
+        {isIdentityNode && (identityEmployeeId || identityTitle || identityEmail) && (
+          <div className="lane-item-identity-details">
+            {identityEmployeeId && (
+              <span className="identity-employee-id">{identityEmployeeId}</span>
+            )}
+            {identityTitle && (
+              <span className="identity-title">{identityTitle}</span>
+            )}
+            {identityEmail && (
+              <span className="identity-email">{identityEmail}</span>
+            )}
           </div>
         )}
 

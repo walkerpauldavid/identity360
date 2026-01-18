@@ -350,7 +350,7 @@ export const identityApi = {
     let requestId;
     let endpoint;
     try {
-      endpoint = `${API_CONFIG.baseUrl}${API_CONFIG.endpoints.graphql.v3_0}`;
+      endpoint = `${API_CONFIG.baseUrl}${API_CONFIG.endpoints.graphql.v3_2}`;
       const queryObject = GraphQLQueries.getContextsForIdentity(identityUId);
       const requestHeaders = await getGraphQLHeaders(bearerToken, impersonateUser);
 
@@ -412,7 +412,7 @@ export const accessRequestApi = {
     let requestId;
     let endpoint;
     try {
-      endpoint = `${API_CONFIG.baseUrl}${API_CONFIG.endpoints.graphql.v3_0}`;
+      endpoint = `${API_CONFIG.baseUrl}${API_CONFIG.endpoints.graphql.v3_2}`;
       const queryObject = GraphQLQueries.getAccessRequestsTotal();
       const requestHeaders = await getGraphQLHeaders(bearerToken, impersonateUser);
 
@@ -465,7 +465,7 @@ export const accessRequestApi = {
     let requestId;
     let endpoint;
     try {
-      endpoint = `${API_CONFIG.baseUrl}${API_CONFIG.endpoints.graphql.v3_0}`;
+      endpoint = `${API_CONFIG.baseUrl}${API_CONFIG.endpoints.graphql.v3_2}`;
       const queryObject = GraphQLQueries.getAccessRequests();
       const requestHeaders = await getGraphQLHeaders(bearerToken, impersonateUser);
 
@@ -522,7 +522,7 @@ export const accessRequestApi = {
     let requestId;
     let endpoint;
     try {
-      endpoint = `${API_CONFIG.baseUrl}${API_CONFIG.endpoints.graphql.v3_0}`;
+      endpoint = `${API_CONFIG.baseUrl}${API_CONFIG.endpoints.graphql.v3_2}`;
       const queryObject = GraphQLQueries.getResourcesForBeneficiary(identityUId, filters);
       const requestHeaders = await getGraphQLHeaders(bearerToken, impersonateUser);
 
@@ -657,7 +657,7 @@ export const approvalApi = {
     let requestId;
     let endpoint;
     try {
-      endpoint = `${API_CONFIG.baseUrl}${API_CONFIG.endpoints.graphql.v3_0}`;
+      endpoint = `${API_CONFIG.baseUrl}${API_CONFIG.endpoints.graphql.v3_2}`;
       const queryObject = GraphQLQueries.getPendingApprovals(workflowStep, summaryMode);
       const requestHeaders = await getGraphQLHeaders(bearerToken, impersonateUser);
 
@@ -713,7 +713,7 @@ export const approvalApi = {
     let requestId;
     let endpoint;
     try {
-      endpoint = `${API_CONFIG.baseUrl}${API_CONFIG.endpoints.graphql.v3_0}`;
+      endpoint = `${API_CONFIG.baseUrl}${API_CONFIG.endpoints.graphql.v3_2}`;
       const requestHeaders = await getGraphQLHeaders(bearerToken, impersonateUser);
 
       if (!['APPROVE', 'REJECT'].includes(decision)) {
@@ -837,6 +837,87 @@ export const assignmentApi = {
       }
 
       return handleApiError(error, 'getCalculatedAssignmentsDetailed');
+    }
+  },
+
+  /**
+   * Get identities that have a specific resource (entitlement) assigned
+   * Used for entitlement-centric view in Access Lens
+   * @param {string} resourceId - Resource UUID (required)
+   * @param {string} resourceName - Resource name (optional, not used in query)
+   * @param {string} bearerToken - OAuth bearer token
+   * @param {string} impersonateUser - User email
+   * @param {Object} pagination - Pagination options
+   * @param {string} systemId - Optional system ID filter
+   * @param {string} complianceStatus - Optional compliance status filter (e.g., 'Not Approved', 'Approved')
+   * @returns {Promise<Object>} Identities with this resource
+   */
+  getIdentitiesHavingResource: async (
+    resourceId,
+    resourceName,
+    bearerToken,
+    impersonateUser,
+    pagination = {},
+    systemId = null,
+    complianceStatus = null
+  ) => {
+    let requestId;
+    let endpoint;
+    try {
+      // Use GraphQL v3.2 which supports the resourceIds filter
+      endpoint = `${API_CONFIG.baseUrl}${API_CONFIG.endpoints.graphql.v3_2}`;
+      const queryObject = GraphQLQueries.getIdentitiesHavingResource(
+        resourceId,
+        resourceName,
+        systemId,
+        pagination,
+        complianceStatus
+      );
+      const requestHeaders = await getGraphQLHeaders(bearerToken, impersonateUser);
+
+      requestId = apiLogger.logRequest('GraphQL', endpoint, {
+        functionName: 'getIdentitiesHavingResource',
+        resourceId,
+        resourceName,
+        pagination,
+        complianceStatus,
+        graphqlQuery: queryObject.query
+      }, requestHeaders);
+
+      const result = await executeGraphQL(
+        endpoint,
+        queryObject,
+        requestHeaders
+      );
+
+      // Handle both standard GraphQL response { data: { ... } } and direct response
+      const graphqlData = result.data?.data || result.data;
+      const assignments = graphqlData?.calculatedAssignments?.data || [];
+      const total = graphqlData?.calculatedAssignments?.total || 0;
+      const pages = graphqlData?.calculatedAssignments?.pages || 0;
+
+      const response = {
+        status: 'success',
+        data: assignments,
+        total,
+        pages,
+        current_page: pagination.page || 1,
+        rows_per_page: pagination.rows || 100
+      };
+
+      apiLogger.logResponse(requestId, 'GraphQL', endpoint, response, true, null, result.headers, result.status, result.rawResponse);
+
+      return response;
+    } catch (error) {
+      const responseHeaders = error.responseHeaders || {};
+      const statusCode = error.statusCode || null;
+      const rawResponse = error.rawResponse || null;
+
+      if (requestId) {
+        apiLogger.logResponse(requestId, 'GraphQL', endpoint, null, false, error, responseHeaders, statusCode, rawResponse);
+      }
+
+      return handleApiError(error, 'getIdentitiesHavingResource');
     }
   }
 };

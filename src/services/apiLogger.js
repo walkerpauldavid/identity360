@@ -1,6 +1,8 @@
 /**
  * API Logger Service
  * Logs all OData and GraphQL API calls and responses
+ *
+ * Uses window.__apiLogger to ensure singleton across module boundaries
  */
 
 class ApiLogger {
@@ -9,6 +11,8 @@ class ApiLogger {
     this.maxLogs = 100; // Keep last 100 log entries (reduced to save space)
     this.backendUrl = 'http://localhost:3001/api/log';
     this.sendToBackend = true; // Set to false to disable backend logging
+    this.instanceId = Math.random().toString(36).substr(2, 9);
+    console.log(`[ApiLogger] Instance created with ID: ${this.instanceId}, logs: ${this.logs.length}`);
   }
 
   /**
@@ -49,9 +53,9 @@ class ApiLogger {
     this.trimLogs();
     this.sendLogToBackend(logEntry);
 
-    console.log(`[API ${type} REQUEST] ${endpoint}`);
-    console.log('Headers:', requestHeaders);
-    console.log('Params:', params);
+    // Debug: Bright colored console log to verify logging is working
+    console.log(`%c[API ${type} REQUEST] ${endpoint}`, 'background: #0066cc; color: white; padding: 2px 6px; border-radius: 3px;');
+    console.log(`%c[ApiLogger ${this.instanceId}] Added REQUEST, total logs: ${this.logs.length}`, 'color: #0066cc;');
 
     return logEntry.requestId;
   }
@@ -79,15 +83,14 @@ class ApiLogger {
     this.trimLogs();
     this.sendLogToBackend(logEntry);
 
+    // Debug: Bright colored console log to verify logging is working
     if (success) {
-      console.log(`[API ${type} RESPONSE] ${endpoint} - Status: ${statusCode}`);
-      console.log('Headers:', responseHeaders);
-      console.log('Response:', response);
+      console.log(`%c[API ${type} RESPONSE] ${endpoint} - Status: ${statusCode}`, 'background: #28a745; color: white; padding: 2px 6px; border-radius: 3px;');
     } else {
-      console.error(`[API ${type} ERROR] ${endpoint} - Status: ${statusCode}`);
-      console.error('Headers:', responseHeaders);
+      console.log(`%c[API ${type} ERROR] ${endpoint} - Status: ${statusCode}`, 'background: #dc3545; color: white; padding: 2px 6px; border-radius: 3px;');
       console.error('Error:', error);
     }
+    console.log(`%c[ApiLogger ${this.instanceId}] Added RESPONSE, total logs: ${this.logs.length}`, 'color: #28a745;');
   }
 
   /**
@@ -108,9 +111,11 @@ class ApiLogger {
 
   /**
    * Get all logs
+   * Returns a new array reference to ensure React detects changes
    */
   getLogs() {
-    return this.logs;
+    console.log(`[ApiLogger ${this.instanceId}] getLogs called, returning ${this.logs.length} logs`);
+    return [...this.logs];  // Return new array to trigger React re-render
   }
 
   /**
@@ -342,17 +347,31 @@ class ApiLogger {
   }
 }
 
-// Export singleton instance
-export const apiLogger = new ApiLogger();
+// Use window-based singleton to ensure same instance across all module boundaries
+// This prevents issues with bundlers creating multiple instances
+let apiLoggerInstance;
 
-// Auto-save logs every 30 seconds
 if (typeof window !== 'undefined') {
-  setInterval(() => {
-    apiLogger.saveToLocalStorage();
-  }, 30000);
+  // Check if instance already exists on window
+  if (!window.__apiLoggerInstance) {
+    window.__apiLoggerInstance = new ApiLogger();
+    console.log('[ApiLogger] Created new global instance');
 
-  // Load logs on startup
-  apiLogger.loadFromLocalStorage();
+    // Load logs from localStorage on startup
+    window.__apiLoggerInstance.loadFromLocalStorage();
+
+    // Auto-save logs every 30 seconds
+    setInterval(() => {
+      window.__apiLoggerInstance.saveToLocalStorage();
+    }, 30000);
+  } else {
+    console.log('[ApiLogger] Reusing existing global instance with', window.__apiLoggerInstance.logs.length, 'logs');
+  }
+  apiLoggerInstance = window.__apiLoggerInstance;
+} else {
+  // Fallback for non-browser environments
+  apiLoggerInstance = new ApiLogger();
 }
 
+export const apiLogger = apiLoggerInstance;
 export default apiLogger;

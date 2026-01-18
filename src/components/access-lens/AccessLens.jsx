@@ -4,10 +4,10 @@
  * Features: Identity integration, draggable lanes, connector lines
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { DndContext, useDraggable, DragOverlay, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
-import { ViewModes, LaneTypes, NodeTypes, LaneSchema, CompassOrientation, getLaneDisplayConfig } from './accessLensTypes';
+import { ViewModes, LaneTypes, NodeTypes, LaneSchema, CompassOrientation, getLaneDisplayConfig, getLanesForNodeType } from './accessLensTypes';
 import accessLensDataService, { buildContextsLane, buildLanesFromAssignments, extractUniqueReasonTypes, extractUniqueComplianceStatuses } from './accessLensDataService';
 import FilterBar from './FilterBar';
 import Breadcrumbs from './Breadcrumbs';
@@ -32,11 +32,22 @@ const identityToNode = (identity) => {
 
   const statusStr = getStringValue(identity.IDENTITYSTATUS, 'active').toLowerCase();
 
+  // Try multiple property name variations for first/last name (OData may use different casing)
+  const firstName = identity.FIRSTNAME || identity.FirstName || identity.firstName || '';
+  const lastName = identity.LASTNAME || identity.LastName || identity.lastName || '';
+  const fullName = `${firstName} ${lastName}`.trim();
+
+  // Try multiple property name variations for display name
+  const displayNameValue = fullName ||
+    identity.DISPLAYNAME || identity.DisplayName || identity.displayName ||
+    identity.NAME || identity.Name || identity.name ||
+    'Unknown';
+
   // Build the node with rawData for schema-based attribute extraction
   return {
-    id: identity.UId || identity.Id || 'identity-current',
+    id: identity.UId || identity.Id || identity.id || 'identity-current',
     type: NodeTypes.IDENTITY,
-    displayName: `${identity.FIRSTNAME || ''} ${identity.LASTNAME || ''}`.trim() || identity.DISPLAYNAME || 'Unknown',
+    displayName: displayNameValue,
     identityId: identity.IDENTITYID,  // Employee/Identity ID (e.g., EMP12345)
     status: statusStr === 'active' ? 'active' :
             statusStr === 'disabled' ? 'disabled' :
@@ -90,6 +101,33 @@ const COMPASS_POSITIONS = {
 };
 
 /**
+ * Clockwise order of compass positions starting from NW
+ * Used for staggered lane animation
+ */
+const CLOCKWISE_ORDER = [
+  CompassOrientation.NW,  // 1. North-West (top left) - start here
+  CompassOrientation.N,   // 2. North (top center)
+  CompassOrientation.NE,  // 3. North-East (top right)
+  CompassOrientation.E,   // 4. East (right center)
+  CompassOrientation.SE,  // 5. South-East (bottom right)
+  CompassOrientation.S,   // 6. South (bottom center)
+  CompassOrientation.SW,  // 7. South-West (bottom left)
+  CompassOrientation.W    // 8. West (left center)
+];
+
+/**
+ * Get the clockwise order index for a lane based on its compass position
+ * Lower index = appears earlier in animation
+ */
+const getClockwiseOrder = (laneType) => {
+  const schema = LaneSchema[laneType];
+  const compass = schema?.defaultPosition?.compass;
+  if (!compass) return 99; // Unknown lanes appear last
+  const index = CLOCKWISE_ORDER.indexOf(compass);
+  return index >= 0 ? index : 99;
+};
+
+/**
  * Loading placeholder for a lane card
  * Shows a transparent outline with loading animation while data is being fetched
  */
@@ -127,14 +165,23 @@ const LoadingLanePlaceholder = ({ laneType, position }) => {
 
 /**
  * Get the expected lanes that should show loading placeholders
- * Based on the default visible lanes configuration
+ * Based on the focus node type from the schema
+ * @param {string} nodeType - The type of the focus node (Identity, Entitlement, System, etc.)
+ * @returns {string[]} Array of lane types to show as placeholders
  */
-const LOADING_PLACEHOLDER_LANES = [
-  LaneTypes.SYSTEMS,
-  LaneTypes.ACCOUNTS,
-  LaneTypes.EFFECTIVE_ENTITLEMENTS,
-  LaneTypes.CONTEXTS
-];
+const getLoadingPlaceholderLanes = (nodeType) => {
+  if (!nodeType) {
+    // Default to Identity-centric lanes if no node type
+    return [
+      LaneTypes.SYSTEMS,
+      LaneTypes.ACCOUNTS,
+      LaneTypes.EFFECTIVE_ENTITLEMENTS,
+      LaneTypes.CONTEXTS
+    ];
+  }
+  // Use the schema to get lanes for this node type
+  return getLanesForNodeType(nodeType);
+};
 
 /**
  * Get default position for a lane type based on its compass orientation from LaneSchema
@@ -549,9 +596,14 @@ const AccessLens = ({
   const [lanes, setLanes] = useState([]);
   const [history, setHistory] = useState([]);
   const [historyIndex, setHistoryIndex] = useState(-1);  // Current position in history (-1 means no history yet)
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);  // Data is pre-loaded by AccessLensPage
   const [lanesLoading, setLanesLoading] = useState(true);  // Track when lanes are being built from data
+  const [pivotLoadingStatus, setPivotLoadingStatus] = useState('');  // Loading status message during pivot
   const [error, setError] = useState(null);
+
+  // Animation state for staggered lane reveal
+  const [centralNodeRevealed, setCentralNodeRevealed] = useState(false);
+  const [revealedLanes, setRevealedLanes] = useState(new Set());
 
   // Lane positions state (for drag and drop)
   const [lanePositions, setLanePositions] = useState({});
@@ -576,11 +628,14 @@ const AccessLens = ({
 
   // Inspector panel state
   const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
+  const [showObjectInspector, setShowObjectInspector] = useState(true); // Toggle for Object Inspector visibility
 
   // Cross-lane filtering state
   const [selectedAccountId, setSelectedAccountId] = useState(null);
   const [selectedSystemId, setSelectedSystemId] = useState(null);
   const [selectedLogicalAppId, setSelectedLogicalAppId] = useState(null);  // For filtering by logical application
+  const [selectedIdentityId, setSelectedIdentityId] = useState(null);  // For entitlement-centric view: filter accounts by identity
+  const [pendingNodeType, setPendingNodeType] = useState(null);  // Track target node type during pivot for correct loading placeholders
 
   // Filter state
   const [viewMode, setViewMode] = useState(ViewModes.EXPLORE);
@@ -620,10 +675,50 @@ const AccessLens = ({
     }
   }, [lanes]);
 
+  // Staggered animation: reveal central node first, then lanes in clockwise order
+  useEffect(() => {
+    // Reset animation state when loading starts
+    if (lanesLoading || isLoading) {
+      setCentralNodeRevealed(false);
+      setRevealedLanes(new Set());
+      return;
+    }
+
+    // When loading completes and we have a focus node, start the animation sequence
+    if (!lanesLoading && !isLoading && focusNode) {
+      // Step 1: Reveal the central node first
+      const centralNodeTimer = setTimeout(() => {
+        setCentralNodeRevealed(true);
+      }, 100);
+
+      // Step 2: Sort lanes by clockwise order and reveal them one by one
+      const lanesWithData = lanes.filter(lane =>
+        filters.visibleLanes.includes(lane.laneType) && lane.items && lane.items.length > 0
+      );
+
+      const sortedLanes = [...lanesWithData].sort((a, b) =>
+        getClockwiseOrder(a.laneType) - getClockwiseOrder(b.laneType)
+      );
+
+      // Reveal each lane with a staggered delay (starting after central node)
+      const laneTimers = sortedLanes.map((lane, index) => {
+        return setTimeout(() => {
+          setRevealedLanes(prev => new Set([...prev, lane.laneType]));
+        }, 300 + (index * 150)); // Start 300ms after central node, 150ms between each lane
+      });
+
+      return () => {
+        clearTimeout(centralNodeTimer);
+        laneTimers.forEach(timer => clearTimeout(timer));
+      };
+    }
+  }, [lanesLoading, isLoading, focusNode, lanes, filters.visibleLanes]);
+
   // Load focus data - sets the central focus node (identity)
   // Lanes are populated separately via calculatedAssignments and identityContexts props
   const loadFocus = useCallback(async (nodeIdOrNode, addToHistory = true) => {
-    setIsLoading(true);
+    // Don't set isLoading here - data is pre-loaded by AccessLensPage
+    // Only clear selection state
     setError(null);
     setSelectedItem(null);
     setExplanation(null);
@@ -659,9 +754,11 @@ const AccessLens = ({
         setHistory(prev => {
           const existingIndex = prev.findIndex(n => n.id === finalFocusNode.id);
           if (existingIndex >= 0) {
-            // Node already in history, trim future history and set index
+            // Node already in history - UPDATE it with new data (e.g., displayName may have changed)
+            // This handles the case where identity loads with just UId first, then full details later
+            const updatedHistory = [...prev.slice(0, existingIndex), finalFocusNode, ...prev.slice(existingIndex + 1)];
             setHistoryIndex(existingIndex);
-            return prev.slice(0, existingIndex + 1);
+            return updatedHistory.slice(0, existingIndex + 1);
           }
           // New node, add to history after current position (trimming any "forward" history)
           const newHistory = [...prev.slice(0, historyIndex + 1), finalFocusNode];
@@ -671,8 +768,6 @@ const AccessLens = ({
       }
     } catch (err) {
       setError(err.message);
-    } finally {
-      setIsLoading(false);
     }
   }, [filters, focusNode?.type]);
 
@@ -801,6 +896,55 @@ const AccessLens = ({
     }
   }, [identityContexts, filters]);
 
+  // Track previous compliance filter to detect changes
+  const prevComplianceFilterRef = useRef(null);
+
+  // Effect to refetch data when compliance filter changes in entitlement-centric view
+  useEffect(() => {
+    const currentFilter = filters.complianceStatuses;
+    const prevFilter = prevComplianceFilterRef.current;
+
+    // Update ref for next comparison
+    prevComplianceFilterRef.current = currentFilter;
+
+    // Only refetch if:
+    // 1. We're in entitlement-centric view
+    // 2. The filter actually changed (not initial mount)
+    // 3. We have a pivot callback
+    if (
+      focusNode?.type === NodeTypes.ENTITLEMENT &&
+      onPivotToNode &&
+      prevFilter !== null &&  // Not initial mount
+      JSON.stringify(prevFilter) !== JSON.stringify(currentFilter)  // Actually changed
+    ) {
+      console.log('=== Compliance Filter Changed - Refetching ===');
+      console.log('Previous filter:', prevFilter);
+      console.log('New filter:', currentFilter);
+
+      // Get the first selected compliance status (API takes single value)
+      const complianceStatus = currentFilter?.length > 0 ? currentFilter[0] : null;
+
+      setIsLoading(true);
+
+      // Refetch with the new compliance filter
+      onPivotToNode(focusNode, { complianceStatus })
+        .then(result => {
+          if (result) {
+            // Don't update focusNode (same entitlement)
+            if (result.lanes) setLanes(result.lanes);
+            if (result.reasonTypes) setAvailableReasonTypes(result.reasonTypes);
+            // Don't update available compliance statuses - keep the original list for selection
+          }
+        })
+        .catch(err => {
+          console.error('Error refetching with compliance filter:', err);
+        })
+        .finally(() => {
+          setIsLoading(false);
+        });
+    }
+  }, [filters.complianceStatuses, focusNode, onPivotToNode]);
+
   // Handle drag end - update lane position
   // IMPORTANT: Must use the actual rendered position as base, not just lanePositions
   // because lanes may be using dynamicPositions or DEFAULT_LANE_POSITIONS if not yet dragged
@@ -866,17 +1010,48 @@ const AccessLens = ({
     console.log('LaneType:', laneType);
     console.log('Item node:', item?.node);
     console.log('Item node displayName:', item?.node?.displayName);
+    console.log('showObjectInspector:', showObjectInspector);
 
     if (!item || !item.node) {
       console.error('Invalid item passed to handleItemClick');
       return;
     }
 
-    // Set the selected item immediately for visual feedback
+    // Set the selected item for visual feedback (used for highlighting)
     setSelectedItem(item);
-    setSelectedReasonId(item.reasons?.[0]?.id || null);
 
-    // Expand the inspector panel if it's collapsed
+    // Track account/system/logical-app/identity selection for cross-lane filtering
+    if (laneType === LaneTypes.ACCOUNTS) {
+      setSelectedAccountId(prev => prev === item.node.id ? null : item.node.id);
+      setSelectedSystemId(null);
+      setSelectedLogicalAppId(null);
+      setSelectedIdentityId(null);
+    } else if (laneType === LaneTypes.SYSTEMS) {
+      setSelectedSystemId(prev => prev === item.node.id ? null : item.node.id);
+      setSelectedAccountId(null);
+      setSelectedLogicalAppId(null);
+      setSelectedIdentityId(null);
+    } else if (laneType === LaneTypes.LOGICAL_APPLICATIONS) {
+      setSelectedLogicalAppId(prev => prev === item.node.id ? null : item.node.id);
+      setSelectedAccountId(null);
+      setSelectedSystemId(null);
+      setSelectedIdentityId(null);
+    } else if (laneType === LaneTypes.IDENTITIES) {
+      // Entitlement-centric view: selecting an identity filters the Accounts lane
+      setSelectedIdentityId(prev => prev === item.node.id ? null : item.node.id);
+      setSelectedAccountId(null);
+      setSelectedSystemId(null);
+      setSelectedLogicalAppId(null);
+    }
+
+    // Only load Object Inspector data if it's enabled
+    if (!showObjectInspector) {
+      console.log('Object Inspector disabled, skipping data fetch');
+      return;
+    }
+
+    // Set reason and expand inspector
+    setSelectedReasonId(item.reasons?.[0]?.id || null);
     if (inspectorCollapsed) {
       setInspectorCollapsed(false);
     }
@@ -895,21 +1070,6 @@ const AccessLens = ({
       laneType
     };
     setExplanation(basicExplanation);
-
-    // Track account/system/logical-app selection for cross-lane filtering
-    if (laneType === LaneTypes.ACCOUNTS) {
-      setSelectedAccountId(prev => prev === item.node.id ? null : item.node.id);
-      setSelectedSystemId(null);
-      setSelectedLogicalAppId(null);
-    } else if (laneType === LaneTypes.SYSTEMS) {
-      setSelectedSystemId(prev => prev === item.node.id ? null : item.node.id);
-      setSelectedAccountId(null);
-      setSelectedLogicalAppId(null);
-    } else if (laneType === LaneTypes.LOGICAL_APPLICATIONS) {
-      setSelectedLogicalAppId(prev => prev === item.node.id ? null : item.node.id);
-      setSelectedAccountId(null);
-      setSelectedSystemId(null);
-    }
 
     // Fetch full object details from OData if callback is provided
     if (onFetchObjectDetails) {
@@ -974,11 +1134,17 @@ const AccessLens = ({
     }
 
     setExplanationLoading(false);
-  }, [inspectorCollapsed, onFetchObjectDetails]);
+  }, [showObjectInspector, inspectorCollapsed, onFetchObjectDetails]);
 
   // Handle central node (Identity) click - show all attributes in Object Inspector
   const handleCentralNodeClick = useCallback(() => {
     if (!focusNode) return;
+
+    // Skip if Object Inspector is disabled
+    if (!showObjectInspector) {
+      console.log('Object Inspector disabled, skipping central node click');
+      return;
+    }
 
     // Clear any lane item selection
     setSelectedAccountId(null);
@@ -1014,7 +1180,7 @@ const AccessLens = ({
     if (inspectorCollapsed) {
       setInspectorCollapsed(false);
     }
-  }, [focusNode, identity, inspectorCollapsed]);
+  }, [focusNode, identity, inspectorCollapsed, showObjectInspector]);
 
   // Handle reason selection
   const handleReasonClick = useCallback((reason) => {
@@ -1036,42 +1202,63 @@ const AccessLens = ({
 
     if (!node) return;
 
+    // Set pending node type IMMEDIATELY so loading placeholders show correct lanes
+    setPendingNodeType(node.type);
+
     // Clear cross-lane filter selections when pivoting
     setSelectedAccountId(null);
     setSelectedSystemId(null);
     setSelectedLogicalAppId(null);
+    setSelectedIdentityId(null);
     setSelectedItem(null);
     setExplanation(null);
 
-    // Show loading state
+    // Show loading state and reset animation
     setIsLoading(true);
+    setLanesLoading(true);
     setLanes([]);
+    setPivotLoadingStatus(`Loading ${node.type || 'node'} details...`);
 
     // If callback is provided, use it to fetch data for the new node
     if (onPivotToNode) {
       try {
         console.log('Calling onPivotToNode callback...');
+        setPivotLoadingStatus(`Fetching access data for ${node.displayName || node.type}...`);
         const pivotResult = await onPivotToNode(node);
 
         if (pivotResult) {
           console.log('Pivot result:', pivotResult);
+          setPivotLoadingStatus('Building access relationship graph...');
 
           // Update focus node with full details if available
           const newFocusNode = pivotResult.focusNode || node;
           setFocusNode(newFocusNode);
 
-          // Update history
+          // Clear pending node type now that focusNode is updated
+          setPendingNodeType(null);
+
+          // Update history and historyIndex
           setHistory(prev => {
             const existingIndex = prev.findIndex(n => n.id === newFocusNode.id);
             if (existingIndex >= 0) {
+              // Node already in history - go back to that position
+              setHistoryIndex(existingIndex);
               return prev.slice(0, existingIndex + 1);
             }
-            return [...prev, newFocusNode];
+            // New node - add to end and update index
+            const newHistory = [...prev, newFocusNode];
+            setHistoryIndex(newHistory.length - 1);
+            return newHistory;
           });
 
           // Set lanes from the pivot result
           if (pivotResult.lanes && pivotResult.lanes.length > 0) {
             setLanes(pivotResult.lanes);
+            // Mark lanes loading as complete to trigger reveal animation
+            setLanesLoading(false);
+          } else {
+            // Even with no lanes, mark loading as complete
+            setLanesLoading(false);
           }
 
           // Update available reason types if provided
@@ -1096,8 +1283,10 @@ const AccessLens = ({
       } catch (err) {
         console.error('Error during pivot:', err);
         setError(`Failed to pivot to ${node.displayName}: ${err.message}`);
+        setPendingNodeType(null);  // Clear pending type on error
       } finally {
         setIsLoading(false);
+        setPivotLoadingStatus('');
       }
     } else {
       // No callback, just change the focus node (lanes may be empty)
@@ -1106,62 +1295,129 @@ const AccessLens = ({
     }
   }, [loadFocus, onPivotToNode, focusNode?.type]);
 
-  // Handle breadcrumb navigation
-  const handleBreadcrumbNavigate = useCallback((node, index) => {
+  // Handle breadcrumb navigation - re-fetch data for the selected node
+  const handleBreadcrumbNavigate = useCallback(async (node, index) => {
+    console.log('=== Breadcrumb Navigate ===');
+    console.log('Navigating to node:', node.displayName, 'type:', node.type);
+
     setHistoryIndex(index);
-    loadFocus(node, false);
-  }, [loadFocus]);
+    setIsLoading(true);
+    setPivotLoadingStatus(`Navigating to ${node.displayName || node.type}...`);
+
+    // Re-fetch lanes for the selected node via onPivotToNode
+    if (onPivotToNode && node) {
+      try {
+        const result = await onPivotToNode(node);
+        if (result) {
+          setFocusNode(result.focusNode || node);
+          if (result.lanes) setLanes(result.lanes);
+          if (result.reasonTypes) setAvailableReasonTypes(result.reasonTypes);
+          if (result.complianceStatuses) setAvailableComplianceStatuses(result.complianceStatuses);
+        } else {
+          // Fallback - just set the focus node
+          setFocusNode(node);
+        }
+      } catch (err) {
+        console.error('Error navigating to node:', err);
+        setFocusNode(node);
+      }
+    } else {
+      setFocusNode(node);
+    }
+
+    setIsLoading(false);
+    setPivotLoadingStatus('');
+  }, [onPivotToNode]);
 
   // Navigation: Go back in history
-  const handleNavigateBack = useCallback(() => {
+  const handleNavigateBack = useCallback(async () => {
     if (historyIndex > 0) {
       const newIndex = historyIndex - 1;
       const prevNode = history[newIndex];
       setHistoryIndex(newIndex);
+      setIsLoading(true);
+      setPivotLoadingStatus(`Going back to ${prevNode.displayName || prevNode.type}...`);
 
-      // For now, just update focus node - a proper implementation would
-      // need to re-fetch lanes for the previous node via onPivotToNode
+      // Re-fetch lanes for the previous node via onPivotToNode
       if (onPivotToNode && prevNode) {
-        onPivotToNode(prevNode).then(result => {
+        try {
+          const result = await onPivotToNode(prevNode);
           if (result) {
             setFocusNode(result.focusNode || prevNode);
             if (result.lanes) setLanes(result.lanes);
             if (result.reasonTypes) setAvailableReasonTypes(result.reasonTypes);
             if (result.complianceStatuses) setAvailableComplianceStatuses(result.complianceStatuses);
           }
-        });
+        } catch (err) {
+          console.error('Error navigating back:', err);
+          setFocusNode(prevNode);
+        }
       } else {
         setFocusNode(prevNode);
       }
+
+      setIsLoading(false);
+      setPivotLoadingStatus('');
     }
   }, [historyIndex, history, onPivotToNode]);
 
   // Navigation: Go forward in history
-  const handleNavigateForward = useCallback(() => {
+  const handleNavigateForward = useCallback(async () => {
     if (historyIndex < history.length - 1) {
       const newIndex = historyIndex + 1;
       const nextNode = history[newIndex];
       setHistoryIndex(newIndex);
+      setIsLoading(true);
+      setPivotLoadingStatus(`Going forward to ${nextNode.displayName || nextNode.type}...`);
 
       // Re-fetch lanes for the next node via onPivotToNode
       if (onPivotToNode && nextNode) {
-        onPivotToNode(nextNode).then(result => {
+        try {
+          const result = await onPivotToNode(nextNode);
           if (result) {
             setFocusNode(result.focusNode || nextNode);
             if (result.lanes) setLanes(result.lanes);
             if (result.reasonTypes) setAvailableReasonTypes(result.reasonTypes);
             if (result.complianceStatuses) setAvailableComplianceStatuses(result.complianceStatuses);
           }
-        });
+        } catch (err) {
+          console.error('Error navigating forward:', err);
+          setFocusNode(nextNode);
+        }
       } else {
         setFocusNode(nextNode);
       }
+
+      setIsLoading(false);
+      setPivotLoadingStatus('');
     }
   }, [historyIndex, history, onPivotToNode]);
 
   // Check if back/forward navigation is available
   const canGoBack = historyIndex > 0;
   const canGoForward = historyIndex < history.length - 1;
+
+  // Handle removing a breadcrumb from history
+  const handleRemoveBreadcrumb = useCallback((indexToRemove) => {
+    console.log('Removing breadcrumb at index:', indexToRemove);
+
+    // Don't allow removing the current item
+    if (indexToRemove === historyIndex) {
+      console.log('Cannot remove current breadcrumb');
+      return;
+    }
+
+    // Create new history array without the removed item
+    const newHistory = history.filter((_, index) => index !== indexToRemove);
+    setHistory(newHistory);
+
+    // Adjust historyIndex if needed
+    if (indexToRemove < historyIndex) {
+      // Removed item was before current - shift index back
+      setHistoryIndex(historyIndex - 1);
+    }
+    // If removed item was after current, index stays the same
+  }, [history, historyIndex]);
 
   // Handle load more for a lane
   // TODO: Implement pagination via API when needed
@@ -1193,19 +1449,23 @@ const AccessLens = ({
   };
 
   // ============================================================================
-  // CROSS-LANE FILTERING LOGIC
+  // CROSS-LANE FILTERING LOGIC (Memoized for performance)
   // The toolbar filters (Compliance, Reason Types, Entitlement Type) filter the
   // Effective Entitlements lane. Then, Accounts and Systems lanes are filtered
   // to only show items related to the filtered entitlements.
   // ============================================================================
 
-  // Step 1: Get the Effective Entitlements lane and apply all toolbar filters
-  const entitlementsLane = lanes.find(l => l.laneType === LaneTypes.EFFECTIVE_ENTITLEMENTS);
-  let filteredEntitlementItems = entitlementsLane?.items ? [...entitlementsLane.items] : [];
-  let isEntitlementsFiltered = false;
+  const visibleLanes = useMemo(() => {
+    // Step 1: Get the Effective Entitlements lane and apply all toolbar filters
+    // NOTE: In entitlement-centric view (focusNode.type === ENTITLEMENT), there is no Entitlements lane
+    // so isEntitlementsFiltered should remain false to prevent cross-lane filtering from empty data
+    const entitlementsLane = lanes.find(l => l.laneType === LaneTypes.EFFECTIVE_ENTITLEMENTS);
+    const hasEntitlementsLane = entitlementsLane && entitlementsLane.items && entitlementsLane.items.length > 0;
+    let filteredEntitlementItems = entitlementsLane?.items ? [...entitlementsLane.items] : [];
+    let isEntitlementsFiltered = false;
 
-  // Apply compliance status filter
-  if (filters.complianceStatuses && filters.complianceStatuses.length > 0) {
+  // Apply compliance status filter (only if we have an entitlements lane - not in entitlement-centric view)
+  if (filters.complianceStatuses && filters.complianceStatuses.length > 0 && hasEntitlementsLane) {
     filteredEntitlementItems = filteredEntitlementItems.filter(item =>
       filters.complianceStatuses.includes(item.node.metadata?.complianceStatus)
     );
@@ -1232,11 +1492,11 @@ const AccessLens = ({
         return false;
       });
     });
-    isEntitlementsFiltered = true;
+    if (hasEntitlementsLane) isEntitlementsFiltered = true;
   }
 
-  // Apply entitlement type filter (direct vs inherited)
-  if (filters.entitlementType && filters.entitlementType !== 'all') {
+  // Apply entitlement type filter (direct vs inherited) - only if we have an entitlements lane
+  if (filters.entitlementType && filters.entitlementType !== 'all' && hasEntitlementsLane) {
     filteredEntitlementItems = filteredEntitlementItems.filter(item => {
       const reasonType = item.rawData?.reason?.reasonType;
       const reasonDesc = item.rawData?.reason?.description?.toLowerCase() || '';
@@ -1311,11 +1571,37 @@ const AccessLens = ({
 
       console.log('After filter - Entitlements count:', filteredEntitlementItems.length);
     }
+    if (hasEntitlementsLane) isEntitlementsFiltered = true;
+  }
+
+  // Apply selected identity filter for entitlements (System-centric view)
+  // When user clicks an identity in the Identities lane, filter entitlements to show only their access
+  if (selectedIdentityId && focusNode?.type === NodeTypes.SYSTEM && hasEntitlementsLane) {
+    const selectedIdentityIdStr = String(selectedIdentityId);
+
+    console.log('=== Entitlements Identity Filter (System-centric) ===');
+    console.log('Selected Identity ID:', selectedIdentityIdStr);
+    console.log('Entitlements before filter:', filteredEntitlementItems.length);
+
+    filteredEntitlementItems = filteredEntitlementItems.filter(item => {
+      // Get identity info from metadata (set in buildEntitlementsLane)
+      const entitlementIdentityId = item.node.metadata?.identityId ||
+                                    item.rawData?.identity?.id;
+      const entitlementIdentityIdStr = entitlementIdentityId ? String(entitlementIdentityId) : null;
+
+      const match = entitlementIdentityIdStr === selectedIdentityIdStr;
+
+      console.log(`  Entitlement "${item.node.displayName}": identityId="${entitlementIdentityIdStr}" -> MATCH=${match}`);
+
+      return match;
+    });
+
+    console.log('Entitlements after identity filter:', filteredEntitlementItems.length);
     isEntitlementsFiltered = true;
   }
 
-  // Apply selected system filter (when user clicks a system in the Systems lane)
-  if (selectedSystemId) {
+  // Apply selected system filter (when user clicks a system in the Systems lane) - only if we have an entitlements lane
+  if (selectedSystemId && hasEntitlementsLane) {
     const selectedSystemIdStr = String(selectedSystemId);
     const systemNode = lanes
       .find(l => l.laneType === LaneTypes.SYSTEMS)?.items
@@ -1341,7 +1627,7 @@ const AccessLens = ({
 
       console.log('Entitlements after filter:', filteredEntitlementItems.length);
     }
-    isEntitlementsFiltered = true;
+    if (hasEntitlementsLane) isEntitlementsFiltered = true;
   }
 
   // Apply selected logical application filter
@@ -1385,7 +1671,7 @@ const AccessLens = ({
       logicalAppUnderlyingSystemIds = (logicalAppNode.metadata?.underlyingSystemIds || []).map(id => String(id));
       logicalAppUnderlyingSystemNames = (logicalAppNode.metadata?.underlyingSystems || []).map(s => s.name);
     }
-    isEntitlementsFiltered = true;
+    if (hasEntitlementsLane) isEntitlementsFiltered = true;
   }
 
   // Step 2: Extract unique accounts and systems from the FILTERED entitlements
@@ -1419,7 +1705,7 @@ const AccessLens = ({
   });
 
   // Step 3: Apply cross-lane filtering to all lanes
-  const visibleLanes = lanes.filter(lane =>
+  return lanes.filter(lane =>
     filters.visibleLanes.includes(lane.laneType)
   ).map(lane => {
     // Apply filtered entitlements to the Effective Entitlements lane
@@ -1434,13 +1720,56 @@ const AccessLens = ({
 
     // Cross-lane filter: Accounts lane
     // When a system is selected, filter accounts directly by their system
+    // When an identity is selected (entitlement-centric view), filter accounts by that identity
     // Otherwise, filter based on related accounts from filtered entitlements
-    if (lane.laneType === LaneTypes.ACCOUNTS) {
+    // IMPORTANT: Do NOT filter Accounts lane when an Account is selected (selectedAccountId) - it should just highlight
+    if (lane.laneType === LaneTypes.ACCOUNTS && !selectedAccountId) {
       let filteredAccountItems = lane.items;
       let accountsFiltered = false;
 
+      // Identity filter: when user clicks an identity in the Identities lane (entitlement-centric view)
+      // Filter accounts to show only those belonging to the selected identity
+      if (selectedIdentityId) {
+        const selectedIdentityIdStr = String(selectedIdentityId);
+
+        console.log('=== Accounts Identity Filter Debug ===');
+        console.log('Selected Identity ID:', selectedIdentityId, '(type:', typeof selectedIdentityId, ')');
+        console.log('Total accounts before filter:', filteredAccountItems.length);
+
+        // Also find the selected identity node to get alternative IDs (identityId field)
+        const identitiesLane = lanes.find(l => l.laneType === LaneTypes.IDENTITIES);
+        const selectedIdentityNode = identitiesLane?.items?.find(
+          item => String(item.node.id) === selectedIdentityIdStr
+        )?.node;
+        const selectedIdentityIdAlt = selectedIdentityNode?.metadata?.identityId; // IDENTITYID field
+        console.log('Selected Identity alternative ID (identityId):', selectedIdentityIdAlt);
+
+        filteredAccountItems = filteredAccountItems.filter(item => {
+          // Get the identity associated with this account from multiple possible paths
+          // In entitlement-centric view, each account item has identity info from the calculated assignment
+          const accountIdentityId = item.node.metadata?.identityId ||
+                                    item.rawData?.identity?.id ||
+                                    item.node.rawData?.identity?.id;
+          const accountIdentityIdAlt = item.rawData?.identity?.identityId ||
+                                       item.node.rawData?.identity?.identityId;
+          const accountIdentityIdStr = accountIdentityId ? String(accountIdentityId) : null;
+          const accountIdentityIdAltStr = accountIdentityIdAlt ? String(accountIdentityIdAlt) : null;
+
+          // Match on either the UUID (id) or the IDENTITYID field
+          const idMatch = accountIdentityIdStr === selectedIdentityIdStr;
+          const altIdMatch = selectedIdentityIdAlt && accountIdentityIdAltStr === String(selectedIdentityIdAlt);
+          const match = idMatch || altIdMatch;
+
+          console.log(`  Account "${item.node.displayName}": id="${accountIdentityIdStr}", identityId="${accountIdentityIdAltStr}" -> idMatch=${idMatch}, altIdMatch=${altIdMatch}, MATCH=${match}`);
+
+          return match;
+        });
+
+        console.log('Accounts after identity filter:', filteredAccountItems.length);
+        accountsFiltered = true;
+      }
       // Direct system filter: when user clicks a system, show only accounts on that system
-      if (selectedSystemId) {
+      else if (selectedSystemId) {
         console.log('=== Accounts System Filter Debug ===');
         console.log('Selected System ID:', selectedSystemId, '(type:', typeof selectedSystemId, ')');
 
@@ -1541,7 +1870,8 @@ const AccessLens = ({
     // Cross-lane filter: Systems lane - only show systems related to filtered entitlements
     // When a logical application is selected, also show its underlying physical systems
     // When an account is selected, show only the system that account belongs to
-    if (lane.laneType === LaneTypes.SYSTEMS && (isEntitlementsFiltered || selectedAccountId)) {
+    // IMPORTANT: Do NOT filter Systems lane when a System is selected (selectedSystemId) - it should just highlight
+    if (lane.laneType === LaneTypes.SYSTEMS && (isEntitlementsFiltered || selectedAccountId) && !selectedSystemId) {
       const filteredSystemItems = lane.items.filter(item => {
         const systemId = item.node.id;
         const systemIdStr = String(systemId);
@@ -1679,33 +2009,223 @@ const AccessLens = ({
       }
     }
 
+    // Cross-lane filter: Identities lane (for entitlement-centric and system-centric views)
+    // When an Account is selected, filter identities to show only the account's owner
+    // When the focus node is an Entitlement, filter identities by compliance status
+    // IMPORTANT: Do NOT filter Identities lane when an Identity is selected - it should just highlight
+    if (lane.laneType === LaneTypes.IDENTITIES && !selectedIdentityId) {
+      let filteredIdentityItems = lane.items;
+      let identitiesFiltered = false;
+
+      // Account filter: when user clicks an account in the Accounts lane
+      // Works for both Entitlement-centric and System-centric views
+      // Filter identities to show only the identity that owns the selected account
+      if (selectedAccountId && (focusNode?.type === NodeTypes.ENTITLEMENT || focusNode?.type === NodeTypes.SYSTEM)) {
+        const selectedAccountIdStr = String(selectedAccountId);
+
+        console.log('=== Identities Account Filter Debug ===');
+        console.log('Selected Account ID:', selectedAccountId);
+
+        // Find the selected account to get its identity
+        const accountsLane = lanes.find(l => l.laneType === LaneTypes.ACCOUNTS);
+        const selectedAccountItem = accountsLane?.items?.find(
+          item => String(item.node.id) === selectedAccountIdStr
+        );
+
+        if (selectedAccountItem) {
+          // Get the identity ID(s) from the account
+          // In System-centric view, an account may be associated with multiple identities (identityIds array)
+          const accountIdentityIds = selectedAccountItem.node.metadata?.identityIds ||
+                                     selectedAccountItem.rawData?.identityIds || [];
+          const accountIdentityId = selectedAccountItem.node.metadata?.identityId ||
+                                    selectedAccountItem.rawData?.identity?.id ||
+                                    selectedAccountItem.node.rawData?.identity?.id;
+
+          // Build a set of all identity IDs associated with this account
+          const identityIdsSet = new Set(
+            accountIdentityIds.map(id => String(id)).filter(Boolean)
+          );
+          if (accountIdentityId) {
+            identityIdsSet.add(String(accountIdentityId));
+          }
+
+          console.log('Account belongs to identity IDs:', Array.from(identityIdsSet));
+          console.log('Total identities before filter:', filteredIdentityItems.length);
+
+          if (identityIdsSet.size > 0) {
+            filteredIdentityItems = filteredIdentityItems.filter(item => {
+              const identityId = String(item.node.id);
+              const match = identityIdsSet.has(identityId);
+
+              console.log(`  Identity "${item.node.displayName}" (${identityId}): MATCH=${match}`);
+
+              return match;
+            });
+
+            console.log('Identities after account filter:', filteredIdentityItems.length);
+            identitiesFiltered = true;
+          }
+        }
+      }
+      // Apply compliance status filter to identities in entitlement-centric view
+      // Each identity has a complianceStatus from their relationship with the central entitlement
+      else if (filters.complianceStatuses && filters.complianceStatuses.length > 0 && focusNode?.type === NodeTypes.ENTITLEMENT) {
+        console.log('=== Identities Compliance Filter Debug ===');
+        console.log('Filtering identities by compliance statuses:', filters.complianceStatuses);
+        console.log('Total identities before filter:', filteredIdentityItems.length);
+
+        filteredIdentityItems = filteredIdentityItems.filter(item => {
+          // Get compliance status from node metadata or rawData
+          const complianceStatus = item.node.metadata?.complianceStatus ||
+                                   item.rawData?.complianceStatus ||
+                                   item.node.rawData?.complianceStatus;
+
+          const match = filters.complianceStatuses.includes(complianceStatus);
+
+          console.log(`  Identity "${item.node.displayName}": compliance="${complianceStatus}" -> MATCH=${match}`);
+
+          return match;
+        });
+
+        console.log('Identities after compliance filter:', filteredIdentityItems.length);
+        identitiesFiltered = true;
+      }
+
+      if (identitiesFiltered) {
+        return {
+          ...lane,
+          items: filteredIdentityItems,
+          totalCount: filteredIdentityItems.length,
+          isFiltered: true
+        };
+      }
+    }
+
     return lane;
-  }).filter(lane => lane.items && lane.items.length > 0); // Only show lanes with data
+  }).filter(lane => {
+    // Always show lanes that have data
+    if (lane.items && lane.items.length > 0) return true;
+
+    // For System focus node, always show required lanes even if empty (they may populate after filtering)
+    // This ensures Identities, Accounts, and Entitlements lanes are always visible
+    if (focusNode?.type === NodeTypes.SYSTEM) {
+      const requiredLanesForSystem = [LaneTypes.IDENTITIES, LaneTypes.ACCOUNTS, LaneTypes.EFFECTIVE_ENTITLEMENTS];
+      if (requiredLanesForSystem.includes(lane.laneType)) {
+        console.log(`Keeping empty lane "${lane.laneType}" for System focus node (required lane)`);
+        return true;
+      }
+    }
+
+    // For Entitlement focus node, always show Identities and Accounts lanes
+    if (focusNode?.type === NodeTypes.ENTITLEMENT) {
+      const requiredLanesForEntitlement = [LaneTypes.IDENTITIES, LaneTypes.ACCOUNTS];
+      if (requiredLanesForEntitlement.includes(lane.laneType)) {
+        console.log(`Keeping empty lane "${lane.laneType}" for Entitlement focus node (required lane)`);
+        return true;
+      }
+    }
+
+    return false; // Hide other empty lanes
+  });
+  }, [
+    lanes,
+    filters.complianceStatuses,
+    filters.reasonTypes,
+    filters.entitlementType,
+    filters.visibleLanes,
+    selectedAccountId,
+    selectedSystemId,
+    selectedLogicalAppId,
+    selectedIdentityId,
+    focusNode
+  ]);
 
   // Get positions for visible lanes only - use dynamic positioning for lanes with data
   // This ensures lanes don't overlap when only some lanes have data
-  const dynamicPositions = calculateDynamicLanePositions(visibleLanes);
+  // Memoized based on which lane types are visible (not the items themselves)
+  const dynamicPositions = useMemo(() => {
+    return calculateDynamicLanePositions(visibleLanes);
+  }, [visibleLanes.map(l => l.laneType).join(',')]);
 
-  // Debug: Log lane positioning
-  console.log('=== Lane Positioning Debug ===');
-  console.log('Visible lanes:', visibleLanes.map(l => `${l.laneType}(${l.items?.length || 0} items)`));
-  console.log('Dynamic positions:', dynamicPositions);
+  // Debug: Log lane positioning (disabled to reduce console noise)
+  // console.log('=== Lane Positioning Debug ===');
+  // console.log('Visible lanes:', visibleLanes.map(l => `${l.laneType}(${l.items?.length || 0} items)`));
+  // console.log('Dynamic positions:', dynamicPositions);
 
-  const visibleLanePositions = {};
-  visibleLanes.forEach(lane => {
-    // If user has manually positioned the lane, use that position
-    // Otherwise use the dynamically calculated position
-    if (lanePositions[lane.laneType]) {
-      visibleLanePositions[lane.laneType] = lanePositions[lane.laneType];
-    } else if (dynamicPositions[lane.laneType]) {
-      visibleLanePositions[lane.laneType] = dynamicPositions[lane.laneType];
-    } else {
-      // Fallback to default position
-      visibleLanePositions[lane.laneType] = DEFAULT_LANE_POSITIONS[lane.laneType] || { x: 0, y: 0 };
+  // Memoize the final position map to avoid recalculating on every render
+  const visibleLanePositions = useMemo(() => {
+    const positions = {};
+    visibleLanes.forEach(lane => {
+      // If user has manually positioned the lane, use that position
+      // Otherwise use the dynamically calculated position
+      if (lanePositions[lane.laneType]) {
+        positions[lane.laneType] = lanePositions[lane.laneType];
+      } else if (dynamicPositions[lane.laneType]) {
+        positions[lane.laneType] = dynamicPositions[lane.laneType];
+      } else {
+        // Fallback to default position
+        positions[lane.laneType] = DEFAULT_LANE_POSITIONS[lane.laneType] || { x: 0, y: 0 };
+      }
+    });
+    return positions;
+  }, [visibleLanes, lanePositions, dynamicPositions]);
+
+  // console.log('Final positions used:', visibleLanePositions);
+
+  // Get the selected identity's compliance status (for entitlement-centric view)
+  // This is relevant when an Entitlement is the central node and either:
+  // 1. An Identity is directly selected, OR
+  // 2. An Account is selected (derive the identity from the account)
+  const selectedIdentityComplianceStatus = useMemo(() => {
+    if (focusNode?.type !== NodeTypes.ENTITLEMENT) {
+      return null;
     }
-  });
 
-  console.log('Final positions used:', visibleLanePositions);
+    // Find the identity - either directly selected or derived from selected account
+    const identitiesLane = lanes.find(l => l.laneType === LaneTypes.IDENTITIES);
+    if (!identitiesLane) return null;
+
+    let selectedIdentity = null;
+
+    // Case 1: Identity is directly selected
+    if (selectedIdentityId) {
+      selectedIdentity = identitiesLane.items?.find(
+        item => String(item.node.id) === String(selectedIdentityId)
+      );
+    }
+    // Case 2: Account is selected - derive the identity from the account
+    else if (selectedAccountId) {
+      const accountsLane = lanes.find(l => l.laneType === LaneTypes.ACCOUNTS);
+      const selectedAccount = accountsLane?.items?.find(
+        item => String(item.node.id) === String(selectedAccountId)
+      );
+
+      if (selectedAccount) {
+        // Get the identity ID from the account
+        const accountIdentityId = selectedAccount.node.metadata?.identityId ||
+                                  selectedAccount.rawData?.identity?.id ||
+                                  selectedAccount.node.rawData?.identity?.id;
+
+        if (accountIdentityId) {
+          selectedIdentity = identitiesLane.items?.find(
+            item => String(item.node.id) === String(accountIdentityId)
+          );
+        }
+      }
+    }
+
+    if (!selectedIdentity) return null;
+
+    // Get the compliance status from the identity's metadata or rawData
+    const complianceStatus = selectedIdentity.node.metadata?.complianceStatus ||
+                             selectedIdentity.rawData?.complianceStatus;
+
+    console.log('Selected Identity Compliance Status:', complianceStatus, '(from', selectedIdentityId ? 'identity selection' : 'account selection', ')');
+    return {
+      identityName: selectedIdentity.node.displayName,
+      complianceStatus: complianceStatus
+    };
+  }, [selectedIdentityId, selectedAccountId, focusNode?.type, lanes]);
 
   // Render loading state
   if (isLoading && !focusNode) {
@@ -1759,7 +2279,9 @@ const AccessLens = ({
         </div>
         <Breadcrumbs
           history={history}
+          currentIndex={historyIndex}
           onNavigate={handleBreadcrumbNavigate}
+          onRemove={handleRemoveBreadcrumb}
         />
       </div>
 
@@ -1772,15 +2294,28 @@ const AccessLens = ({
         onSearch={setSearchQuery}
         availableReasonTypes={availableReasonTypes}
         availableComplianceStatuses={availableComplianceStatuses}
+        showObjectInspector={showObjectInspector}
+        onToggleObjectInspector={() => setShowObjectInspector(!showObjectInspector)}
       />
 
       {/* Main Content */}
       <div className="access-lens-content">
+        {/* Pivot Loading Overlay - shows when changing central node */}
+        {isLoading && focusNode && (
+          <div className="pivot-loading-overlay">
+            <div className="pivot-loading-spinner"></div>
+            <h3 className="pivot-loading-title">Updating Access Lens</h3>
+            <p className="pivot-loading-status">{pivotLoadingStatus || 'Loading...'}</p>
+          </div>
+        )}
+
         {/* Canvas with draggable lanes */}
         <div className="access-lens-canvas">
-          {/* Connector Lines SVG */}
+          {/* Connector Lines SVG - only show for revealed lanes */}
           <ConnectorLines
-            lanePositions={visibleLanePositions}
+            lanePositions={Object.fromEntries(
+              Object.entries(visibleLanePositions).filter(([laneType]) => revealedLanes.has(laneType))
+            )}
             fulcrumRef={fulcrumRef}
             isDragging={activeDragId !== null}
           />
@@ -1791,8 +2326,9 @@ const AccessLens = ({
             onDragEnd={handleDragEnd}
           >
             {/* Loading Placeholders - shown while lanes are being loaded or waiting for data */}
+            {/* Uses pendingNodeType during pivot, otherwise focusNode.type */}
             {(lanesLoading || (!calculatedAssignments && lanes.length === 0)) && visibleLanes.length === 0 &&
-              LOADING_PLACEHOLDER_LANES.map((laneType) => {
+              getLoadingPlaceholderLanes(pendingNodeType || focusNode?.type).map((laneType) => {
                 const position = getDefaultPositionForLane(laneType);
                 return (
                   <LoadingLanePlaceholder
@@ -1804,8 +2340,10 @@ const AccessLens = ({
               })
             }
 
-            {/* Draggable Lanes */}
-            {visibleLanes.map((lane) => (
+            {/* Draggable Lanes - appear in clockwise order after central node */}
+            {visibleLanes
+              .filter(lane => revealedLanes.has(lane.laneType))
+              .map((lane) => (
               <DraggableLane
                 key={lane.laneType}
                 id={lane.laneType}
@@ -1824,17 +2362,20 @@ const AccessLens = ({
                   isFilterActive={lane.laneType === LaneTypes.ACCOUNTS ? selectedAccountId !== null :
                                   lane.laneType === LaneTypes.SYSTEMS ? selectedSystemId !== null :
                                   lane.laneType === LaneTypes.LOGICAL_APPLICATIONS ? selectedLogicalAppId !== null :
+                                  lane.laneType === LaneTypes.IDENTITIES ? selectedIdentityId !== null :
                                   lane.isFiltered}
                   activeFilterId={lane.laneType === LaneTypes.ACCOUNTS ? selectedAccountId :
                                   lane.laneType === LaneTypes.SYSTEMS ? selectedSystemId :
-                                  lane.laneType === LaneTypes.LOGICAL_APPLICATIONS ? selectedLogicalAppId : null}
+                                  lane.laneType === LaneTypes.LOGICAL_APPLICATIONS ? selectedLogicalAppId :
+                                  lane.laneType === LaneTypes.IDENTITIES ? selectedIdentityId : null}
                   forceCollapsed={lanesForceCollapsed}
                   forceExpanded={lanesForceExpanded}
                   isFilterSource={
                     // A lane is the "filter source" (shows "Filtering") if user clicked an item in it to filter other lanes
                     (lane.laneType === LaneTypes.ACCOUNTS && selectedAccountId !== null) ||
                     (lane.laneType === LaneTypes.SYSTEMS && selectedSystemId !== null) ||
-                    (lane.laneType === LaneTypes.LOGICAL_APPLICATIONS && selectedLogicalAppId !== null)
+                    (lane.laneType === LaneTypes.LOGICAL_APPLICATIONS && selectedLogicalAppId !== null) ||
+                    (lane.laneType === LaneTypes.IDENTITIES && selectedIdentityId !== null)
                   }
                   isFiltered={
                     // A lane is "filtered" (shows "Filtered") if it's being filtered BY another lane or toolbar
@@ -1843,16 +2384,17 @@ const AccessLens = ({
                     lane.isFiltered && !(
                       (lane.laneType === LaneTypes.ACCOUNTS && selectedAccountId !== null) ||
                       (lane.laneType === LaneTypes.SYSTEMS && selectedSystemId !== null) ||
-                      (lane.laneType === LaneTypes.LOGICAL_APPLICATIONS && selectedLogicalAppId !== null)
+                      (lane.laneType === LaneTypes.LOGICAL_APPLICATIONS && selectedLogicalAppId !== null) ||
+                      (lane.laneType === LaneTypes.IDENTITIES && selectedIdentityId !== null)
                     )
                   }
                 />
               </DraggableLane>
             ))}
 
-            {/* Center - Focus Card (Fulcrum) */}
+            {/* Center - Focus Card (Fulcrum) - appears first in animation */}
             <div
-              className="fulcrum-wrapper"
+              className={`fulcrum-wrapper ${centralNodeRevealed ? 'revealed' : 'hidden'}`}
               ref={fulcrumRef}
               onClick={handleCentralNodeClick}
               style={{ cursor: 'pointer' }}
@@ -1862,26 +2404,29 @@ const AccessLens = ({
                 node={focusNode}
                 isLoading={isLoading || lanesLoading}
                 onNavigateBack={() => history.length > 1 && handleBreadcrumbNavigate(history[history.length - 2], history.length - 2)}
+                selectedIdentityCompliance={selectedIdentityComplianceStatus}
               />
             </div>
           </DndContext>
         </div>
 
-        {/* Object Inspector Panel */}
-        <div className={`access-lens-explanation ${inspectorCollapsed ? 'collapsed' : ''}`}>
-          <ExplanationPanel
-            explanation={explanation}
-            selectedReasonId={selectedReasonId}
-            onReasonSelect={setSelectedReasonId}
-            onClose={() => {
-              setSelectedItem(null);
-              setExplanation(null);
-            }}
-            isLoading={explanationLoading}
-            isCollapsed={inspectorCollapsed}
-            onToggleCollapse={() => setInspectorCollapsed(!inspectorCollapsed)}
-          />
-        </div>
+        {/* Object Inspector Panel - only render when enabled */}
+        {showObjectInspector && (
+          <div className={`access-lens-explanation ${inspectorCollapsed ? 'collapsed' : ''}`}>
+            <ExplanationPanel
+              explanation={explanation}
+              selectedReasonId={selectedReasonId}
+              onReasonSelect={setSelectedReasonId}
+              onClose={() => {
+                setSelectedItem(null);
+                setExplanation(null);
+              }}
+              isLoading={explanationLoading}
+              isCollapsed={inspectorCollapsed}
+              onToggleCollapse={() => setInspectorCollapsed(!inspectorCollapsed)}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

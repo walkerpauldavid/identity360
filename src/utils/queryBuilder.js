@@ -415,6 +415,98 @@ export const GraphQLQueries = {
         }
       `
     };
+  },
+
+  /**
+   * Get identities that have a specific resource (entitlement) assigned
+   * Used for entitlement-centric view in Access Lens
+   * @param {string} resourceId - Resource UUID (required)
+   * @param {string} resourceName - Resource name (optional, not used in query)
+   * @param {string} systemId - System ID (optional, not used in query)
+   * @param {Object} pagination - Pagination options
+   * @param {string} complianceStatus - Optional compliance status filter (e.g., 'Not Approved', 'Approved')
+   * @returns {Object} GraphQL query object
+   */
+  getIdentitiesHavingResource: (resourceId = null, resourceName = null, systemId = null, pagination = {}, complianceStatus = null) => {
+    const { page = 1, rows = 100 } = pagination;
+
+    // Validate that we have resourceId
+    if (!resourceId) {
+      throw new Error('resourceId is required for getIdentitiesHavingResource');
+    }
+
+    // Build the filter parts
+    const filterParts = [
+      `resourceIds: "${resourceId}"`,
+      'disabled: false'
+    ];
+
+    // Add complianceStatus filter if provided
+    if (complianceStatus) {
+      filterParts.push(`complianceStatus: {filterValue: "${complianceStatus}", operator: EQUALS}`);
+    }
+
+    const filterClause = filterParts.join(', ');
+
+    console.log('getIdentitiesHavingResource - resourceId:', resourceId);
+    console.log('getIdentitiesHavingResource - complianceStatus:', complianceStatus);
+    console.log('getIdentitiesHavingResource - filterClause:', filterClause);
+
+    return {
+      query: `
+        query GetIdentitiesHavingResource {
+          calculatedAssignments(
+            filters: {${filterClause}}
+            sorting: {sortOrder: ASCENDING}
+          ) {
+            pages
+            total
+            data {
+              complianceStatus
+              id
+              disabled
+              violations {
+                description
+                violationStatus
+              }
+              resource {
+                id
+                name
+                description
+                system {
+                  name
+                  id
+                }
+              }
+              account {
+                id
+                accountName
+                system {
+                  id
+                  name
+                }
+              }
+              validFrom
+              validTo
+              reason {
+                description
+                reasonType
+              }
+              identity {
+                firstName
+                id
+                displayName
+                lastName
+                identityId
+                riskLevel {
+                  name
+                }
+              }
+            }
+          }
+        }
+      `
+    };
   }
 };
 
