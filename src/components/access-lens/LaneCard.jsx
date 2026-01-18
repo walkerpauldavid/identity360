@@ -38,6 +38,8 @@ const LaneCard = ({
   const [isLoading, setIsLoading] = useState(false);
   const [allItems, setAllItems] = useState(null); // Cache for all items when maximized
   const [searchQuery, setSearchQuery] = useState(''); // Search filter for entitlements
+  const [selectedResourceTypes, setSelectedResourceTypes] = useState([]); // Multi-select resource type filter
+  const [showResourceTypeDropdown, setShowResourceTypeDropdown] = useState(false); // Dropdown visibility
 
   // Respond to forceCollapsed changes from parent (e.g., Reset Layout)
   useEffect(() => {
@@ -55,21 +57,55 @@ const LaneCard = ({
   const displayConfig = getLaneDisplayConfig(laneType);
   const showReasons = laneType === LaneTypes.EFFECTIVE_ENTITLEMENTS && focusNodeType === 'Identity';
   const isMultiColumn = displayConfig.columns > 1;
-  const showSearch = laneType === LaneTypes.EFFECTIVE_ENTITLEMENTS; // Only show search for Entitlements
+  const showFilters = laneType === LaneTypes.EFFECTIVE_ENTITLEMENTS; // Only show filters for Entitlements
 
-  // Determine which items to display (before search filtering)
+  // Determine which items to display (before filtering)
   const baseItems = isMaximized && allItems ? allItems : (isMaximized && allItemsData ? allItemsData : items);
 
-  // Apply search filter for entitlements lane
-  const displayItems = showSearch && searchQuery.trim()
-    ? baseItems.filter(item => {
-        const name = (item.node?.displayName || '').toLowerCase();
-        const query = searchQuery.toLowerCase().trim();
-        return name.includes(query);
-      })
-    : baseItems;
+  // Extract unique resource types from all items for the dropdown
+  const allResourceTypes = showFilters
+    ? [...new Set(
+        (allItemsData || items || [])
+          .map(item => item.node?.metadata?.type || item.rawData?.resourceType?.name)
+          .filter(Boolean)
+      )].sort()
+    : [];
+
+  // Apply filters for entitlements lane
+  let displayItems = baseItems;
+
+  // Apply resource type filter
+  if (showFilters && selectedResourceTypes.length > 0) {
+    displayItems = displayItems.filter(item => {
+      const itemType = item.node?.metadata?.type || item.rawData?.resourceType?.name;
+      return selectedResourceTypes.includes(itemType);
+    });
+  }
+
+  // Apply search filter
+  if (showFilters && searchQuery.trim()) {
+    const query = searchQuery.toLowerCase().trim();
+    displayItems = displayItems.filter(item => {
+      const name = (item.node?.displayName || '').toLowerCase();
+      return name.includes(query);
+    });
+  }
 
   const hasMoreItems = totalCount > items.length;
+
+  // Toggle resource type selection
+  const toggleResourceType = (type) => {
+    setSelectedResourceTypes(prev =>
+      prev.includes(type)
+        ? prev.filter(t => t !== type)
+        : [...prev, type]
+    );
+  };
+
+  // Clear all resource type filters
+  const clearResourceTypes = () => {
+    setSelectedResourceTypes([]);
+  };
 
   const handleLoadMore = async () => {
     if (!canLoadMore || isLoading) return;
@@ -120,18 +156,20 @@ const LaneCard = ({
         <span className="lane-icon">{displayConfig.icon}</span>
         <span className="lane-title">{displayConfig.label}</span>
 
-        {/* Search filter - inline in header, only for Effective Entitlements lane */}
-        {showSearch && isExpanded && (
+        {/* Search filter - inline in header */}
+        {showFilters && isExpanded && (
           <div className="lane-search-inline">
             <input
               type="text"
               className="lane-search-input-inline"
-              placeholder="Filter..."
+              placeholder="Search..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onClick={(e) => e.stopPropagation()}
               onMouseDown={(e) => e.stopPropagation()}
               onPointerDown={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
+              onFocus={(e) => e.stopPropagation()}
             />
             {searchQuery && (
               <button
@@ -151,7 +189,7 @@ const LaneCard = ({
         )}
 
         <span className="lane-count">
-          ({searchQuery.trim() ? `${displayItems.length}/${totalCount}` : totalCount})
+          ({(searchQuery.trim() || selectedResourceTypes.length > 0) ? `${displayItems.length}/${totalCount}` : totalCount})
         </span>
         {laneIsFiltered && !isFilterSource && <span className="lane-filter-badge">Filtered</span>}
         {isFilterSource && <span className="lane-filter-badge active">Filtering</span>}
@@ -190,6 +228,46 @@ const LaneCard = ({
           {isExpanded ? '▼' : '▶'}
         </button>
       </div>
+
+      {/* Resource Type Filter Bar - only for Effective Entitlements lane */}
+      {showFilters && isExpanded && allResourceTypes.length > 0 && (
+        <div
+          className="lane-type-filter-bar"
+          onClick={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <div className="type-chips-container">
+            {allResourceTypes.map(type => (
+              <button
+                key={type}
+                className={`type-chip ${selectedResourceTypes.includes(type) ? 'selected' : ''}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleResourceType(type);
+                }}
+                onMouseDown={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
+              >
+                {type}
+              </button>
+            ))}
+          </div>
+          {selectedResourceTypes.length > 0 && (
+            <button
+              className="type-clear-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                clearResourceTypes();
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+              title="Clear all type filters"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Content */}
       {isExpanded && (

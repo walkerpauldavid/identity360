@@ -1169,10 +1169,14 @@ const AccessLens = ({
     // Pagination would be implemented here by calling the appropriate API
   }, []);
 
-  // Reset lane positions - recalculate dynamic positions and collapse all lanes
+  // Reset lane positions - recalculate dynamic positions, collapse all lanes, and clear filters
   const handleResetPositions = () => {
     // Clear all manually set positions so dynamic positioning takes over
     setLanePositions({});
+    // Clear all selection/filter states
+    setSelectedAccountId(null);
+    setSelectedSystemId(null);
+    setSelectedLogicalAppId(null);
     // Collapse all lanes
     setLanesForceCollapsed(true);
     // Reset the forceCollapsed flag after a brief delay so lanes can be expanded again
@@ -1464,6 +1468,35 @@ const AccessLens = ({
 
           const idMatch = accountSystemIdStr === selectedSystemIdStr;
           const nameMatch = selectedSystemName && accountSystemName === selectedSystemName;
+          const match = idMatch || nameMatch;
+
+          console.log(`  Account "${item.node.displayName}": sysName="${accountSystemName}", sysId="${accountSystemId}" -> idMatch=${idMatch}, nameMatch=${nameMatch}, MATCH=${match}`);
+
+          return match;
+        });
+
+        console.log('Filtered accounts count:', filteredAccountItems.length);
+        accountsFiltered = true;
+      }
+      // When a Logical Application is selected, filter accounts by underlying physical systems
+      else if (selectedLogicalAppId && (logicalAppUnderlyingSystemIds.length > 0 || logicalAppUnderlyingSystemNames.length > 0)) {
+        console.log('=== Accounts Logical App Filter Debug ===');
+        console.log('Filtering accounts for Logical App with underlying systems:', logicalAppUnderlyingSystemNames);
+        console.log('Underlying system IDs:', logicalAppUnderlyingSystemIds);
+
+        filteredAccountItems = filteredAccountItems.filter(item => {
+          // Get account's system info
+          const accountSystemName = item.node.metadata?.system ||
+                                    item.rawData?.system?.name ||
+                                    item.node.rawData?.system?.name;
+          const accountSystemId = item.node.metadata?.systemId ||
+                                  item.rawData?.system?.id ||
+                                  item.node.rawData?.system?.id;
+          const accountSystemIdStr = accountSystemId ? String(accountSystemId) : null;
+
+          // Check if account's system is one of the underlying physical systems
+          const idMatch = accountSystemIdStr && logicalAppUnderlyingSystemIds.includes(accountSystemIdStr);
+          const nameMatch = accountSystemName && logicalAppUnderlyingSystemNames.includes(accountSystemName);
           const match = idMatch || nameMatch;
 
           console.log(`  Account "${item.node.displayName}": sysName="${accountSystemName}", sysId="${accountSystemId}" -> idMatch=${idMatch}, nameMatch=${nameMatch}, MATCH=${match}`);
