@@ -56,48 +56,6 @@
   font-size: 1.2rem;
 }
 
-/* Navigation Buttons */
-.nav-buttons {
-  display: flex;
-  gap: 0.25rem;
-  margin-left: 0.5rem;
-}
-
-.nav-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  background: rgba(136, 192, 208, 0.15);
-  border: 1px solid rgba(136, 192, 208, 0.3);
-  border-radius: 6px;
-  color: #88c0d0;
-  font-size: 1.1rem;
-  font-weight: bold;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.nav-btn:hover:not(.disabled) {
-  background: rgba(136, 192, 208, 0.25);
-  border-color: rgba(136, 192, 208, 0.5);
-  transform: scale(1.05);
-}
-
-.nav-btn:active:not(.disabled) {
-  transform: scale(0.95);
-}
-
-.nav-btn.disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
-  color: #4c566a;
-  border-color: #3b4252;
-  background: rgba(59, 66, 82, 0.2);
-}
-
 .exit-fullscreen-btn {
   padding: 0.4rem 0.8rem;
   background: rgba(191, 97, 106, 0.2);

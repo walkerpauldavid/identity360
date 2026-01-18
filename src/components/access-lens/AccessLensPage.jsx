@@ -8,6 +8,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { omadaApi } from '../../services/omadaApi';
+import Navbar from '../layout/Navbar';
 import AccessLens from './AccessLens';
 import IdentitySearchDialog from './IdentitySearchDialog';
 import { LaneSchema, LaneTypes } from './accessLensTypes';
@@ -583,25 +584,8 @@ const AccessLensPage = () => {
 
   return (
     <div className="access-lens-page">
-      <div className="access-lens-page-header">
-        <button className="back-btn" onClick={() => navigate(-1)}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="15 18 9 12 15 6"></polyline>
-          </svg>
-          Back
-        </button>
-        <h1>Access Lens</h1>
-        {selectedIdentity && (
-          <div className="selected-identity-info">
-            <span className="identity-name">
-              {selectedIdentity.DISPLAYNAME || `${selectedIdentity.FIRSTNAME || ''} ${selectedIdentity.LASTNAME || ''}`.trim()}
-            </span>
-            <button className="change-identity-btn" onClick={handleChangeIdentity}>
-              Change
-            </button>
-          </div>
-        )}
-      </div>
+      {/* Omada Top Banner */}
+      <Navbar title="Access Lens" />
 
       <div className="access-lens-page-content">
         {selectedIdentity ? (

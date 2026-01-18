@@ -1745,25 +1745,6 @@ const AccessLens = ({
             <span className="title-icon">🔍</span>
             Access Lens
           </h2>
-          {/* Navigation buttons */}
-          <div className="nav-buttons">
-            <button
-              className={`nav-btn back-btn ${!canGoBack ? 'disabled' : ''}`}
-              onClick={handleNavigateBack}
-              disabled={!canGoBack}
-              title="Go back"
-            >
-              ←
-            </button>
-            <button
-              className={`nav-btn forward-btn ${!canGoForward ? 'disabled' : ''}`}
-              onClick={handleNavigateForward}
-              disabled={!canGoForward}
-              title="Go forward"
-            >
-              →
-            </button>
-          </div>
           <button className="expand-all-btn" onClick={handleExpandAll} title="Expand all lanes">
             ⊞ Expand All
           </button>
