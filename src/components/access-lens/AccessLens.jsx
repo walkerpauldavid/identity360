@@ -65,7 +65,7 @@ const identityToNode = (identity) => {
 // Note: Multi-column lanes (like Entitlements) can be 700px+ wide
 const LANE_DIMENSIONS = {
   width: 720,   // Maximum lane width (700px for 2-column + margin)
-  height: 250   // Approximate lane height (varies, use conservative estimate)
+  height: 350   // Approximate lane height (increased for expanded lanes with content)
 };
 
 const FULCRUM_DIMENSIONS = {
@@ -79,14 +79,14 @@ const FULCRUM_DIMENSIONS = {
  * Positions are designed to avoid overlap with fulcrum and other lanes
  */
 const COMPASS_POSITIONS = {
-  [CompassOrientation.N]:  { x: 0, y: -400 },      // North - top center
-  [CompassOrientation.NE]: { x: 450, y: -320 },    // North-East - top right
-  [CompassOrientation.E]:  { x: 580, y: 50 },      // East - right center
-  [CompassOrientation.SE]: { x: 450, y: 380 },     // South-East - bottom right
-  [CompassOrientation.S]:  { x: 0, y: 480 },       // South - bottom center
-  [CompassOrientation.SW]: { x: -450, y: 380 },    // South-West - bottom left
-  [CompassOrientation.W]:  { x: -580, y: 50 },     // West - left center
-  [CompassOrientation.NW]: { x: -580, y: -280 }    // North-West - top left (wider for entitlements)
+  [CompassOrientation.N]:  { x: 0, y: -450 },      // North - top center
+  [CompassOrientation.NE]: { x: 520, y: -420 },    // North-East - top right (Accounts)
+  [CompassOrientation.E]:  { x: 780, y: 80 },      // East - right center (Logical Apps - pushed further right)
+  [CompassOrientation.SE]: { x: 520, y: 520 },     // South-East - bottom right (Systems - pushed down)
+  [CompassOrientation.S]:  { x: 0, y: 580 },       // South - bottom center
+  [CompassOrientation.SW]: { x: -520, y: 520 },    // South-West - bottom left
+  [CompassOrientation.W]:  { x: -680, y: 80 },     // West - left center
+  [CompassOrientation.NW]: { x: -680, y: -380 }    // North-West - top left (Entitlements)
 };
 
 /**
@@ -557,6 +557,7 @@ const AccessLens = ({
   const [lanePositions, setLanePositions] = useState({});
   const [activeDragId, setActiveDragId] = useState(null);
   const [lanesForceCollapsed, setLanesForceCollapsed] = useState(false); // Used to collapse all lanes on Reset Layout
+  const [lanesForceExpanded, setLanesForceExpanded] = useState(false); // Used to expand all lanes
 
   // Configure drag sensors for smoother experience
   // PointerSensor with activation constraint prevents accidental drags
@@ -1183,6 +1184,14 @@ const AccessLens = ({
     setTimeout(() => setLanesForceCollapsed(false), 100);
   };
 
+  // Expand all lanes
+  const handleExpandAll = () => {
+    // Trigger expansion of all lanes
+    setLanesForceExpanded(true);
+    // Reset the forceExpanded flag after a brief delay
+    setTimeout(() => setLanesForceExpanded(false), 100);
+  };
+
   // ============================================================================
   // CROSS-LANE FILTERING LOGIC
   // The toolbar filters (Compliance, Reason Types, Entitlement Type) filter the
@@ -1244,6 +1253,10 @@ const AccessLens = ({
     isEntitlementsFiltered = true;
   }
 
+  // Variables to store selected account's system info for cross-lane filtering (Systems and Logical Apps)
+  let selectedAccountSystemName = null;
+  let selectedAccountSystemId = null;
+
   // Apply selected account filter (when user clicks an account in the Accounts lane)
   if (selectedAccountId) {
     const selectedAccountIdStr = String(selectedAccountId);
@@ -1265,6 +1278,10 @@ const AccessLens = ({
       const accountSystemId = accountNode.metadata?.systemId;
       const accountName = accountNode.displayName;
 
+      // Store for cross-lane filtering of Systems and Logical Apps
+      selectedAccountSystemName = accountSystem;
+      selectedAccountSystemId = accountSystemId ? String(accountSystemId) : null;
+
       // Debug: Show all entitlements and their systems before filtering
       console.log('Before filter - Entitlements count:', filteredEntitlementItems.length);
       filteredEntitlementItems.slice(0, 10).forEach((item, i) => {
@@ -1272,31 +1289,22 @@ const AccessLens = ({
       });
 
       // Filter entitlements that belong to this account
-      // Match by: 1) Same system name, OR 2) rawData.account matches the selected account
+      // Use the same pattern as system filtering - check metadata first, then rawData
       filteredEntitlementItems = filteredEntitlementItems.filter(item => {
-        const entitlementSystem = item.node.metadata?.system;
-        const entitlementGroupLabel = item.groupLabel;
-        const entitlementAccountName = item.rawData?.account?.accountName;
-        const entitlementAccountId = item.rawData?.account?.id;
+        // Get account info from metadata (primary) or rawData (fallback)
+        const entitlementAccountName = item.node.metadata?.accountName ||
+                                       item.rawData?.account?.accountName;
+        const entitlementAccountId = item.node.metadata?.accountId ||
+                                     item.rawData?.account?.id;
 
-        // Match by system name or system ID
-        const systemMatch = accountSystem && (
-          entitlementSystem === accountSystem ||
-          entitlementGroupLabel === accountSystem ||
-          (accountSystemId && item.node.metadata?.systemId && String(item.node.metadata.systemId) === String(accountSystemId))
-        );
+        // Use string comparison for IDs
+        const entitlementAccountIdStr = entitlementAccountId ? String(entitlementAccountId) : null;
 
-        // Match by account (more precise - the entitlement's rawData.account should match the selected account)
-        // Use string comparison for IDs to avoid type mismatches
-        const accountMatch = (entitlementAccountName === accountName) ||
-                            (entitlementAccountId && String(entitlementAccountId) === selectedAccountIdStr);
+        const idMatch = entitlementAccountIdStr === selectedAccountIdStr;
+        const nameMatch = accountName && entitlementAccountName === accountName;
+        const match = idMatch || nameMatch;
 
-        // Use account match if available (more precise), otherwise fall back to system match
-        const match = accountMatch || systemMatch;
-
-        if (!match && item.node.displayName.toLowerCase().includes('servicenow')) {
-          console.log(`NOT MATCHED: "${item.node.displayName}" - entSystem: "${entitlementSystem}", accSystem: "${accountSystem}", entAccName: "${entitlementAccountName}", accName: "${accountName}"`);
-        }
+        console.log(`  Entitlement "${item.node.displayName}": accName="${entitlementAccountName}", accId="${entitlementAccountIdStr}" -> idMatch=${idMatch}, nameMatch=${nameMatch}, MATCH=${match}`);
 
         return match;
       });
@@ -1532,11 +1540,20 @@ const AccessLens = ({
 
     // Cross-lane filter: Systems lane - only show systems related to filtered entitlements
     // When a logical application is selected, also show its underlying physical systems
-    if (lane.laneType === LaneTypes.SYSTEMS && isEntitlementsFiltered) {
+    // When an account is selected, show only the system that account belongs to
+    if (lane.laneType === LaneTypes.SYSTEMS && (isEntitlementsFiltered || selectedAccountId)) {
       const filteredSystemItems = lane.items.filter(item => {
         const systemId = item.node.id;
         const systemIdStr = String(systemId);
         const systemName = item.node.displayName;
+
+        // If an account is selected, filter to show only its system
+        if (selectedAccountId && (selectedAccountSystemName || selectedAccountSystemId)) {
+          const idMatch = selectedAccountSystemId && systemIdStr === selectedAccountSystemId;
+          const nameMatch = selectedAccountSystemName && systemName === selectedAccountSystemName;
+          console.log(`Systems filter (account): "${systemName}" (${systemIdStr}) vs account system "${selectedAccountSystemName}" (${selectedAccountSystemId}) -> idMatch=${idMatch}, nameMatch=${nameMatch}`);
+          return idMatch || nameMatch;
+        }
 
         // If a logical app is selected, filter to show only its underlying physical systems
         if (selectedLogicalAppId && (logicalAppUnderlyingSystemIds.length > 0 || logicalAppUnderlyingSystemNames.length > 0)) {
@@ -1591,6 +1608,31 @@ const AccessLens = ({
 
           const idMatch = underlyingSystemIds.includes(selectedSystemIdStr);
           const nameMatch = selectedSystemName && underlyingSystemNames.includes(selectedSystemName);
+          const match = idMatch || nameMatch;
+
+          console.log(`  Logical App "${item.node.displayName}": underlyingIds=[${underlyingSystemIds.join(',')}], underlyingNames=[${underlyingSystemNames.join(',')}] -> idMatch=${idMatch}, nameMatch=${nameMatch}, MATCH=${match}`);
+
+          return match;
+        });
+
+        console.log('Logical Apps after filter:', filteredLogicalAppItems.length);
+        logicalAppsFiltered = true;
+      }
+      // When an Account is selected, filter to Logical Apps whose underlying systems include the account's system
+      else if (selectedAccountId && (selectedAccountSystemName || selectedAccountSystemId)) {
+        console.log('=== Logical Apps Account Filter Debug ===');
+        console.log('Account System:', selectedAccountSystemName, '(ID:', selectedAccountSystemId, ')');
+        console.log('Logical Apps before filter:', filteredLogicalAppItems.length);
+
+        filteredLogicalAppItems = filteredLogicalAppItems.filter(item => {
+          // A Logical App is related to the account's system if:
+          // 1. The account's system is in the Logical App's underlyingSystemIds
+          // 2. The account's system is in the Logical App's underlyingSystems names
+          const underlyingSystemIds = (item.node.metadata?.underlyingSystemIds || []).map(id => String(id));
+          const underlyingSystemNames = (item.node.metadata?.underlyingSystems || []).map(s => s.name);
+
+          const idMatch = selectedAccountSystemId && underlyingSystemIds.includes(selectedAccountSystemId);
+          const nameMatch = selectedAccountSystemName && underlyingSystemNames.includes(selectedAccountSystemName);
           const match = idMatch || nameMatch;
 
           console.log(`  Logical App "${item.node.displayName}": underlyingIds=[${underlyingSystemIds.join(',')}], underlyingNames=[${underlyingSystemNames.join(',')}] -> idMatch=${idMatch}, nameMatch=${nameMatch}, MATCH=${match}`);
@@ -1722,7 +1764,10 @@ const AccessLens = ({
               →
             </button>
           </div>
-          <button className="reset-positions-btn" onClick={handleResetPositions} title="Reset lane positions">
+          <button className="expand-all-btn" onClick={handleExpandAll} title="Expand all lanes">
+            ⊞ Expand All
+          </button>
+          <button className="reset-positions-btn" onClick={handleResetPositions} title="Reset lane positions and clear filters">
             ↺ Reset Layout
           </button>
           {isFullscreen && onClose && (
@@ -1803,6 +1848,7 @@ const AccessLens = ({
                                   lane.laneType === LaneTypes.SYSTEMS ? selectedSystemId :
                                   lane.laneType === LaneTypes.LOGICAL_APPLICATIONS ? selectedLogicalAppId : null}
                   forceCollapsed={lanesForceCollapsed}
+                  forceExpanded={lanesForceExpanded}
                   isFilterSource={
                     // A lane is the "filter source" (shows "Filtering") if user clicked an item in it to filter other lanes
                     (lane.laneType === LaneTypes.ACCOUNTS && selectedAccountId !== null) ||

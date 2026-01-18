@@ -567,6 +567,23 @@
   border-color: #88c0d0;
 }
 
+/* Expand all button - matches reset positions style */
+.expand-all-btn {
+  padding: 0.35rem 0.6rem;
+  background: rgba(136, 192, 208, 0.1);
+  border: 1px solid rgba(136, 192, 208, 0.3);
+  border-radius: 4px;
+  color: #88c0d0;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.expand-all-btn:hover {
+  background: rgba(136, 192, 208, 0.2);
+  border-color: #88c0d0;
+}
+
 /* Animation for lanes appearing - only on initial render */
 /* NOTE: Animation disabled because transform is now handled inline */
 .draggable-lane:not(.dragging) {

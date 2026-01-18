@@ -1198,7 +1198,10 @@ function buildEntitlementsLane(assignments, filters) {
         type: assignment.resource?.resourceType?.name,
         complianceStatus: assignment.complianceStatus,
         validFrom: assignment.validFrom || null,
-        validTo: assignment.validTo || null
+        validTo: assignment.validTo || null,
+        // Account info for cross-lane filtering
+        accountName: assignment.account?.accountName,
+        accountId: assignment.account?.id
       },
       // Include full assignment data for Object Inspector
       rawData: {

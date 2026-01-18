@@ -31,7 +31,8 @@ const LaneCard = ({
   activeFilterId = null,
   forceCollapsed = false,  // When true, forces all lanes to collapsed state (used by Reset Layout)
   isFilterSource = false,  // When true, this lane is the source of filtering (shows "Filtering")
-  isFiltered = false       // When true, this lane is being filtered by another lane (shows "Filtered")
+  isFiltered = false,      // When true, this lane is being filtered by another lane (shows "Filtered")
+  forceExpanded = false    // When true, forces all lanes to expanded state (used by Expand All)
 }) => {
   const [isExpanded, setIsExpanded] = useState(!forceCollapsed);
   const [isMaximized, setIsMaximized] = useState(false);
@@ -48,6 +49,13 @@ const LaneCard = ({
       setIsMaximized(false);
     }
   }, [forceCollapsed]);
+
+  // Respond to forceExpanded changes from parent (e.g., Expand All)
+  useEffect(() => {
+    if (forceExpanded) {
+      setIsExpanded(true);
+    }
+  }, [forceExpanded]);
 
   if (!isVisible) return null;
 
