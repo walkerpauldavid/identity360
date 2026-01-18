@@ -26,8 +26,18 @@ const getDisplayValue = (value) => {
   return String(value);
 };
 
-const FocusCard = ({ node, onNavigateBack }) => {
-  if (!node) return null;
+const FocusCard = ({ node, onNavigateBack, isLoading = false }) => {
+  // Show loading placeholder when loading or no node
+  if (isLoading || !node) {
+    return (
+      <div className="focus-card focus-card-loading">
+        <div className="focus-loading-content">
+          <div className="focus-loading-spinner"></div>
+          <span className="focus-loading-text">Loading identity...</span>
+        </div>
+      </div>
+    );
+  }
 
   const nodeColor = getNodeColor(node.type);
 

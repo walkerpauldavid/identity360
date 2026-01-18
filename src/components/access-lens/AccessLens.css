@@ -16,13 +16,13 @@
 
 .access-lens.fullscreen {
   position: fixed;
-  top: 0;
+  top: 48px;  /* Keep Omada toolbar visible at top */
   left: 0;
   right: 0;
   bottom: 0;
   z-index: 2000;
   border-radius: 0;
-  min-height: 100vh;
+  min-height: calc(100vh - 48px);
 }
 
 /* Top Bar */
@@ -720,6 +720,39 @@
 .meta-value.meta-email:hover {
   color: #a3d4e0;
   text-decoration: underline;
+}
+
+/* Focus Card Loading Placeholder */
+.focus-card.focus-card-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 180px;
+  border: 2px dashed rgba(136, 192, 208, 0.4);
+  background: rgba(21, 21, 21, 0.6);
+  animation: placeholderPulse 2s ease-in-out infinite;
+}
+
+.focus-loading-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.focus-loading-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid rgba(136, 192, 208, 0.2);
+  border-top-color: #88c0d0;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.focus-loading-text {
+  font-size: 0.85rem;
+  color: rgba(136, 192, 208, 0.7);
+  font-style: italic;
 }
 
 /* Lane Card Loading Placeholder */

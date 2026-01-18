@@ -1879,6 +1879,7 @@ const AccessLens = ({
             >
               <FocusCard
                 node={focusNode}
+                isLoading={isLoading || lanesLoading}
                 onNavigateBack={() => history.length > 1 && handleBreadcrumbNavigate(history[history.length - 2], history.length - 2)}
               />
             </div>
