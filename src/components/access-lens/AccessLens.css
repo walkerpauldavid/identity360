@@ -1021,11 +1021,22 @@
 
 /* Lane card filter states */
 .lane-card.filter-source {
-  border-color: #a3be8c;
+  border: 3px solid #81a1c1;
+  box-shadow:
+    0 0 20px rgba(129, 161, 193, 0.6),
+    0 0 40px rgba(129, 161, 193, 0.4),
+    0 0 60px rgba(129, 161, 193, 0.2);
 }
 
 .lane-card.filter-source .lane-header {
-  background: rgba(163, 190, 140, 0.1);
+  background: rgba(94, 129, 172, 0.15);
+  border-left-color: #5e81ac;
+}
+
+.lane-card.filter-source .lane-filter-badge {
+  background: #5e81ac;
+  color: white;
+  font-weight: 600;
 }
 
 .lane-card.filtered {

@@ -57,6 +57,23 @@ const LaneCard = ({
     }
   }, [forceExpanded]);
 
+  // Clear selected resource types that are no longer available when lane items change
+  useEffect(() => {
+    if (selectedResourceTypes.length > 0 && lane.items) {
+      // Get available resource types from current items
+      const availableTypes = new Set(
+        lane.items
+          .map(item => item.node?.metadata?.type || item.rawData?.resourceType?.name)
+          .filter(Boolean)
+      );
+      // Filter out selected types that are no longer available
+      const validSelectedTypes = selectedResourceTypes.filter(type => availableTypes.has(type));
+      if (validSelectedTypes.length !== selectedResourceTypes.length) {
+        setSelectedResourceTypes(validSelectedTypes);
+      }
+    }
+  }, [lane.items, lane.isFiltered]);
+
   if (!isVisible) return null;
 
   const { laneType, totalCount, items, canLoadMore, allItemsData } = lane;
@@ -70,10 +87,13 @@ const LaneCard = ({
   // Determine which items to display (before filtering)
   const baseItems = isMaximized && allItems ? allItems : (isMaximized && allItemsData ? allItemsData : items);
 
-  // Extract unique resource types from all items for the dropdown
+  // Extract unique resource types from items for the dropdown
+  // When lane is filtered by cross-lane filtering, only show resource types from filtered items
+  // When not filtered, show all resource types from all items
+  const resourceTypeSource = laneIsFiltered ? items : (allItemsData || items || []);
   const allResourceTypes = showFilters
     ? [...new Set(
-        (allItemsData || items || [])
+        resourceTypeSource
           .map(item => item.node?.metadata?.type || item.rawData?.resourceType?.name)
           .filter(Boolean)
       )].sort()
