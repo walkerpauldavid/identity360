@@ -712,7 +712,7 @@ const AccessLens = ({
 
       // Step 2: Sort lanes by clockwise order and reveal them one by one
       // For System focus node, include required lanes even if empty (they are shown in visibleLanes)
-      const requiredLanesForSystem = [LaneTypes.IDENTITIES, LaneTypes.ACCOUNTS, LaneTypes.EFFECTIVE_ENTITLEMENTS];
+      const requiredLanesForSystem = [LaneTypes.IDENTITIES, LaneTypes.ACCOUNTS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.LOGICAL_APPLICATIONS];
       const lanesWithData = lanes.filter(lane => {
         const isVisible = filters.visibleLanes.includes(lane.laneType);
         const hasData = lane.items && lane.items.length > 0;
@@ -1133,10 +1133,10 @@ const AccessLens = ({
       setSelectedPolicyId(null);
     }
 
-    // Only load Object Inspector data if it's enabled
+    // Auto-show Object Inspector when an item is clicked
     if (!showObjectInspector) {
-      console.log('Object Inspector disabled, skipping data fetch');
-      return;
+      console.log('Auto-showing Object Inspector');
+      setShowObjectInspector(true);
     }
 
     // Set reason and expand inspector
@@ -2347,9 +2347,9 @@ const AccessLens = ({
     if (lane.items && lane.items.length > 0) return true;
 
     // For System focus node, always show required lanes even if empty (they may populate after filtering)
-    // This ensures Identities, Accounts, and Entitlements lanes are always visible
+    // This ensures Identities, Accounts, Entitlements, and Logical Applications lanes are always visible
     if (focusNode?.type === NodeTypes.SYSTEM) {
-      const requiredLanesForSystem = [LaneTypes.IDENTITIES, LaneTypes.ACCOUNTS, LaneTypes.EFFECTIVE_ENTITLEMENTS];
+      const requiredLanesForSystem = [LaneTypes.IDENTITIES, LaneTypes.ACCOUNTS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.LOGICAL_APPLICATIONS];
       if (requiredLanesForSystem.includes(lane.laneType)) {
         console.log(`Keeping empty lane "${lane.laneType}" for System focus node (required lane)`);
         return true;
@@ -2378,6 +2378,7 @@ const AccessLens = ({
     selectedLogicalAppId,
     selectedIdentityId,
     selectedPolicyId,
+    selectedEntitlementId,
     focusNode
   ]);
 

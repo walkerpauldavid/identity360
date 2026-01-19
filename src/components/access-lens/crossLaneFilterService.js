@@ -29,32 +29,37 @@ const applyFieldMatch = (item, sourceValue, targetField) => {
 /**
  * Apply an array contains filter
  * Checks if sourceValue is contained in target array, or if source array contains target value
+ * @param {Object} item - Item to check
+ * @param {*} sourceValue - Source value (can be array)
+ * @param {string} targetField - Field path to get target value from item
+ * @param {Set} [sourceSet] - Pre-computed Set of string source values for O(1) lookup
  */
-const applyArrayContains = (item, sourceValue, targetField) => {
+const applyArrayContains = (item, sourceValue, targetField, sourceSet = null) => {
   const targetValue = getItemValue(item, targetField);
 
-  // Source is array, target is single value
+  // Source is array, target is single value - use pre-computed Set if available
   if (Array.isArray(sourceValue)) {
-    const match = sourceValue.some(sv => String(sv) === String(targetValue));
-    // Debug logging for array filters (only log first few items)
-    if (item.node?.displayName && sourceValue.length > 0) {
-      console.log(`[ArrayContains] Source array[${sourceValue.length}] -> target "${targetValue}" (${item.node.displayName}): ${match}`);
+    const targetStr = targetValue != null ? String(targetValue) : '';
+    // Use pre-computed Set for O(1) lookup if available
+    if (sourceSet) {
+      return sourceSet.has(targetStr);
     }
-    return match;
+    // Fallback to linear search
+    return sourceValue.some(sv => String(sv) === targetStr);
   }
 
   // Target is array, source is single value
   if (Array.isArray(targetValue)) {
-    const match = targetValue.some(tv => String(tv) === String(sourceValue));
-    // Debug logging for array filters
-    if (item.node?.displayName && targetValue.length > 0) {
-      console.log(`[ArrayContains] Source "${sourceValue}" -> target array[${targetValue.length}] (${item.node.displayName}): ${match}`);
-    }
-    return match;
+    const sourceStr = sourceValue != null ? String(sourceValue) : '';
+    // Create Set from target for O(1) lookup (amortizes well for repeated checks)
+    const targetSet = new Set(targetValue.map(tv => String(tv)));
+    return targetSet.has(sourceStr);
   }
 
   // Both single values - fall back to field match
-  return String(targetValue) === String(sourceValue);
+  const sourceStr = sourceValue != null ? String(sourceValue) : '';
+  const targetStr = targetValue != null ? String(targetValue) : '';
+  return targetStr === sourceStr;
 };
 
 /**
@@ -107,96 +112,73 @@ const applyCascadedFilter = (targetItems, selectedNode, filterMapping, allLanes)
   const extractFields = intermediateExtractFields || (intermediateExtractField ? [intermediateExtractField] : []);
   const matchTargetFields = targetFields || (targetField ? [targetField] : []);
 
-  console.log('[CascadedFilter] Starting cascaded filter');
-  console.log('[CascadedFilter] Source field:', sourceField);
-  console.log('[CascadedFilter] Intermediate lane:', intermediateLane);
-  console.log('[CascadedFilter] Intermediate extract fields:', extractFields);
-
   // Get the source values (e.g., resourceIds from Policy)
   const sourceValues = getNestedValue(selectedNode, sourceField) ??
                        getNestedValue(selectedNode, `metadata.${sourceField}`);
 
   if (!sourceValues || (Array.isArray(sourceValues) && sourceValues.length === 0)) {
-    console.log('[CascadedFilter] No source values found, returning all items');
     return targetItems;
   }
 
+  // Pre-convert source values to Set of strings for O(1) lookup
   const sourceValuesArray = Array.isArray(sourceValues) ? sourceValues : [sourceValues];
-  console.log('[CascadedFilter] Source values:', sourceValuesArray.length, 'items');
+  const sourceValuesSet = new Set(sourceValuesArray.map(v => String(v)));
 
   // Find the intermediate lane
   const intermediateL = allLanes.find(l => l.laneType === intermediateLane);
   if (!intermediateL || !intermediateL.items) {
-    console.log('[CascadedFilter] Intermediate lane not found or has no items');
     return targetItems;
   }
 
-  console.log('[CascadedFilter] Intermediate lane has', intermediateL.items.length, 'items');
-
-  // Step 1: Filter intermediate items that match the source values
-  // Handle both single values and arrays for intermediateTargetField
+  // Step 1: Filter intermediate items that match the source values using Set for O(1) lookup
   const filteredIntermediateItems = intermediateL.items.filter(item => {
     const itemValue = getItemValue(item, intermediateTargetField);
-    if (!itemValue) return false;
+    if (itemValue == null) return false;
 
-    // If itemValue is an array (e.g., accountIds), check if any source value is in the array
+    // If itemValue is an array (e.g., accountIds), check if any value is in source Set
     if (Array.isArray(itemValue)) {
-      return sourceValuesArray.some(sv =>
-        itemValue.some(iv => String(iv) === String(sv))
-      );
+      return itemValue.some(iv => iv != null && sourceValuesSet.has(String(iv)));
     }
 
-    // Otherwise, simple match
-    return sourceValuesArray.some(sv => String(sv) === String(itemValue));
+    // Otherwise, simple Set lookup
+    return sourceValuesSet.has(String(itemValue));
   });
 
-  console.log('[CascadedFilter] Filtered intermediate items:', filteredIntermediateItems.length);
-
-  // Step 2: Extract unique values from filtered intermediate items
-  // Handle both single values and arrays (for deduplicated entitlements with accountIds/identityIds arrays)
-  // Also handle multiple extract fields - try each field and collect all non-null values
-  const extractedValues = new Set();
-  filteredIntermediateItems.forEach(item => {
+  // Step 2: Extract unique values from filtered intermediate items into a Set
+  // Handle both single values and arrays
+  const extractedValuesSet = new Set();
+  for (const item of filteredIntermediateItems) {
     // Try each extract field and collect all values found
     for (const extractField of extractFields) {
       const value = getItemValue(item, extractField);
-      if (value) {
+      if (value != null) {
         if (Array.isArray(value)) {
           // If the extracted value is an array, add each element
-          value.forEach(v => {
-            if (v != null) extractedValues.add(String(v));
-          });
+          for (const v of value) {
+            if (v != null) extractedValuesSet.add(String(v));
+          }
         } else {
-          extractedValues.add(String(value));
+          extractedValuesSet.add(String(value));
         }
       }
     }
-  });
-
-  const extractedValuesArray = Array.from(extractedValues);
-  console.log('[CascadedFilter] Extracted values from intermediate:', extractedValuesArray.length, 'unique values');
-  if (extractedValuesArray.length > 0 && extractedValuesArray.length <= 10) {
-    console.log('[CascadedFilter] Extracted values:', extractedValuesArray);
   }
 
-  if (extractedValuesArray.length === 0) {
-    console.log('[CascadedFilter] No values extracted from intermediate, returning empty');
+  if (extractedValuesSet.size === 0) {
     return [];
   }
 
-  // Step 3: Filter target items to only those matching extracted values
+  // Step 3: Filter target items using Set for O(1) lookup
   // Support multiple target fields - match if ANY target field matches ANY extracted value
   const filteredTargetItems = targetItems.filter(item => {
     for (const tField of matchTargetFields) {
       const targetValue = getItemValue(item, tField);
-      if (targetValue && extractedValuesArray.includes(String(targetValue))) {
+      if (targetValue != null && extractedValuesSet.has(String(targetValue))) {
         return true;
       }
     }
     return false;
   });
-
-  console.log('[CascadedFilter] Final filtered target items:', filteredTargetItems.length, 'of', targetItems.length);
 
   return filteredTargetItems;
 };
@@ -219,24 +201,64 @@ const applyFilterMapping = (items, selectedNode, filterMapping, allLanes = []) =
     return applyCascadedFilter(items, selectedNode, filterMapping, allLanes);
   }
 
+  // Pre-compute source values once (outside the filter loop)
+  let sourceValue = null;
+  let sourceSet = null;
+  let sourceStr = null;
+
+  if (type === CrossLaneFilterType.FIELD_MATCH || type === CrossLaneFilterType.ARRAY_CONTAINS) {
+    sourceValue = getNestedValue(selectedNode, sourceField) ??
+                  getNestedValue(selectedNode, `metadata.${sourceField}`);
+    if (!sourceValue) return items; // No source value, don't filter
+
+    // Pre-compute string conversion for FIELD_MATCH
+    if (type === CrossLaneFilterType.FIELD_MATCH) {
+      sourceStr = String(sourceValue);
+    }
+
+    // Pre-compute Set for ARRAY_CONTAINS with array source
+    if (type === CrossLaneFilterType.ARRAY_CONTAINS && Array.isArray(sourceValue)) {
+      sourceSet = new Set(sourceValue.map(v => String(v)));
+    }
+  }
+
+  // Pre-compute source field values for MULTI_FIELD_MATCH
+  let sourceFieldValues = null;
+  if (type === CrossLaneFilterType.MULTI_FIELD_MATCH && sourceFields) {
+    sourceFieldValues = [];
+    for (const sf of sourceFields) {
+      const val = getNestedValue(selectedNode, sf) ??
+                  getNestedValue(selectedNode, `metadata.${sf}`);
+      if (val != null) {
+        sourceFieldValues.push(String(val));
+      }
+    }
+    if (sourceFieldValues.length === 0) return items; // No source values found
+  }
+
   return items.filter(item => {
     switch (type) {
       case CrossLaneFilterType.FIELD_MATCH: {
-        const sourceValue = getNestedValue(selectedNode, sourceField) ??
-                           getNestedValue(selectedNode, `metadata.${sourceField}`);
-        if (!sourceValue) return true; // No source value, don't filter
-        return applyFieldMatch(item, sourceValue, targetField);
+        const targetValue = getItemValue(item, targetField);
+        if (targetValue == null) return false;
+        return String(targetValue) === sourceStr;
       }
 
       case CrossLaneFilterType.ARRAY_CONTAINS: {
-        const sourceValue = getNestedValue(selectedNode, sourceField) ??
-                           getNestedValue(selectedNode, `metadata.${sourceField}`);
-        if (!sourceValue) return true;
-        return applyArrayContains(item, sourceValue, targetField);
+        return applyArrayContains(item, sourceValue, targetField, sourceSet);
       }
 
       case CrossLaneFilterType.MULTI_FIELD_MATCH: {
-        return applyMultiFieldMatch(item, selectedNode, sourceFields, targetFields);
+        // Use pre-computed source values
+        for (const sourceStr of sourceFieldValues) {
+          for (const tf of targetFields) {
+            const targetValue = getItemValue(item, tf);
+            if (targetValue != null && String(targetValue) === sourceStr) {
+              return true;
+            }
+          }
+        }
+        return false;
       }
 
       default:
@@ -254,11 +276,37 @@ const findLane = (lanes, laneType) => {
 };
 
 /**
- * Find an item in a lane by ID
+ * Build a Map of item IDs to items for O(1) lookup
+ * @param {Object} lane - Lane object with items array
+ * @returns {Map} Map of string ID to item object
  */
-const findItemById = (lane, itemId) => {
+const buildItemIdMap = (lane) => {
+  const map = new Map();
+  if (!lane?.items) return map;
+  for (const item of lane.items) {
+    if (item.node?.id != null) {
+      map.set(String(item.node.id), item);
+    }
+  }
+  return map;
+};
+
+/**
+ * Find an item in a lane by ID using pre-built map or linear search
+ * @param {Object} lane - Lane object
+ * @param {string|number} itemId - ID to find
+ * @param {Map} [itemIdMap] - Optional pre-built map for O(1) lookup
+ */
+const findItemById = (lane, itemId, itemIdMap = null) => {
   if (!lane?.items || !itemId) return null;
   const itemIdStr = String(itemId);
+
+  // Use pre-built map for O(1) lookup if available
+  if (itemIdMap) {
+    return itemIdMap.get(itemIdStr) || null;
+  }
+
+  // Fallback to linear search
   return lane.items.find(item => String(item.node?.id) === itemIdStr);
 };
 
@@ -286,56 +334,80 @@ export const applyCrossLaneFilters = (
     return lanes;
   }
 
-  // Build a map of selection lane type to selected node
+  // Build lane lookup map for O(1) lane access
+  const laneMap = new Map();
+  for (const lane of lanes) {
+    laneMap.set(lane.laneType, lane);
+  }
+
+  // Build item ID maps for lanes that have selections (O(n) once, then O(1) lookups)
+  const itemIdMaps = new Map();
+  const selectionLaneTypes = [
+    [selections.identityId, LaneTypes.IDENTITIES],
+    [selections.accountId, LaneTypes.ACCOUNTS],
+    [selections.systemId, LaneTypes.SYSTEMS],
+    [selections.logicalAppId, LaneTypes.LOGICAL_APPLICATIONS],
+    [selections.policyId, LaneTypes.ASSIGNMENT_POLICIES],
+    [selections.entitlementId, LaneTypes.EFFECTIVE_ENTITLEMENTS]
+  ];
+
+  for (const [selectionId, laneType] of selectionLaneTypes) {
+    if (selectionId) {
+      const lane = laneMap.get(laneType);
+      if (lane) {
+        itemIdMaps.set(laneType, buildItemIdMap(lane));
+      }
+    }
+  }
+
+  // Build a map of selection lane type to selected node using O(1) lookups
   const selectionMap = {};
 
   if (selections.identityId) {
-    const identitiesLane = findLane(lanes, LaneTypes.IDENTITIES);
-    const selectedItem = findItemById(identitiesLane, selections.identityId);
+    const identitiesLane = laneMap.get(LaneTypes.IDENTITIES);
+    const selectedItem = findItemById(identitiesLane, selections.identityId, itemIdMaps.get(LaneTypes.IDENTITIES));
     if (selectedItem) {
       selectionMap[LaneTypes.IDENTITIES] = selectedItem.node;
     }
   }
 
   if (selections.accountId) {
-    const accountsLane = findLane(lanes, LaneTypes.ACCOUNTS);
-    const selectedItem = findItemById(accountsLane, selections.accountId);
+    const accountsLane = laneMap.get(LaneTypes.ACCOUNTS);
+    const selectedItem = findItemById(accountsLane, selections.accountId, itemIdMaps.get(LaneTypes.ACCOUNTS));
     if (selectedItem) {
       selectionMap[LaneTypes.ACCOUNTS] = selectedItem.node;
     }
   }
 
   if (selections.systemId) {
-    const systemsLane = findLane(lanes, LaneTypes.SYSTEMS);
-    const selectedItem = findItemById(systemsLane, selections.systemId);
+    const systemsLane = laneMap.get(LaneTypes.SYSTEMS);
+    const selectedItem = findItemById(systemsLane, selections.systemId, itemIdMaps.get(LaneTypes.SYSTEMS));
     if (selectedItem) {
       selectionMap[LaneTypes.SYSTEMS] = selectedItem.node;
     }
   }
 
   if (selections.logicalAppId) {
-    const logicalAppsLane = findLane(lanes, LaneTypes.LOGICAL_APPLICATIONS);
-    const selectedItem = findItemById(logicalAppsLane, selections.logicalAppId);
+    const logicalAppsLane = laneMap.get(LaneTypes.LOGICAL_APPLICATIONS);
+    const selectedItem = findItemById(logicalAppsLane, selections.logicalAppId, itemIdMaps.get(LaneTypes.LOGICAL_APPLICATIONS));
     if (selectedItem) {
       selectionMap[LaneTypes.LOGICAL_APPLICATIONS] = selectedItem.node;
     }
   }
 
   if (selections.policyId) {
-    const policiesLane = findLane(lanes, LaneTypes.ASSIGNMENT_POLICIES);
-    const selectedItem = findItemById(policiesLane, selections.policyId);
+    const policiesLane = laneMap.get(LaneTypes.ASSIGNMENT_POLICIES);
+    const selectedItem = findItemById(policiesLane, selections.policyId, itemIdMaps.get(LaneTypes.ASSIGNMENT_POLICIES));
     if (selectedItem) {
       selectionMap[LaneTypes.ASSIGNMENT_POLICIES] = selectedItem.node;
-      // console.log('[CrossLaneFilter] Policy selected:', selectedItem.node?.displayName);
     }
   }
 
   if (selections.entitlementId) {
-    const entitlementsLane = findLane(lanes, LaneTypes.EFFECTIVE_ENTITLEMENTS);
-    const selectedItem = findItemById(entitlementsLane, selections.entitlementId);
+    const entitlementsLane = laneMap.get(LaneTypes.EFFECTIVE_ENTITLEMENTS);
+    const selectedItem = findItemById(entitlementsLane, selections.entitlementId, itemIdMaps.get(LaneTypes.EFFECTIVE_ENTITLEMENTS));
     if (selectedItem) {
       selectionMap[LaneTypes.EFFECTIVE_ENTITLEMENTS] = selectedItem.node;
-      // console.log('[CrossLaneFilter] Entitlement selected:', selectedItem.node?.displayName);
     }
   }
 

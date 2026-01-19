@@ -43,8 +43,8 @@ import {
 // ============================================================================
 export const DebugConfig = {
   // API and data fetching
-  API_CALLS: false,           // Log API request/response details
-  API_ERRORS: false,          // Log API errors to console
+  API_CALLS: true,            // Log API request/response details
+  API_ERRORS: true,           // Log API errors to console
 
   // Lane building and data processing
   LANE_BUILDING: false,       // Log lane construction details
@@ -658,6 +658,35 @@ export const FocusNodeSchema = {
     }
   },
 
+  [NodeTypes.LOGICAL_APPLICATION]: {
+    title: 'Logical Application',
+    icon: '☁️',
+    color: '#8fbcbb',
+    primaryField: 'DISPLAYNAME|DisplayName|Name|name',
+    attributes: [
+      { field: 'DESCRIPTION|Description', label: 'Description', type: 'text', required: false },
+      { field: 'resourceCount', label: 'Entitlements', type: 'text', required: false },
+      { field: 'SYSTEMTYPE.DisplayName|systemType', label: 'Type', type: 'badge', required: false },
+      { field: 'underlyingSystems', label: 'Implemented By', type: 'array', required: false },
+      { field: 'Status|STATUS', label: 'Status', type: 'status', required: false }
+    ],
+    fieldMappings: {
+      id: ['UId', 'Uid', 'id', 'Id', 'ID'],
+      name: ['DISPLAYNAME', 'DisplayName', 'Name', 'name', 'NAME'],
+      displayName: ['DISPLAYNAME', 'DisplayName', 'Name', 'name'],
+      description: ['DESCRIPTION', 'Description', 'description'],
+      status: ['STATUS', 'Status', 'status'],
+      resourceCount: ['resourceCount'],
+      underlyingSystems: ['underlyingSystems', 'underlyingSystemIds']
+    },
+    apiSource: {
+      type: 'OData',
+      endpoint: 'System',
+      idField: 'UId',
+      selectFields: 'UId,Id,Name,DISPLAYNAME,DisplayName,DESCRIPTION,Description,SYSTEMTYPE,Status'
+    }
+  },
+
   [NodeTypes.CONTEXT]: {
     title: 'Context',
     icon: '🏷️',
@@ -1148,6 +1177,115 @@ export const LaneConfigSchema = {
     ]
   },
 
+  /**
+   * Logical Application as Focus Node
+   *
+   * When a Logical Application (system with resources but no direct accounts) is the central focus, show:
+   * - IDENTITIES: Users who have access to this logical application (via accounts on implementing systems)
+   * - SYSTEMS: Physical systems that implement this logical application
+   * - ENTITLEMENTS: Resources/entitlements on this logical application
+   *
+   * This view helps answer:
+   * - "Who has access to this application?"
+   * - "Which physical systems provide access to this application?"
+   * - "What entitlements exist on this application?"
+   */
+  [NodeTypes.LOGICAL_APPLICATION]: {
+    lanes: [
+      {
+        laneType: LaneTypes.IDENTITIES,
+        title: 'Users',
+        description: 'Identities with access to this logical application',
+        required: true,
+        apiSource: { type: 'derived', from: 'calculatedAssignments', extract: 'identities' },
+        position: { x: -520, y: -200 },
+        crossLaneFilters: {
+          filtersLanes: [LaneTypes.ACCOUNTS, LaneTypes.EFFECTIVE_ENTITLEMENTS],
+          filteredByLanes: [LaneTypes.ACCOUNTS, LaneTypes.EFFECTIVE_ENTITLEMENTS],
+          filterMappings: {
+            [LaneTypes.ACCOUNTS]: {
+              type: CrossLaneFilterType.ARRAY_CONTAINS,
+              sourceField: 'id',
+              targetField: 'metadata.identityIds'
+            },
+            [LaneTypes.EFFECTIVE_ENTITLEMENTS]: {
+              type: CrossLaneFilterType.ARRAY_CONTAINS,
+              sourceField: 'id',
+              targetField: 'metadata.identityIds'
+            }
+          }
+        }
+      },
+      {
+        laneType: LaneTypes.SYSTEMS,
+        title: 'Implementing Systems',
+        description: 'Physical systems that provide access to this logical application',
+        required: true,
+        apiSource: { type: 'derived', from: 'focusNode', extract: 'underlyingSystems' },
+        position: { x: 520, y: -200 },
+        crossLaneFilters: {
+          filtersLanes: [LaneTypes.ACCOUNTS],
+          filteredByLanes: [],
+          filterMappings: {
+            [LaneTypes.ACCOUNTS]: {
+              type: CrossLaneFilterType.DIRECT_MATCH,
+              sourceField: 'id',
+              targetField: 'metadata.systemId'
+            }
+          }
+        }
+      },
+      {
+        laneType: LaneTypes.ACCOUNTS,
+        title: 'Accounts',
+        description: 'Accounts that provide access to this logical application',
+        required: true,
+        apiSource: { type: 'derived', from: 'calculatedAssignments', extract: 'accounts' },
+        position: { x: 520, y: 200 },
+        crossLaneFilters: {
+          filtersLanes: [LaneTypes.IDENTITIES, LaneTypes.EFFECTIVE_ENTITLEMENTS],
+          filteredByLanes: [LaneTypes.IDENTITIES, LaneTypes.SYSTEMS],
+          filterMappings: {
+            [LaneTypes.IDENTITIES]: {
+              type: CrossLaneFilterType.ARRAY_CONTAINS,
+              sourceField: 'metadata.identityIds',
+              targetField: 'id'
+            },
+            [LaneTypes.EFFECTIVE_ENTITLEMENTS]: {
+              type: CrossLaneFilterType.ARRAY_CONTAINS,
+              sourceField: 'id',
+              targetField: 'metadata.accountIds'
+            }
+          }
+        }
+      },
+      {
+        laneType: LaneTypes.EFFECTIVE_ENTITLEMENTS,
+        title: 'Entitlements',
+        description: 'Resources/entitlements on this logical application',
+        required: true,
+        apiSource: { type: 'derived', from: 'calculatedAssignments', extract: 'entitlements' },
+        position: { x: -520, y: 200 },
+        crossLaneFilters: {
+          filtersLanes: [LaneTypes.IDENTITIES, LaneTypes.ACCOUNTS],
+          filteredByLanes: [LaneTypes.IDENTITIES, LaneTypes.ACCOUNTS],
+          filterMappings: {
+            [LaneTypes.IDENTITIES]: {
+              type: CrossLaneFilterType.ARRAY_CONTAINS,
+              sourceField: 'metadata.identityIds',
+              targetField: 'id'
+            },
+            [LaneTypes.ACCOUNTS]: {
+              type: CrossLaneFilterType.ARRAY_CONTAINS,
+              sourceField: 'metadata.accountIds',
+              targetField: 'id'
+            }
+          }
+        }
+      }
+    ]
+  },
+
   [NodeTypes.ACCOUNT]: {
     lanes: [
       {
@@ -1444,7 +1582,9 @@ export const getLanesForNodeType = (nodeType) => {
     case NodeTypes.ENTITLEMENT:
       return [LaneTypes.IDENTITIES, LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS];
     case NodeTypes.SYSTEM:
-      return [LaneTypes.ACCOUNTS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.IDENTITIES];
+      return [LaneTypes.ACCOUNTS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.IDENTITIES, LaneTypes.LOGICAL_APPLICATIONS];
+    case NodeTypes.LOGICAL_APPLICATION:
+      return [LaneTypes.IDENTITIES, LaneTypes.SYSTEMS, LaneTypes.ACCOUNTS, LaneTypes.EFFECTIVE_ENTITLEMENTS];
     case NodeTypes.ACCOUNT:
       return [LaneTypes.IDENTITIES, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.SYSTEMS];
     case NodeTypes.ASSIGNMENT_POLICY:

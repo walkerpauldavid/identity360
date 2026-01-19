@@ -786,7 +786,7 @@ export const assignmentApi = {
     let requestId;
     let endpoint;
     try {
-      endpoint = `${API_CONFIG.baseUrl}${API_CONFIG.endpoints.graphql.v2_19}`;
+      endpoint = `${API_CONFIG.baseUrl}${API_CONFIG.endpoints.graphql.v3_2}`;
       const queryObject = GraphQLQueries.getCalculatedAssignmentsDetailed(
         identityUIds,
         filters,
@@ -923,6 +923,312 @@ export const assignmentApi = {
 };
 
 /**
+ * Assignment Policy API Methods
+ * For working with Omada Assignment Policies (automatic entitlement/account assignment rules)
+ *
+ * Assignment Policies automatically assign entitlements and accounts to identities based on contexts.
+ * Key fields:
+ * - DISPLAYNAME: Policy display name
+ * - DESCRIPTION: Policy description
+ * - AP_CONTEXTS: Array of contexts that trigger this policy (identities in these contexts get the policy's resources)
+ * - AP_RESOURCES: Array of resources (entitlements) assigned by this policy
+ * - AP_ACCOUNTRESOURCES: Array of account resources assigned by this policy
+ * - ISACTIVE: Whether the policy is currently active
+ * - VALIDFROM, VALIDTO: Policy validity period
+ */
+export const assignmentPolicyApi = {
+  /**
+   * Get all assignment policies
+   * @param {string} bearerToken - OAuth bearer token
+   * @param {string} impersonateUser - User email for impersonation
+   * @param {Object} options - Query options (filter, select, top, skip, orderBy)
+   * @returns {Promise<Object>} Assignment policies list
+   */
+  getAssignmentPolicies: async (bearerToken, impersonateUser, options = {}) => {
+    let requestId;
+    let url;
+    try {
+      const { filter, top = 100, skip, orderBy = 'DISPLAYNAME' } = options;
+
+      // Build the OData URL for Assignmentpolicy entity
+      url = `${API_CONFIG.baseUrl}${API_CONFIG.endpoints.odata.dataObjects}/Assignmentpolicy`;
+
+      // Build query parameters
+      const params = new URLSearchParams();
+      if (filter) params.append('$filter', filter);
+      if (top !== undefined) params.append('$top', top);
+      if (skip !== undefined) params.append('$skip', skip);
+      if (orderBy) params.append('$orderby', orderBy);
+      params.append('$count', 'true');
+
+      const queryString = params.toString();
+      if (queryString) {
+        url = `${url}?${queryString}`;
+      }
+
+      const requestHeaders = await getHeaders(bearerToken, impersonateUser);
+      requestId = apiLogger.logRequest('OData', url, {
+        method: 'GET',
+        entityType: 'Assignmentpolicy',
+        ...options
+      }, requestHeaders);
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: requestHeaders
+      });
+
+      const responseHeaders = Object.fromEntries(response.headers.entries());
+      const statusCode = response.status;
+      const rawResponseText = await response.clone().text();
+
+      if (!response.ok) {
+        const error = new Error(`HTTP ${response.status}: ${response.statusText} - ${rawResponseText}`);
+        apiLogger.logResponse(requestId, 'OData', url, null, false, error, responseHeaders, statusCode, rawResponseText);
+        throw error;
+      }
+
+      const data = JSON.parse(rawResponseText);
+
+      const result = {
+        status: 'success',
+        data: data.value || [],
+        total: data['@odata.count'] || data.value?.length || 0,
+        endpoint: url
+      };
+
+      apiLogger.logResponse(requestId, 'OData', url, result, true, null, responseHeaders, statusCode, rawResponseText);
+
+      return result;
+    } catch (error) {
+      if (requestId) {
+        apiLogger.logResponse(requestId, 'OData', url || 'getAssignmentPolicies', null, false, error, {}, null, null);
+      }
+      return handleApiError(error, 'assignmentPolicy.getAssignmentPolicies');
+    }
+  },
+
+  /**
+   * Get assignment policy by ID
+   * @param {string} policyId - Policy ID (integer or UId)
+   * @param {string} bearerToken - OAuth bearer token
+   * @param {string} impersonateUser - User email for impersonation
+   * @returns {Promise<Object>} Assignment policy details with contexts and resources
+   */
+  getAssignmentPolicyById: async (policyId, bearerToken, impersonateUser) => {
+    let requestId;
+    let url;
+    try {
+      // Check if policyId is a UUID or integer
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(policyId);
+
+      if (isUuid) {
+        // Use filter for UUID
+        url = `${API_CONFIG.baseUrl}${API_CONFIG.endpoints.odata.dataObjects}/Assignmentpolicy?$filter=UId eq ${policyId}`;
+      } else {
+        // Use direct ID access for integer
+        url = `${API_CONFIG.baseUrl}${API_CONFIG.endpoints.odata.dataObjects}/Assignmentpolicy(${policyId})`;
+      }
+
+      const requestHeaders = await getHeaders(bearerToken, impersonateUser);
+      requestId = apiLogger.logRequest('OData', url, {
+        method: 'GET',
+        policyId
+      }, requestHeaders);
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: requestHeaders
+      });
+
+      const responseHeaders = Object.fromEntries(response.headers.entries());
+      const statusCode = response.status;
+      const rawResponseText = await response.clone().text();
+
+      if (!response.ok) {
+        const error = new Error(`HTTP ${response.status}: ${response.statusText} - ${rawResponseText}`);
+        apiLogger.logResponse(requestId, 'OData', url, null, false, error, responseHeaders, statusCode, rawResponseText);
+        throw error;
+      }
+
+      const data = JSON.parse(rawResponseText);
+
+      // Handle both single object and array response
+      const policyData = isUuid
+        ? (data.value?.[0] || null)
+        : data;
+
+      const result = {
+        status: 'success',
+        data: policyData,
+        endpoint: url
+      };
+
+      apiLogger.logResponse(requestId, 'OData', url, result, true, null, responseHeaders, statusCode, rawResponseText);
+
+      return result;
+    } catch (error) {
+      if (requestId) {
+        apiLogger.logResponse(requestId, 'OData', url || 'getAssignmentPolicyById', null, false, error, {}, null, null);
+      }
+      return handleApiError(error, 'assignmentPolicy.getAssignmentPolicyById');
+    }
+  },
+
+  /**
+   * Get assignment policies by context
+   * Finds all policies that are triggered by a specific context
+   * @param {string} contextId - Context ID (UId)
+   * @param {string} bearerToken - OAuth bearer token
+   * @param {string} impersonateUser - User email for impersonation
+   * @returns {Promise<Object>} Assignment policies linked to this context
+   */
+  getAssignmentPoliciesByContext: async (contextId, bearerToken, impersonateUser) => {
+    let requestId;
+    let url;
+    try {
+      // Query policies where AP_CONTEXTS contains the given context ID
+      // Note: OData array filtering may require specific syntax depending on Omada's implementation
+      url = `${API_CONFIG.baseUrl}${API_CONFIG.endpoints.odata.dataObjects}/Assignmentpolicy`;
+      // We'll fetch all and filter client-side, as OData array filtering can be complex
+      const params = new URLSearchParams();
+      params.append('$count', 'true');
+
+      url = `${url}?${params.toString()}`;
+
+      const requestHeaders = await getHeaders(bearerToken, impersonateUser);
+      requestId = apiLogger.logRequest('OData', url, {
+        method: 'GET',
+        contextId
+      }, requestHeaders);
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: requestHeaders
+      });
+
+      const responseHeaders = Object.fromEntries(response.headers.entries());
+      const statusCode = response.status;
+      const rawResponseText = await response.clone().text();
+
+      if (!response.ok) {
+        const error = new Error(`HTTP ${response.status}: ${response.statusText} - ${rawResponseText}`);
+        apiLogger.logResponse(requestId, 'OData', url, null, false, error, responseHeaders, statusCode, rawResponseText);
+        throw error;
+      }
+
+      const data = JSON.parse(rawResponseText);
+      const allPolicies = data.value || [];
+
+      // Filter client-side to find policies with matching context
+      const filteredPolicies = allPolicies.filter(policy => {
+        const contexts = policy.AP_CONTEXTS || [];
+        return contexts.some(ctx =>
+          ctx.UId === contextId ||
+          String(ctx.Id) === String(contextId)
+        );
+      });
+
+      const result = {
+        status: 'success',
+        data: filteredPolicies,
+        total: filteredPolicies.length,
+        endpoint: url,
+        filteredBy: { contextId }
+      };
+
+      apiLogger.logResponse(requestId, 'OData', url, result, true, null, responseHeaders, statusCode, rawResponseText);
+
+      return result;
+    } catch (error) {
+      if (requestId) {
+        apiLogger.logResponse(requestId, 'OData', url || 'getAssignmentPoliciesByContext', null, false, error, {}, null, null);
+      }
+      return handleApiError(error, 'assignmentPolicy.getAssignmentPoliciesByContext');
+    }
+  },
+
+  /**
+   * Extract policy-to-context mapping from all policies
+   * Creates a map of contextId -> [policies] for quick lookup
+   * @param {string} bearerToken - OAuth bearer token
+   * @param {string} impersonateUser - User email for impersonation
+   * @returns {Promise<Object>} Map of contextId to policies
+   */
+  buildContextToPolicyMap: async (bearerToken, impersonateUser) => {
+    try {
+      const policiesResult = await assignmentPolicyApi.getAssignmentPolicies(bearerToken, impersonateUser, { top: 500 });
+
+      if (policiesResult.status !== 'success') {
+        return { status: 'error', error: 'Failed to fetch policies' };
+      }
+
+      const contextToPolicies = new Map();
+      const policyToContexts = new Map();
+      const policyToResources = new Map();
+
+      policiesResult.data.forEach(policy => {
+        const policyId = policy.UId || policy.Id;
+        const policyInfo = {
+          id: policyId,
+          intId: policy.Id,
+          name: policy.DISPLAYNAME || policy.DisplayName || policy.Name,
+          description: policy.DESCRIPTION || policy.Description,
+          isActive: policy.ISACTIVE !== false,
+          validFrom: policy.VALIDFROM,
+          validTo: policy.VALIDTO
+        };
+
+        // Map contexts to this policy
+        const contexts = policy.AP_CONTEXTS || [];
+        const contextIds = [];
+        contexts.forEach(ctx => {
+          const ctxId = ctx.UId || String(ctx.Id);
+          contextIds.push(ctxId);
+
+          if (!contextToPolicies.has(ctxId)) {
+            contextToPolicies.set(ctxId, []);
+          }
+          contextToPolicies.get(ctxId).push({
+            ...policyInfo,
+            contextDisplayName: ctx.DisplayName
+          });
+        });
+        policyToContexts.set(policyId, contextIds);
+
+        // Map resources (entitlements) assigned by this policy
+        const resources = policy.AP_RESOURCES || [];
+        const accountResources = policy.AP_ACCOUNTRESOURCES || [];
+        policyToResources.set(policyId, {
+          resources: resources.map(r => ({
+            id: r.UId || r.Id,
+            name: r.DisplayName || r.Name,
+            type: 'Resource'
+          })),
+          accountResources: accountResources.map(r => ({
+            id: r.UId || r.Id,
+            name: r.DisplayName || r.Name,
+            type: 'AccountResource'
+          }))
+        });
+      });
+
+      return {
+        status: 'success',
+        data: {
+          contextToPolicies: Object.fromEntries(contextToPolicies),
+          policyToContexts: Object.fromEntries(policyToContexts),
+          policyToResources: Object.fromEntries(policyToResources),
+          totalPolicies: policiesResult.data.length
+        }
+      };
+    } catch (error) {
+      return handleApiError(error, 'assignmentPolicy.buildContextToPolicyMap');
+    }
+  }
+};
+
+/**
  * Generic OData API Methods
  * For querying any OData entity type
  */
@@ -1010,6 +1316,7 @@ export const omadaApi = {
   accessRequest: accessRequestApi,
   approval: approvalApi,
   assignment: assignmentApi,
+  assignmentPolicy: assignmentPolicyApi,
   odata: odataApi
 };
 

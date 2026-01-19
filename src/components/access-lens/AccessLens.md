@@ -141,6 +141,27 @@ As a user, when viewing a System as the central node and I click on an account i
 **US-083: Loading Overlay During Pivot**
 As a user, when pivoting to a different central node (System, Entitlement, Identity), I want to see a loading overlay with status messages (e.g., "Fetching access data for [name]..."), so that I know the system is loading new data.
 
+### Logical Applications Lane
+
+**US-080L: Logical Application Display**
+As a user, I want to see a Logical Applications lane that groups resources by their parent application/system, so that I can understand access from a business application perspective rather than just individual entitlements.
+
+**US-081L: Logical Application Derivation**
+As a user, I want Logical Applications to be derived automatically from my effective entitlements (by grouping resources that share the same parent system), so that I don't need to manually configure application groupings.
+
+**US-082L: Logical Application Metadata**
+As a user, I want each Logical Application to display:
+- The application name (derived from the system's DISPLAYNAME)
+- A count of resources within that application
+- A count of underlying accounts (if any)
+- System classification and owner information when available
+
+**US-083L: Bidirectional Filtering with Systems**
+As a user, when I click on a Logical Application, I want to see the Systems lane filtered to show the underlying physical systems, AND when I click on a System, I want to see the Logical Applications lane filtered to show only apps that use that system.
+
+**US-084L: Logical vs Physical System Distinction**
+As a user, I want Logical Applications to be visually distinct from Physical Systems (different icon styling), so that I can differentiate between abstract application groupings and concrete system access.
+
 ### Entitlement-Centric View
 
 **US-090: Entitlement Resource Owner**
@@ -175,6 +196,23 @@ Account-type resources shall be excluded from the Effective Entitlements lane. O
 **BR-004: System Classification**
 Systems shall be classified as either Physical Systems or Logical Applications based on whether they have direct accounts. Logical Applications have resources but no direct account associations.
 
+**BR-004a: Logical Application Derivation**
+Logical Applications shall be derived from the identity's calculated assignments by:
+1. Extracting unique system references from all effective entitlements
+2. Grouping resources by their parent system (using ABORESSION or systemRef)
+3. Creating a logical application node for each unique system grouping
+4. Setting `metadata.isLogical = true` for systems without direct accounts
+
+**BR-004b: Logical Application Resource Tracking**
+Each Logical Application shall track:
+- `resourceCount`: Number of unique resources/entitlements within the application
+- `accountCount`: Number of accounts on underlying systems (may be 0 for logical-only apps)
+- `underlyingSystems`: Array of physical system IDs that comprise this logical application
+- `resourceIds`: Array of resource IDs belonging to this application (for filtering)
+
+**BR-004c: Logical Application Display Priority**
+When both Physical Systems and Logical Applications exist for the same underlying system, both shall be displayed in their respective lanes to provide different perspectives on access.
+
 **BR-005: Identity Display Format**
 Identity names shall be displayed as DISPLAYNAME with IDENTITYID in parentheses when available (e.g., "John Smith (EMP12345)").
 
@@ -195,6 +233,28 @@ The "Reset Layout" action shall:
 
 **BR-013: Resource Type Filter Persistence**
 Selected resource type filters shall be automatically cleared if they are no longer valid after cross-lane filtering changes the available types.
+
+### Logical Application Filtering Rules
+
+**BR-014: Logical Application -> Entitlements Filtering**
+When a Logical Application is selected, the Effective Entitlements lane shall filter to show only entitlements whose ABORESSION or systemRef matches the logical application's underlying system(s).
+
+**BR-015: Logical Application -> Systems Filtering**
+When a Logical Application is selected, the Systems lane shall filter to show only the physical systems that underlie the selected logical application.
+
+**BR-016: Logical Application -> Accounts Filtering (Cascaded)**
+When a Logical Application is selected, the Accounts lane shall filter using cascaded filtering:
+1. First, determine the underlying system IDs from the logical application
+2. Then, filter accounts to show only those whose systemRef matches any underlying system
+This is a cascaded filter relationship, not a direct field match.
+
+**BR-017: Systems -> Logical Applications Filtering**
+When a System is selected, the Logical Applications lane shall filter to show only logical applications that include the selected system in their underlyingSystems array.
+
+**BR-018: Accounts -> Logical Applications Filtering (Cascaded)**
+When an Account is selected, the Logical Applications lane shall filter using cascaded filtering:
+1. First, extract the systemRef from the selected account
+2. Then, filter logical applications to show only those whose underlyingSystems include that systemRef
 
 ### Layout Rules
 
@@ -243,6 +303,412 @@ Search input shall filter as the user types without requiring explicit submissio
 
 ---
 
+## Technical Architecture
+
+### Schema-Driven Design
+
+Access Lens uses a schema-driven architecture to define lane configurations, cross-lane filtering relationships, and field mappings. This approach enables:
+
+- **Configuration over code**: Lane behavior is defined in schema objects rather than hardcoded logic
+- **Consistent filtering**: Cross-lane filter relationships are declaratively defined
+- **Easier extensibility**: Adding new node types or lanes requires schema updates, not code changes
+
+### Key Schema Definitions (accessLensTypes.js)
+
+**LaneConfigSchema**: Defines which lanes appear for each focus node type
+```javascript
+LaneConfigSchema[NodeTypes.IDENTITY] = {
+  lanes: [
+    {
+      laneType: LaneTypes.SYSTEMS,
+      title: 'Systems',
+      required: false,
+      crossLaneFilters: { ... }
+    },
+    // ... more lanes
+  ]
+}
+```
+
+**CrossLaneFilterType**: Enum defining filter relationship types
+- `FIELD_MATCH`: Direct field equality comparison
+- `ARRAY_CONTAINS`: Check if value exists in array
+- `MULTI_FIELD_MATCH`: Match any of multiple source fields to any of multiple target fields
+
+**FocusNodeSchema**: Defines attributes and field mappings for each node type
+
+### Service Layer
+
+**crossLaneFilterService.js**: Provides schema-driven cross-lane filtering
+- `applyCrossLaneFilters(lanes, focusNodeType, selections, additionalFilters)` - Main filtering function
+- `filterVisibleLanes(lanes, focusNodeType, visibleLanes)` - Handles required lanes visibility
+- `isLaneFiltered(laneType, focusNodeType, selections)` - Check if lane is being filtered
+- `isLaneFilterSource(laneType, selections)` - Check if lane is the filter source
+
+**laneBuilderService.js**: Provides generic lane building from assignments
+- `buildLane(laneType, assignments, extractType, options)` - Generic lane builder
+- `buildLanesForFocusNode(focusNodeType, assignments, options)` - Orchestrates lane building
+- `extractUniqueItems(assignments, extractType, options)` - Generic item extraction with cross-reference tracking
+
+**accessLensDataService.js**: Main data service with specialized lane builders
+- `buildLanesFromAssignments(assignments, filters, options)` - Builds lanes from API data
+- `buildLanesForEntitlement(assignments, filters, entitlementNode)` - Entitlement-centric lane building
+
+### Feature Flags
+
+Two feature flags control the transition to schema-driven architecture:
+
+```javascript
+// In AccessLens.jsx
+const USE_SCHEMA_DRIVEN_FILTERING = false;  // Enable schema-driven cross-lane filtering
+
+// In accessLensDataService.js
+const USE_SCHEMA_DRIVEN_LANE_BUILDING = false;  // Enable schema-driven lane building
+```
+
+When disabled (default), the legacy hardcoded logic is used. When enabled, the schema-driven services handle filtering and lane building.
+
+### Logical Applications Architecture
+
+The Logical Applications lane provides a business-centric view of access by grouping entitlements by their parent system/application.
+
+#### Data Flow
+
+```
+calculatedAssignments (from Identity API)
+        ↓
+    extractorRegistry['logicalApps']
+        ↓
+    buildLogicalApplicationsLane()
+        ↓
+    Logical Applications Lane Items
+```
+
+#### Building Logical Applications
+
+The `buildLogicalApplicationsLane` function in `accessLensDataService.js`:
+
+1. **Extracts system references** from each calculated assignment using ABORESSION or resource.systemRef
+2. **Groups resources** by their parent system ID
+3. **Creates logical application nodes** with metadata:
+   ```javascript
+   {
+     node: {
+       id: systemRef,
+       type: 'System',
+       displayName: systemDisplayName,
+       metadata: {
+         isLogical: true,
+         resourceCount: count,
+         accountCount: 0,  // Logical apps have no direct accounts
+         underlyingSystems: [systemRef],
+         resourceIds: [...] // For filtering entitlements
+       }
+     }
+   }
+   ```
+
+#### Cross-Lane Filter Schema
+
+Logical Applications cross-lane filtering is defined in `LaneConfigSchema`:
+
+```javascript
+// Logical Applications filtering other lanes
+{
+  laneType: LaneTypes.LOGICAL_APPLICATIONS,
+  crossLaneFilters: {
+    [LaneTypes.EFFECTIVE_ENTITLEMENTS]: {
+      filterType: CrossLaneFilterType.ARRAY_CONTAINS,
+      sourceField: 'node.metadata.resourceIds',
+      targetField: 'node.id'
+    },
+    [LaneTypes.SYSTEMS]: {
+      filterType: CrossLaneFilterType.MULTI_FIELD_MATCH,
+      sourceFields: ['node.metadata.underlyingSystems', 'node.id'],
+      targetFields: ['node.id', 'rawData.ABORESSION']
+    },
+    [LaneTypes.ACCOUNTS]: {
+      filterType: CrossLaneFilterType.CASCADED_THROUGH,
+      intermediateTarget: LaneTypes.SYSTEMS,
+      intermediateExtractFields: ['node.metadata.underlyingSystems', 'node.id'],
+      targetFields: ['rawData.systemRef', 'rawData.ABORESSION']
+    }
+  }
+}
+
+// Systems filtering Logical Applications
+{
+  laneType: LaneTypes.SYSTEMS,
+  crossLaneFilters: {
+    [LaneTypes.LOGICAL_APPLICATIONS]: {
+      filterType: CrossLaneFilterType.MULTI_FIELD_MATCH,
+      sourceFields: ['node.id', 'rawData.ABORESSION'],
+      targetFields: ['node.metadata.underlyingSystems', 'node.id']
+    }
+  }
+}
+```
+
+#### Cascaded Filtering
+
+For filtering relationships that require an intermediate step (e.g., Account -> Logical Apps), the system uses `CASCADED_THROUGH`:
+
+1. Extract values from source item using `intermediateExtractFields`
+2. Use those values to match against `targetFields` on the target lane items
+3. This allows Account -> System -> Logical App filtering without storing redundant data
+
+---
+
+## Data Loading Architecture
+
+### API Layer
+
+Access Lens fetches data from Omada Identity Cloud using two API types:
+
+**GraphQL API (Primary)**
+- Used for fetching calculated assignments, identities having resources
+- Endpoint: `/api/graphql/v3.2`
+- Supports filtering, sorting, and pagination
+
+**OData API (Enrichment)**
+- Used for fetching detailed entity attributes (Identity, System, Resource details)
+- Endpoint: `/OData/DataObjects/{EntityType}`
+- Used to enrich nodes with additional metadata not available in GraphQL
+
+### Pagination Configuration
+
+All GraphQL calls use configurable pagination defined in `queryBuilder.js`:
+
+```javascript
+export const GRAPHQL_PAGINATION = {
+  DEFAULT_ROWS: 10,        // Default page size
+  MAX_ROWS: 5000,          // Maximum rows per request
+  DEFAULT_PAGE: 1,         // Starting page
+
+  // Query-specific defaults
+  CALCULATED_ASSIGNMENTS: { DEFAULT_ROWS: 10, MAX_ROWS: 5000 },
+  IDENTITIES_HAVING_RESOURCE: { DEFAULT_ROWS: 10, MAX_ROWS: 2000 },
+  CONTEXTS: { DEFAULT_ROWS: 10, MAX_ROWS: 500 }
+};
+```
+
+### Data Flow by Focus Node Type
+
+**Identity-Centric View (Default)**
+```
+1. User selects Identity
+   ↓
+2. API: getCalculatedAssignmentsDetailed(identityId)
+   → Returns all assignments for this identity
+   ↓
+3. API: getIdentityContexts(identityId)
+   → Returns organizational contexts
+   ↓
+4. Parallel OData enrichment:
+   - fetchAllSystemDetails() → System metadata
+   - fetchAllIdentityDetails() → Identity metadata
+   ↓
+5. buildLanesFromAssignments()
+   → Builds: Systems, Accounts, Entitlements, Logical Apps lanes
+   ↓
+6. Render lanes around central Identity node
+```
+
+**System-Centric View**
+```
+1. User pivots to System
+   ↓
+2. API: odata.query('System', filter: UId eq systemId)
+   → Fetches system details for focus node
+   ↓
+3. API: getCalculatedAssignmentsDetailed(null, {systemId})
+   → Returns all assignments where resource is on this system
+   ↓
+4. buildLanesFromAssignments({includeIdentities: true, focusSystemId})
+   → Builds: Identities, Accounts, Entitlements, Logical Apps lanes
+   ↓
+5. Render lanes around central System node
+```
+
+**Entitlement-Centric View**
+```
+1. User pivots to Entitlement
+   ↓
+2. API: odata.query('Resource', filter: UId eq resourceId)
+   → Fetches resource details including OWNERREF
+   ↓
+3. API: getIdentitiesHavingResource(resourceId)
+   → Returns all identities assigned this resource
+   ↓
+4. buildSystemLanesForEntitlement()
+   → Determines if resource is on Logical App or Physical System
+   ↓
+5. buildLanesForEntitlement()
+   → Builds: Identities, Accounts, Systems/Logical Apps lanes
+   ↓
+6. Render lanes around central Entitlement node
+```
+
+### Lane Building Process
+
+The lane building process follows these steps:
+
+1. **Extract unique items** from assignments based on lane type
+2. **Enrich with OData** metadata when available
+3. **Build node objects** with standardized structure
+4. **Apply exclusion rules** (e.g., filter out "personal account" resources)
+5. **Sort items** according to schema configuration
+6. **Return lane object** with items, counts, and metadata
+
+**Lane Object Structure:**
+```javascript
+{
+  laneType: 'Accounts',           // Lane type identifier
+  totalCount: 25,                 // Total items before filtering
+  items: [...],                   // Array of lane items
+  allItemsData: [...],            // Full data for filtering
+  canLoadMore: false              // Pagination indicator
+}
+```
+
+**Lane Item Structure:**
+```javascript
+{
+  node: {
+    id: 'uuid',                   // Unique identifier
+    type: 'Account',              // Node type
+    displayName: 'jsmith',        // Display name
+    status: 'active',             // Status indicator
+    badges: ['AD', 'Service'],    // Visual badges
+    metadata: { ... },            // Additional attributes
+    rawData: { ... }              // Original API response
+  },
+  reasons: [...],                 // Assignment reasons
+  groupKey: 'system-id',          // For grouping
+  groupLabel: 'Active Directory'  // Group display name
+}
+```
+
+### Schema-Driven Lane Configuration
+
+Lanes are configured via `LaneSchema` in `accessLensTypes.js`:
+
+```javascript
+export const LaneSchema = {
+  [LaneTypes.ACCOUNTS]: {
+    extractType: 'accounts',           // Extractor function key
+    nodeType: NodeTypes.ACCOUNT,       // Node type for items
+    title: 'Accounts',
+    icon: '👤',
+    color: '#a3be8c',
+    defaultPosition: {
+      compass: CompassOrientation.NE
+    },
+    defaultSort: {
+      field: 'displayName',
+      order: 'asc'
+    },
+    displayRules: {
+      showBadges: true,
+      maxBadges: 2,
+      showReasons: false
+    }
+  }
+  // ... more lane definitions
+};
+```
+
+### Focus Node Schema
+
+Each focus node type has a schema defining its display attributes:
+
+```javascript
+export const FocusNodeSchema = {
+  [NodeTypes.IDENTITY]: {
+    icon: '👤',
+    color: '#88c0d0',
+    attributes: [
+      { field: 'EMAIL', label: 'Email', type: 'email' },
+      { field: 'OUREF.DisplayName|OUREF', label: 'Department', type: 'text' },
+      { field: 'JOBTITLE', label: 'Job Title', type: 'text' },
+      { field: 'EMPLOYEEID', label: 'Employee ID', type: 'text' }
+    ],
+    inspectorConfig: {
+      hideAttributes: ['UId', 'Id', 'CreatedDate']
+    }
+  }
+  // ... more node type definitions
+};
+```
+
+### Cross-Lane Filter Configuration
+
+Cross-lane filtering relationships are defined in `LaneConfigSchema`:
+
+```javascript
+LaneConfigSchema[NodeTypes.IDENTITY] = {
+  lanes: [
+    {
+      laneType: LaneTypes.ACCOUNTS,
+      crossLaneFilters: {
+        [LaneTypes.EFFECTIVE_ENTITLEMENTS]: {
+          filterType: CrossLaneFilterType.FIELD_MATCH,
+          sourceField: 'node.id',
+          targetField: 'node.metadata.accountId'
+        },
+        [LaneTypes.SYSTEMS]: {
+          filterType: CrossLaneFilterType.FIELD_MATCH,
+          sourceField: 'node.metadata.systemId',
+          targetField: 'node.id'
+        }
+      }
+    }
+    // ... more lane configurations
+  ]
+};
+```
+
+### Extractor Registry
+
+The extractor registry maps lane types to data extraction functions:
+
+```javascript
+const extractorRegistry = {
+  'accounts': (sourceData, focusNode, filters, context) => {
+    const lane = buildAccountsLane(sourceData, filters);
+    return lane.items || [];
+  },
+  'systems': (sourceData, focusNode, filters, context) => {
+    const lane = buildSystemsLane(sourceData, filters, context?.systemDetailsMap);
+    return lane.items || [];
+  },
+  'logicalApps': (sourceData, focusNode, filters, context) => {
+    const lane = buildLogicalApplicationsLane(sourceData, filters, context?.systemDetailsMap);
+    return lane.items || [];
+  }
+  // ... more extractors
+};
+```
+
+### API Logging
+
+All API calls are logged via `apiLogger.js` for debugging:
+
+```javascript
+// Enable/disable console logging
+const DEBUG_CONSOLE_LOGGING = true;
+
+// Functions excluded from console logging
+const EXCLUDE_FROM_CONSOLE = ['getIdentityContexts'];
+```
+
+API logs show:
+- Request: Blue badge `[API GraphQL REQUEST]`
+- Success: Green badge `[API GraphQL RESPONSE]`
+- Error: Red badge `[API GraphQL ERROR]`
+
+---
+
 ## Glossary
 
 | Term | Definition |
@@ -252,8 +718,10 @@ Search input shall filter as the user types without requiring explicit submissio
 | Lane | A card displaying a category of related access data (Accounts, Systems, etc.) |
 | Cross-Lane Filtering | Filtering multiple lanes based on selection in one lane |
 | Pivot | Changing the central node to a different object type |
-| Logical Application | A system that has resources/entitlements but no direct accounts |
-| Physical System | A system that has direct account associations |
+| Logical Application | A business-centric grouping of resources derived from a parent system, representing application-level access without direct accounts |
+| Physical System | A system that has direct account associations; represents concrete infrastructure access |
+| Cascaded Filter | A cross-lane filter that requires an intermediate step to resolve (e.g., Account -> System -> Logical App) |
+| ABORESSION | The OData field containing the system/application reference for a resource or account |
 | Effective Entitlements | All resources/permissions assigned to an identity through any means |
 | Object Inspector | The detail panel showing properties of the selected item |
 
@@ -269,3 +737,6 @@ Search input shall filter as the user types without requiring explicit submissio
 | 1.3 | 2024-01 | Added Expand All button, loading placeholders, filter source glow |
 | 1.4 | 2024-01 | Added Omada Navbar, dynamic resource type chips, IDENTITYID display |
 | 1.5 | 2025-01 | Added System-centric view with cross-lane filtering (Identity<->Account<->Entitlement), pivot loading overlay, required lanes per focus node type, resource owner display for Entitlement-centric view |
+| 1.6 | 2025-01 | Added schema-driven architecture: crossLaneFilterService.js for generic filtering, laneBuilderService.js for generic lane building, LaneConfigSchema with crossLaneFilters configuration, feature flags for gradual migration |
+| 1.7 | 2025-01 | Enhanced Logical Applications documentation: added user stories (US-080L through US-084L), business rules (BR-004a through BR-018), technical architecture for derivation, data flow, and cascaded filtering |
+| 1.8 | 2025-01 | Added comprehensive Data Loading Architecture documentation: API layer details, pagination configuration, data flow diagrams by focus node type, lane building process, schema configurations, extractor registry, and API logging |

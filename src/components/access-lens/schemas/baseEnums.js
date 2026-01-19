@@ -12,6 +12,7 @@ export const NodeTypes = {
   ASSIGNMENT_POLICY: 'AssignmentPolicy',
   ACCOUNT: 'Account',
   SYSTEM: 'System',
+  LOGICAL_APPLICATION: 'LogicalApplication',  // System marked as logical (has resources but no direct accounts)
   CONTEXT: 'Context'
 };
 

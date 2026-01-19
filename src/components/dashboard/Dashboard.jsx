@@ -12,6 +12,7 @@ import { usePreferences } from '../../contexts/PreferencesContext';
 import { useGetIdentityCount, useGetAccessRequestsTotal } from '../../hooks/useOmadaApi';
 import SortableTile from './SortableTile';
 import Tile from './Tile';
+import ComplianceHeatmap from './ComplianceHeatmap';
 import './Dashboard.css';
 
 const Dashboard = () => {
@@ -42,6 +43,9 @@ const Dashboard = () => {
 
   // Active drag state for overlay
   const [activeDragId, setActiveDragId] = useState(null);
+
+  // Heatmap toggle state (default OFF)
+  const [showHeatmap, setShowHeatmap] = useState(false);
 
   // Manage expanded state for tiles (collapsed by default)
   const [expandedTiles, setExpandedTiles] = useState({
@@ -389,6 +393,29 @@ const Dashboard = () => {
           ) : null}
         </DragOverlay>
       </DndContext>
+
+      {/* System Compliance Heatmap Section */}
+      <div className="heatmap-section">
+        <div className="heatmap-toggle-container">
+          <label className="heatmap-toggle">
+            <span className="toggle-label">System Compliance Heatmap</span>
+            <div className="toggle-switch">
+              <input
+                type="checkbox"
+                checked={showHeatmap}
+                onChange={(e) => setShowHeatmap(e.target.checked)}
+              />
+              <span className="toggle-slider"></span>
+            </div>
+          </label>
+        </div>
+        {showHeatmap && (
+          <ComplianceHeatmap
+            bearerToken={bearerToken}
+            impersonateUser={impersonateUser}
+          />
+        )}
+      </div>
     </div>
   );
 };

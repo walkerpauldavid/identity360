@@ -5,14 +5,32 @@
  * Uses window.__apiLogger to ensure singleton across module boundaries
  */
 
+// Debug configuration - set to true to enable verbose console logging
+const DEBUG_CONSOLE_LOGGING = true;
+
+// Functions to exclude from console logging (still logged internally)
+const EXCLUDE_FROM_CONSOLE = [
+  'getIdentityContexts'
+];
+
 class ApiLogger {
   constructor() {
     this.logs = [];
-    this.maxLogs = 100; // Keep last 100 log entries (reduced to save space)
+    this.maxLogs = 30; // Keep last 30 log entries (reduced to prevent localStorage quota issues)
     this.backendUrl = 'http://localhost:3001/api/log';
     this.sendToBackend = true; // Set to false to disable backend logging
     this.instanceId = Math.random().toString(36).substr(2, 9);
-    console.log(`[ApiLogger] Instance created with ID: ${this.instanceId}, logs: ${this.logs.length}`);
+    this.excludedRequestIds = new Set(); // Track request IDs to exclude from console logging
+    if (DEBUG_CONSOLE_LOGGING) {
+      console.log(`[ApiLogger] Instance created with ID: ${this.instanceId}, logs: ${this.logs.length}`);
+    }
+
+    // Clear localStorage to prevent quota issues on startup
+    try {
+      localStorage.removeItem('omada_api_logs');
+    } catch (e) {
+      // Ignore
+    }
   }
 
   /**
@@ -30,8 +48,7 @@ class ApiLogger {
         body: JSON.stringify(logEntry)
       });
     } catch (error) {
-      // Silently fail if backend is not available
-      console.warn('Failed to send log to backend:', error.message);
+      // Silently fail if backend is not available - no console output
     }
   }
 
@@ -54,8 +71,19 @@ class ApiLogger {
     this.sendLogToBackend(logEntry);
 
     // Debug: Bright colored console log to verify logging is working
-    console.log(`%c[API ${type} REQUEST] ${endpoint}`, 'background: #0066cc; color: white; padding: 2px 6px; border-radius: 3px;');
-    console.log(`%c[ApiLogger ${this.instanceId}] Added REQUEST, total logs: ${this.logs.length}`, 'color: #0066cc;');
+    // Skip console logging for excluded functions
+    const functionName = params?.functionName || '';
+    const isExcluded = EXCLUDE_FROM_CONSOLE.includes(functionName);
+
+    // Track excluded request IDs so we can also skip their responses
+    if (isExcluded) {
+      this.excludedRequestIds.add(logEntry.requestId);
+    }
+
+    if (DEBUG_CONSOLE_LOGGING && !isExcluded) {
+      console.log(`%c[API ${type} REQUEST] ${endpoint}`, 'background: #0066cc; color: white; padding: 2px 6px; border-radius: 3px;');
+      console.log(`%c[ApiLogger ${this.instanceId}] Added REQUEST, total logs: ${this.logs.length}`, 'color: #0066cc;');
+    }
 
     return logEntry.requestId;
   }
@@ -84,13 +112,21 @@ class ApiLogger {
     this.sendLogToBackend(logEntry);
 
     // Debug: Bright colored console log to verify logging is working
-    if (success) {
-      console.log(`%c[API ${type} RESPONSE] ${endpoint} - Status: ${statusCode}`, 'background: #28a745; color: white; padding: 2px 6px; border-radius: 3px;');
-    } else {
-      console.log(`%c[API ${type} ERROR] ${endpoint} - Status: ${statusCode}`, 'background: #dc3545; color: white; padding: 2px 6px; border-radius: 3px;');
-      console.error('Error:', error);
+    // Skip console logging for excluded request IDs
+    const isExcluded = this.excludedRequestIds.has(requestId);
+    if (isExcluded) {
+      this.excludedRequestIds.delete(requestId); // Clean up after use
     }
-    console.log(`%c[ApiLogger ${this.instanceId}] Added RESPONSE, total logs: ${this.logs.length}`, 'color: #28a745;');
+
+    if (DEBUG_CONSOLE_LOGGING && !isExcluded) {
+      if (success) {
+        console.log(`%c[API ${type} RESPONSE] ${endpoint} - Status: ${statusCode}`, 'background: #28a745; color: white; padding: 2px 6px; border-radius: 3px;');
+      } else {
+        console.log(`%c[API ${type} ERROR] ${endpoint} - Status: ${statusCode}`, 'background: #dc3545; color: white; padding: 2px 6px; border-radius: 3px;');
+        console.error('Error:', error);
+      }
+      console.log(`%c[ApiLogger ${this.instanceId}] Added RESPONSE, total logs: ${this.logs.length}`, 'color: #28a745;');
+    }
   }
 
   /**
@@ -114,7 +150,9 @@ class ApiLogger {
    * Returns a new array reference to ensure React detects changes
    */
   getLogs() {
-    console.log(`[ApiLogger ${this.instanceId}] getLogs called, returning ${this.logs.length} logs`);
+    if (DEBUG_CONSOLE_LOGGING) {
+      console.log(`[ApiLogger ${this.instanceId}] getLogs called, returning ${this.logs.length} logs`);
+    }
     return [...this.logs];  // Return new array to trigger React re-render
   }
 
@@ -154,7 +192,9 @@ class ApiLogger {
     a.click();
     URL.revokeObjectURL(url);
 
-    console.log(`Logs downloaded as: ${filename}`);
+    if (DEBUG_CONSOLE_LOGGING) {
+      console.log(`Logs downloaded as: ${filename}`);
+    }
     return filename;
   }
 
@@ -302,7 +342,9 @@ class ApiLogger {
    */
   clearLogs() {
     this.logs = [];
-    console.log('API logs cleared');
+    if (DEBUG_CONSOLE_LOGGING) {
+      console.log('API logs cleared');
+    }
   }
 
   /**
@@ -311,21 +353,34 @@ class ApiLogger {
   saveToLocalStorage() {
     try {
       // Only save the most recent logs to avoid quota issues
-      const logsToSave = this.logs.slice(-50); // Only save last 50 logs
+      // Truncate large response bodies to prevent quota exceeded errors
+      const logsToSave = this.logs.slice(-25).map(log => ({
+        ...log,
+        // Truncate raw response to max 2KB
+        rawResponse: log.rawResponse?.length > 2000
+          ? log.rawResponse.substring(0, 2000) + '... [truncated]'
+          : log.rawResponse,
+        // Don't save full request/response data
+        request: log.request ? {
+          method: log.request.method,
+          filters: log.request.filters,
+          functionName: log.request.functionName
+        } : null,
+        response: log.response ? {
+          status: log.response.status,
+          total: log.response.total,
+          dataCount: log.response.data?.length
+        } : null
+      }));
       localStorage.setItem('omada_api_logs', JSON.stringify(logsToSave));
-      console.log(`Logs saved to localStorage (${logsToSave.length} entries)`);
     } catch (error) {
-      console.error('Failed to save logs to localStorage:', error);
-      // If quota exceeded, clear old logs and try again
+      // If quota exceeded, clear and skip saving
       if (error.name === 'QuotaExceededError') {
-        console.warn('LocalStorage quota exceeded, clearing old logs...');
+        console.warn('LocalStorage quota exceeded, clearing logs...');
         try {
           localStorage.removeItem('omada_api_logs');
-          const minimalLogs = this.logs.slice(-20); // Save even fewer logs
-          localStorage.setItem('omada_api_logs', JSON.stringify(minimalLogs));
-          console.log('Saved minimal logs after quota error');
-        } catch (retryError) {
-          console.error('Failed to save even minimal logs:', retryError);
+        } catch (e) {
+          // Ignore
         }
       }
     }
@@ -339,10 +394,14 @@ class ApiLogger {
       const savedLogs = localStorage.getItem('omada_api_logs');
       if (savedLogs) {
         this.logs = JSON.parse(savedLogs);
-        console.log(`Loaded ${this.logs.length} logs from localStorage`);
+        if (DEBUG_CONSOLE_LOGGING) {
+          console.log(`Loaded ${this.logs.length} logs from localStorage`);
+        }
       }
     } catch (error) {
-      console.error('Failed to load logs from localStorage:', error);
+      if (DEBUG_CONSOLE_LOGGING) {
+        console.error('Failed to load logs from localStorage:', error);
+      }
     }
   }
 }
@@ -355,7 +414,9 @@ if (typeof window !== 'undefined') {
   // Check if instance already exists on window
   if (!window.__apiLoggerInstance) {
     window.__apiLoggerInstance = new ApiLogger();
-    console.log('[ApiLogger] Created new global instance');
+    if (DEBUG_CONSOLE_LOGGING) {
+      console.log('[ApiLogger] Created new global instance');
+    }
 
     // Load logs from localStorage on startup
     window.__apiLoggerInstance.loadFromLocalStorage();
@@ -365,7 +426,9 @@ if (typeof window !== 'undefined') {
       window.__apiLoggerInstance.saveToLocalStorage();
     }, 30000);
   } else {
-    console.log('[ApiLogger] Reusing existing global instance with', window.__apiLoggerInstance.logs.length, 'logs');
+    if (DEBUG_CONSOLE_LOGGING) {
+      console.log('[ApiLogger] Reusing existing global instance with', window.__apiLoggerInstance.logs.length, 'logs');
+    }
   }
   apiLoggerInstance = window.__apiLoggerInstance;
 } else {

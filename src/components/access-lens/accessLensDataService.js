@@ -729,6 +729,7 @@ export function buildLanesFromAssignments(assignments, filters = {}, options = {
 
   // Build Logical Applications lane for system-centric view
   // Shows logical apps implemented by the focus system
+  // Always include the lane (even if empty) so it appears in the UI as a required lane
   if (options.includeIdentities && options.focusSystemId) {
     const logicalAppsLane = buildLogicalAppsForSystemLane(
       assignments,
@@ -736,10 +737,8 @@ export function buildLanesFromAssignments(assignments, filters = {}, options = {
       options.focusSystemId,
       systemDetailsMap
     );
-    // Only add if there are logical applications
-    if (logicalAppsLane.items.length > 0) {
-      lanes.push(logicalAppsLane);
-    }
+    lanes.push(logicalAppsLane);
+    console.log(`[buildLanesFromAssignments] Logical Apps lane: ${logicalAppsLane.items.length} items`);
   }
 
   return lanes;
@@ -1034,7 +1033,7 @@ function buildLogicalApplicationsLane(assignments, filters, systemDetailsMap = {
 
     const appNode = {
       id: app.id,
-      type: NodeTypes.SYSTEM,
+      type: NodeTypes.LOGICAL_APPLICATION,  // Use new node type for proper schema support
       displayName: app.name || 'Unknown Application',
       description: description,  // For hover tooltip
       status: 'active',
@@ -1098,6 +1097,19 @@ function buildLogicalAppsForSystemLane(assignments, filters, focusSystemId, syst
   console.log('Focus System ID type:', typeof focusSystemId);
   console.log('Total assignments:', assignments?.length);
 
+  // Debug: Log first few assignments to see what IDs look like
+  if (assignments?.length > 0) {
+    console.log('[LogicalApps] Sample assignments (first 3):');
+    assignments.slice(0, 3).forEach((a, i) => {
+      console.log(`  Assignment ${i + 1}:`, {
+        accountSystemId: a.account?.system?.id,
+        accountSystemName: a.account?.system?.name,
+        resourceSystemId: a.resource?.system?.id,
+        resourceSystemName: a.resource?.system?.name
+      });
+    });
+  }
+
   if (!assignments || !focusSystemId) {
     console.log('[LogicalApps] Returning empty - no assignments or focusSystemId');
     return {
@@ -1158,9 +1170,15 @@ function buildLogicalAppsForSystemLane(assignments, filters, focusSystemId, syst
   });
 
   // Debug: Show all systems found
+  console.log('[LogicalApps] Focus System ID (string):', focusSystemIdStr);
   console.log('[LogicalApps] Systems found:', systemsMap.size);
   systemsMap.forEach((sys, id) => {
     console.log(`  - System ${id} (${sys.name}): ${sys.accountCount} accounts, ${sys.resourceCount} resources`);
+  });
+  console.log('[LogicalApps] Logical-to-Physical mappings:', logicalToPhysicalMap.size);
+  logicalToPhysicalMap.forEach((physicalIds, logicalId) => {
+    const logicalName = systemsMap.get(logicalId)?.name || 'Unknown';
+    console.log(`  - Logical ${logicalId} (${logicalName}) implemented by:`, Array.from(physicalIds));
   });
 
   // Find logical applications: systems that have resources but no direct accounts
@@ -1173,13 +1191,17 @@ function buildLogicalAppsForSystemLane(assignments, filters, focusSystemId, syst
 
     // Logical app criteria: has resources but no accounts
     if (system.resourceCount > 0 && system.accountCount === 0) {
-      // Check if this logical app is accessible via the focus system
+      // In system-centric view, assignments are already filtered by focusSystemId
+      // So any logical app found here is accessible via the focus system
       const implementingSystemIds = logicalToPhysicalMap.get(systemIdStr);
 
-      // Include if it's implemented by the focus system OR if we want to show all logical apps
-      const isImplementedByFocus = implementingSystemIds?.has(focusSystemIdStr);
+      console.log(`[LogicalApps] Found logical app ${systemIdStr} (${system.name}):`, {
+        implementingSystemIds: implementingSystemIds ? Array.from(implementingSystemIds) : [],
+        resourceCount: system.resourceCount
+      });
 
-      if (isImplementedByFocus || implementingSystemIds?.size > 0) {
+      // Include ALL logical apps found since assignments are already filtered by focus system
+      if (implementingSystemIds?.size > 0) {
         // Get implementing system names
         const implementingNames = new Set();
         implementingSystemIds?.forEach(implId => {
@@ -1219,7 +1241,7 @@ function buildLogicalAppsForSystemLane(assignments, filters, focusSystemId, syst
 
     const appNode = {
       id: app.id,
-      type: NodeTypes.SYSTEM,
+      type: NodeTypes.LOGICAL_APPLICATION,  // Use new node type for proper schema support
       displayName: app.name,
       status: 'active',
       badges: [
@@ -1328,9 +1350,13 @@ function buildAccountsLane(assignments, filters) {
       }
     }
 
-    // Count resources per account
+    // Count resources per account (exclude "personal account" resources to match entitlements lane filtering)
     if (accountName && accountsMap.has(uniqueKey)) {
-      accountsMap.get(uniqueKey).resourceCount++;
+      const resourceName = assignment.resource?.name || '';
+      const isPersonalAccount = resourceName.toLowerCase().includes('personal account');
+      if (!isPersonalAccount) {
+        accountsMap.get(uniqueKey).resourceCount++;
+      }
     }
   });
 

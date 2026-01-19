@@ -157,7 +157,12 @@ const FocusCard = ({ node, onNavigateBack, isLoading = false, selectedIdentityCo
           {getNodeIcon(node.type)}
         </span>
         <span className="focus-type-badge" style={{ backgroundColor: nodeColor }}>
-          {node.type}
+          {/* Show user-friendly type names */}
+          {node.type === NodeTypes.LOGICAL_APPLICATION
+            ? 'Logical Application'
+            : node.type === NodeTypes.SYSTEM && (node.metadata?.isLogical || node.rawData?.isLogical)
+              ? 'Logical Application'
+              : node.type}
         </span>
       </div>
 

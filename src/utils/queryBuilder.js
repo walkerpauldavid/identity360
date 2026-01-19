@@ -3,6 +3,37 @@
  * Helper functions to construct API queries
  */
 
+// ============================================================================
+// GRAPHQL PAGINATION CONSTANTS
+// Configurable defaults for all GraphQL API calls
+// ============================================================================
+export const GRAPHQL_PAGINATION = {
+  // Default page size for most queries
+  DEFAULT_ROWS: 10,
+
+  // Maximum rows per page (API may have limits)
+  MAX_ROWS: 5000,
+
+  // Default starting page
+  DEFAULT_PAGE: 1,
+
+  // Specific defaults for different query types
+  CALCULATED_ASSIGNMENTS: {
+    DEFAULT_ROWS: 10,     // Default page size
+    MAX_ROWS: 5000        // Max per request
+  },
+
+  IDENTITIES_HAVING_RESOURCE: {
+    DEFAULT_ROWS: 10,     // Default page size
+    MAX_ROWS: 2000
+  },
+
+  CONTEXTS: {
+    DEFAULT_ROWS: 10,     // Default page size
+    MAX_ROWS: 500
+  }
+};
+
 /**
  * Build OData query URL
  * @param {string} baseUrl - Base API URL
@@ -291,8 +322,11 @@ export const GraphQLQueries = {
    * @param {Object} pagination - Pagination options
    */
   getCalculatedAssignmentsDetailed: (identityIds = null, filters = {}, pagination = {}) => {
-    const { page = 1, rows = 1000 } = pagination;  // Increased default to get more results
-    const { sortOrder = 'ASCENDING' } = filters;  // Removed sortBy to match expected query
+    // Use configurable pagination constants with defaults
+    const paginationConfig = GRAPHQL_PAGINATION.CALCULATED_ASSIGNMENTS;
+    const page = pagination.page ?? GRAPHQL_PAGINATION.DEFAULT_PAGE;
+    const rows = pagination.rows ?? paginationConfig.DEFAULT_ROWS;
+    const { sortOrder = 'ASCENDING' } = filters;
 
     const filterParts = [];
 
@@ -327,15 +361,14 @@ export const GraphQLQueries = {
 
     const filterClause = filterParts.join(', ');
 
-    // Build query - only include pagination if explicitly requested with non-default values
-    const usePagination = pagination.page !== undefined || pagination.rows !== undefined;
-    const paginationClause = usePagination ? `pagination: {page: ${page}, rows: ${rows}}` : '';
+    // Always include pagination for consistent API behavior
+    const paginationClause = `pagination: {page: ${page}, rows: ${rows}}`;
 
     // Debug: Log the query parameters
     console.log('[GraphQL Query] getCalculatedAssignmentsDetailed');
     console.log('[GraphQL Query] Filter parts:', filterParts);
     console.log('[GraphQL Query] Filter clause:', filterClause);
-    console.log('[GraphQL Query] Pagination:', usePagination ? `page=${page}, rows=${rows}` : 'NONE (fetching all)');
+    console.log('[GraphQL Query] Pagination:', `page=${page}, rows=${rows}`);
 
     return {
       query: `
@@ -441,7 +474,10 @@ export const GraphQLQueries = {
    * @returns {Object} GraphQL query object
    */
   getIdentitiesHavingResource: (resourceId = null, resourceName = null, systemId = null, pagination = {}, complianceStatus = null) => {
-    const { page = 1, rows = 100 } = pagination;
+    // Use configurable pagination constants with defaults
+    const paginationConfig = GRAPHQL_PAGINATION.IDENTITIES_HAVING_RESOURCE;
+    const page = pagination.page ?? GRAPHQL_PAGINATION.DEFAULT_PAGE;
+    const rows = pagination.rows ?? paginationConfig.DEFAULT_ROWS;
 
     // Validate that we have resourceId
     if (!resourceId) {
@@ -461,8 +497,12 @@ export const GraphQLQueries = {
 
     const filterClause = filterParts.join(', ');
 
+    // Always include pagination for consistent API behavior
+    const paginationClause = `pagination: {page: ${page}, rows: ${rows}}`;
+
     console.log('getIdentitiesHavingResource - resourceId:', resourceId);
     console.log('getIdentitiesHavingResource - complianceStatus:', complianceStatus);
+    console.log('getIdentitiesHavingResource - pagination:', `page=${page}, rows=${rows}`);
     console.log('getIdentitiesHavingResource - filterClause:', filterClause);
 
     return {
@@ -471,6 +511,7 @@ export const GraphQLQueries = {
           calculatedAssignments(
             filters: {${filterClause}}
             sorting: {sortOrder: ASCENDING}
+            ${paginationClause}
           ) {
             pages
             total

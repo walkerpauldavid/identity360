@@ -197,12 +197,15 @@ const AccessLensPage = () => {
       return {};
     }
 
-    // Fetch all identity details in parallel (batch of 10 at a time to avoid overwhelming API)
-    const batchSize = 10;
+    // Fetch identity details in small batches to avoid overwhelming the browser
+    // Chrome limits concurrent connections to ~6 per domain, so we batch conservatively
+    const batchSize = 5;  // Reduced from 10 to avoid ERR_INSUFFICIENT_RESOURCES
     const detailsMap = {};
 
     for (let i = 0; i < identityIds.length; i += batchSize) {
       const batch = identityIds.slice(i, i + batchSize);
+      console.log(`[Identity OData] Fetching batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(identityIds.length/batchSize)} (${batch.length} identities)`);
+
       const batchPromises = batch.map(id =>
         fetchIdentityDetails(id, bearerToken, impersonateUser)
       );
@@ -212,9 +215,13 @@ const AccessLensPage = () => {
         if (batchResults[index]) {
           // Use string key for consistent lookup
           detailsMap[String(id)] = batchResults[index];
-          console.log(`[Identity OData] Stored in map with key: "${String(id)}"`);
         }
       });
+
+      // Small delay between batches to let browser recover resources
+      if (i + batchSize < identityIds.length) {
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
     }
 
     console.log(`[Identity OData] Completed: Enriched ${Object.keys(detailsMap).length} identities`);
@@ -267,20 +274,31 @@ const AccessLensPage = () => {
       return {};
     }
 
-    // Fetch all system details in parallel
-    const detailsPromises = systemIds.map(id =>
-      fetchSystemDetails(id, bearerToken, impersonateUser)
-    );
-
-    const detailsResults = await Promise.all(detailsPromises);
-
-    // Build map of systemId -> system details
+    // Fetch system details in small batches to avoid overwhelming the browser
+    // Chrome limits concurrent connections to ~6 per domain
+    const batchSize = 5;
     const detailsMap = {};
-    systemIds.forEach((id, index) => {
-      if (detailsResults[index]) {
-        detailsMap[id] = detailsResults[index];
+
+    for (let i = 0; i < systemIds.length; i += batchSize) {
+      const batch = systemIds.slice(i, i + batchSize);
+      console.log(`[System OData] Fetching batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(systemIds.length/batchSize)} (${batch.length} systems)`);
+
+      const batchPromises = batch.map(id =>
+        fetchSystemDetails(id, bearerToken, impersonateUser)
+      );
+      const batchResults = await Promise.all(batchPromises);
+
+      batch.forEach((id, index) => {
+        if (batchResults[index]) {
+          detailsMap[id] = batchResults[index];
+        }
+      });
+
+      // Small delay between batches to let browser recover resources
+      if (i + batchSize < systemIds.length) {
+        await new Promise(resolve => setTimeout(resolve, 50));
       }
-    });
+    }
 
     console.log(`[System OData] === Completed: Fetched details for ${Object.keys(detailsMap).length} systems ===`);
     console.log('[System OData] Systems with details:', Object.keys(detailsMap));
@@ -491,8 +509,11 @@ const AccessLensPage = () => {
         const { buildLanesFromAssignments, extractUniqueReasonTypes, extractUniqueComplianceStatuses } =
           await import('./accessLensDataService');
 
-        // Build lanes for system-centric view (includes Identities lane)
-        let lanes = buildLanesFromAssignments(assignmentsResult.data, {}, { includeIdentities: true });
+        // Build lanes for system-centric view (includes Identities lane and Logical Apps if applicable)
+        let lanes = buildLanesFromAssignments(assignmentsResult.data, {}, {
+          includeIdentities: true,
+          focusSystemId: systemId  // Pass system ID to build Logical Apps lane
+        });
         const reasonTypes = extractUniqueReasonTypes(assignmentsResult.data);
         const complianceStatuses = extractUniqueComplianceStatuses(assignmentsResult.data);
 
@@ -819,26 +840,63 @@ const AccessLensPage = () => {
 
         case 'System': {
           // Pivoting to a System - fetch assignments for that system
-          console.log('Pivoting to System:', node.displayName);
+          console.log('=== Pivoting to System ===');
+          console.log('Node:', node.displayName);
 
           // Get the system ID from the node - could be in different places
-          const systemId = node.id || node.rawData?.Id || node.rawData?.id || node.metadata?.id;
-          const systemName = node.displayName || node.rawData?.Name || node.rawData?.name;
+          const systemId = node.id || node.rawData?.Id || node.rawData?.id || node.rawData?.UId || node.metadata?.id;
+          const systemName = node.displayName || node.rawData?.Name || node.rawData?.name || node.rawData?.DISPLAYNAME;
 
           if (!systemId) {
             console.error('No system ID found in node:', node);
             return null;
           }
 
-          console.log('Fetching assignments for systemId:', systemId);
+          console.log('System ID:', systemId);
+          console.log('System Name:', systemName);
 
-          // Fetch assignments filtered by this system using systemId parameter
+          // Fetch system details from OData to enrich the focus node (same as direct load)
+          let systemDetails = null;
+          try {
+            const systemODataResult = await omadaApi.odata.query(
+              'System',
+              bearerToken,
+              impersonateUser,
+              { filter: `UId eq ${systemId}` }
+            );
+            if (systemODataResult.status === 'success' && systemODataResult.data?.length > 0) {
+              systemDetails = systemODataResult.data[0];
+              console.log('Loaded system details from OData:', Object.keys(systemDetails));
+            }
+          } catch (err) {
+            console.warn('Could not load system details from OData:', err);
+          }
+
+          // Create enriched system node (same structure as direct load)
+          const enrichedSystemNode = {
+            id: systemId,
+            type: 'System',
+            displayName: systemDetails?.DISPLAYNAME || systemDetails?.DisplayName || systemDetails?.Name || systemName || 'Unknown System',
+            metadata: {
+              systemType: systemDetails?.SYSTEMTYPE?.DisplayName || systemDetails?.SYSTEMTYPE?.Name || node.metadata?.systemType || 'Unknown',
+              description: systemDetails?.DESCRIPTION || systemDetails?.Description || node.metadata?.description || '',
+              owner: systemDetails?.OWNERREF?.DisplayName || systemDetails?.OWNERREF?.DisplayNameValue || node.metadata?.owner || null
+            },
+            rawData: systemDetails || node.rawData || { id: systemId },
+            status: 'active',
+            badges: node.badges || []
+          };
+
+          console.log('Enriched system node:', enrichedSystemNode.displayName);
+
+          // Fetch assignments - NO PAGINATION to get all results (same as direct load)
+          console.log('Fetching ALL assignments for systemId:', systemId);
           const assignmentsResult = await omadaApi.assignment.getCalculatedAssignmentsDetailed(
             null, // No identity filter - we're filtering by system instead
             bearerToken,
             impersonateUser,
             { systemId: systemId }, // Filter by system ID
-            { page: 1, rows: 100 }
+            {} // NO PAGINATION - fetch all assignments (same as direct load)
           );
 
           let lanes = [];
@@ -846,7 +904,7 @@ const AccessLensPage = () => {
           let complianceStatuses = [];
 
           if (assignmentsResult.status === 'success') {
-            console.log('System assignments loaded:', assignmentsResult.data?.length, 'items');
+            console.log('System assignments loaded:', assignmentsResult.data?.length, 'items (no pagination limit)');
             if (assignmentsResult.data?.length > 0) {
               console.log('First system assignment sample:', assignmentsResult.data[0]);
             }
@@ -855,8 +913,11 @@ const AccessLensPage = () => {
             // - Identities (who has access to this system)
             // - Accounts (accounts on this system)
             // - Entitlements (resources on this system)
-            // Note: We pass includeIdentities: true to add the Identities lane
-            lanes = buildLanesFromAssignments(assignmentsResult.data, {}, { includeIdentities: true });
+            // - Logical Applications (apps implemented by this system)
+            lanes = buildLanesFromAssignments(assignmentsResult.data, {}, {
+              includeIdentities: true,
+              focusSystemId: systemId
+            });
             reasonTypes = extractUniqueReasonTypes(assignmentsResult.data);
 
             // Extract compliance statuses for filtering
@@ -872,7 +933,106 @@ const AccessLensPage = () => {
           }
 
           return {
-            focusNode: node,
+            focusNode: enrichedSystemNode,  // Use enriched node instead of original
+            lanes,
+            reasonTypes,
+            complianceStatuses
+          };
+        }
+
+        case 'LogicalApplication': {
+          // Pivoting to a Logical Application - similar to System but for apps without direct accounts
+          console.log('=== Pivoting to Logical Application ===');
+          console.log('Node:', node.displayName);
+
+          // Get the logical app ID from the node
+          const logicalAppId = node.id || node.rawData?.Id || node.rawData?.id || node.rawData?.UId || node.metadata?.id;
+          const logicalAppName = node.displayName || node.rawData?.Name || node.rawData?.name || node.rawData?.DISPLAYNAME;
+
+          if (!logicalAppId) {
+            console.error('No logical application ID found in node:', node);
+            return null;
+          }
+
+          console.log('Logical App ID:', logicalAppId);
+          console.log('Logical App Name:', logicalAppName);
+
+          // Fetch system details from OData to enrich the focus node
+          let systemDetails = null;
+          try {
+            const systemODataResult = await omadaApi.odata.query(
+              'System',
+              bearerToken,
+              impersonateUser,
+              { filter: `UId eq ${logicalAppId}` }
+            );
+            if (systemODataResult.status === 'success' && systemODataResult.data?.length > 0) {
+              systemDetails = systemODataResult.data[0];
+              console.log('Loaded logical app details from OData:', Object.keys(systemDetails));
+            }
+          } catch (err) {
+            console.warn('Could not load logical app details from OData:', err);
+          }
+
+          // Create enriched logical app node
+          const enrichedLogicalAppNode = {
+            id: logicalAppId,
+            type: 'LogicalApplication',
+            displayName: systemDetails?.DISPLAYNAME || systemDetails?.DisplayName || systemDetails?.Name || logicalAppName || 'Unknown Application',
+            metadata: {
+              systemType: systemDetails?.SYSTEMTYPE?.DisplayName || systemDetails?.SYSTEMTYPE?.Name || node.metadata?.systemType || 'Logical App',
+              description: systemDetails?.DESCRIPTION || systemDetails?.Description || node.metadata?.description || '',
+              owner: systemDetails?.OWNERREF?.DisplayName || systemDetails?.OWNERREF?.DisplayNameValue || node.metadata?.owner || null,
+              isLogical: true,
+              underlyingSystemIds: node.metadata?.underlyingSystemIds || node.rawData?.underlyingSystemIds || [],
+              underlyingSystems: node.metadata?.underlyingSystems || node.rawData?.underlyingSystems || []
+            },
+            rawData: systemDetails || node.rawData || { id: logicalAppId, isLogical: true },
+            status: 'active',
+            badges: node.badges || []
+          };
+
+          console.log('Enriched logical app node:', enrichedLogicalAppNode.displayName);
+
+          // Fetch assignments filtered by this logical app as the resource system
+          // This gets all assignments where the resource is on this logical application
+          console.log('Fetching assignments for logical app systemId:', logicalAppId);
+          const assignmentsResult = await omadaApi.assignment.getCalculatedAssignmentsDetailed(
+            null, // No identity filter
+            bearerToken,
+            impersonateUser,
+            { systemId: logicalAppId }, // Filter by this logical app as the system
+            {} // No pagination - fetch all
+          );
+
+          let lanes = [];
+          let reasonTypes = [];
+          let complianceStatuses = [];
+
+          if (assignmentsResult.status === 'success') {
+            console.log('Logical app assignments loaded:', assignmentsResult.data?.length, 'items');
+
+            // Build lanes for logical-app-centric view
+            lanes = buildLanesFromAssignments(assignmentsResult.data, {}, {
+              includeIdentities: true,
+              focusSystemId: logicalAppId
+            });
+            reasonTypes = extractUniqueReasonTypes(assignmentsResult.data);
+
+            // Extract compliance statuses
+            const { extractUniqueComplianceStatuses } = await import('./accessLensDataService');
+            complianceStatuses = extractUniqueComplianceStatuses(assignmentsResult.data);
+
+            console.log('Built lanes for logical-app-centric view:');
+            lanes.forEach(lane => {
+              console.log(`  - ${lane.laneType}: ${lane.items.length} items`);
+            });
+          } else {
+            console.warn('Failed to load logical app assignments:', assignmentsResult);
+          }
+
+          return {
+            focusNode: enrichedLogicalAppNode,
             lanes,
             reasonTypes,
             complianceStatuses

@@ -1,0 +1,65 @@
+# React Application Dependencies
+# Note: React/Node.js applications use package.json for dependency management.
+# Install these via: npm install
+# This file is provided for documentation purposes.
+
+# =============================================================================
+# PRODUCTION DEPENDENCIES (required to run the application)
+# =============================================================================
+
+# Drag and Drop functionality
+@dnd-kit/core==6.3.1
+@dnd-kit/sortable==10.0.0
+@dnd-kit/utilities==3.2.2
+
+# Data fetching and caching
+@tanstack/react-query==5.90.12
+
+# Server-side (proxy server)
+cors==2.8.5
+express==5.2.1
+
+# React core framework
+react==19.2.0
+react-dom==19.2.0
+
+# Client-side routing
+react-router-dom==7.10.1
+
+# =============================================================================
+# DEVELOPMENT DEPENDENCIES (required for development/build only)
+# =============================================================================
+
+# Linting
+@eslint/js==9.39.1
+eslint==9.39.1
+eslint-plugin-react-hooks==7.0.1
+eslint-plugin-react-refresh==0.4.24
+globals==16.5.0
+
+# TypeScript type definitions
+@types/react==19.2.5
+@types/react-dom==19.2.3
+
+# Build tooling
+@vitejs/plugin-react==5.1.1
+vite==7.2.4
+
+# =============================================================================
+# INSTALLATION INSTRUCTIONS
+# =============================================================================
+#
+# To install all dependencies:
+#   npm install
+#
+# To install production dependencies only:
+#   npm install --production
+#
+# To start development server:
+#   npm run dev
+#
+# To build for production:
+#   npm run build
+#
+# To preview production build:
+#   npm run preview

@@ -84,6 +84,24 @@ export const getItemValue = (item, path) => {
          getNestedValue(item?.node?.rawData, path);
 };
 
+/**
+ * Get the resource type from a lane item
+ * Checks common locations: node.metadata.type and rawData.resourceType.name
+ *
+ * @param {Object} item - Lane item object
+ * @returns {string|undefined} The resource type name, or undefined
+ *
+ * @example
+ * getItemResourceType({ node: { metadata: { type: 'Role' } } }) // 'Role'
+ * getItemResourceType({ rawData: { resourceType: { name: 'Group' } } }) // 'Group'
+ */
+export const getItemResourceType = (item) => {
+  return item?.node?.metadata?.type ||
+         item?.rawData?.resourceType?.name ||
+         item?.rawData?.RESOURCETYPE?.NAME ||
+         item?.rawData?.type;
+};
+
 // ============================================================================
 // STRING MANIPULATION UTILITIES
 // ============================================================================
@@ -232,6 +250,7 @@ export default {
   getNestedValue,
   getStringValue,
   getItemValue,
+  getItemResourceType,
 
   // String manipulation
   formatFieldName,

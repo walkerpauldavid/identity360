@@ -15,6 +15,7 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { LaneTypes, getLaneDisplayConfig } from './accessLensTypes';
 import LaneItemRow from './LaneItemRow';
+import { getItemResourceType } from './accessLensUtils';
 
 const LaneCard = ({
   lane,
@@ -24,174 +25,169 @@ const LaneCard = ({
   onItemClick,
   onPivot,
   onReasonClick,
-  onLoadMore,
   viewMode = 'explore',
   isVisible = true,
-  isFilterActive = false,
   activeFilterId = null,
   forceCollapsed = false,  // When true, forces all lanes to collapsed state (used by Reset Layout)
   isFilterSource = false,  // When true, this lane is the source of filtering (shows "Filtering")
   isFiltered = false,      // When true, this lane is being filtered by another lane (shows "Filtered")
   forceExpanded = false    // When true, forces all lanes to expanded state (used by Expand All)
 }) => {
+  // ==========================================================================
+  // HOOKS SECTION - All hooks MUST be called before any early returns
+  // React requires hooks to be called in the same order on every render
+  // ==========================================================================
+
+  // Extract lane properties early (needed for hooks)
+  const { laneType, totalCount, items, canLoadMore, allItemsData } = lane;
+  const laneIsFiltered = isFiltered || lane.isFiltered;
+  const showFilters = laneType === LaneTypes.EFFECTIVE_ENTITLEMENTS;
+
+  // State hooks
   const [isExpanded, setIsExpanded] = useState(!forceCollapsed);
   const [isMaximized, setIsMaximized] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [allItems, setAllItems] = useState(null); // Cache for all items when maximized
-  const [searchQuery, setSearchQuery] = useState(''); // Search filter for entitlements
-  const [selectedResourceTypes, setSelectedResourceTypes] = useState([]); // Multi-select resource type filter
-  const [showResourceTypeDropdown, setShowResourceTypeDropdown] = useState(false); // Dropdown visibility
-  const [calculatedMaxHeight, setCalculatedMaxHeight] = useState(null); // Dynamic max height for maximized state
+  const [allItems, setAllItems] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedResourceTypes, setSelectedResourceTypes] = useState([]);
+  const [calculatedMaxHeight, setCalculatedMaxHeight] = useState(null);
 
-  const cardRef = useRef(null); // Ref to track card position for max height calculation
+  // Ref hooks
+  const cardRef = useRef(null);
 
-  // Respond to forceCollapsed changes from parent (e.g., Reset Layout)
+  // Effect: Respond to forceCollapsed changes from parent
+  // This is a valid use case - syncing component state with parent-controlled prop
   useEffect(() => {
     if (forceCollapsed) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsExpanded(false);
+       
       setIsMaximized(false);
     }
   }, [forceCollapsed]);
 
-  // Respond to forceExpanded changes from parent (e.g., Expand All)
+  // Effect: Respond to forceExpanded changes from parent
   useEffect(() => {
     if (forceExpanded) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsExpanded(true);
     }
   }, [forceExpanded]);
 
-  // Clear selected resource types that are no longer available when lane items change
-  useEffect(() => {
-    if (selectedResourceTypes.length > 0 && lane.items) {
-      // Get available resource types from current items
-      const availableTypes = new Set(
-        lane.items
-          .map(item => item.node?.metadata?.type || item.rawData?.resourceType?.name)
-          .filter(Boolean)
-      );
-      // Filter out selected types that are no longer available
-      const validSelectedTypes = selectedResourceTypes.filter(type => availableTypes.has(type));
-      if (validSelectedTypes.length !== selectedResourceTypes.length) {
-        setSelectedResourceTypes(validSelectedTypes);
-      }
-    }
-  }, [lane.items, lane.isFiltered]);
+  // Compute available resource types from current items
+  const availableResourceTypes = useMemo(() => {
+    if (!items) return new Set();
+    return new Set(items.map(getItemResourceType).filter(Boolean));
+  }, [items]);
 
-  if (!isVisible) return null;
+  // Filter selected resource types to only include available ones
+  // This is computed/derived, avoiding the need for effect-based cleanup
+  const validSelectedResourceTypes = useMemo(() => {
+    if (selectedResourceTypes.length === 0) return selectedResourceTypes;
+    return selectedResourceTypes.filter(type => availableResourceTypes.has(type));
+  }, [selectedResourceTypes, availableResourceTypes]);
 
-  const { laneType, totalCount, items, canLoadMore, allItemsData } = lane;
-  // Use prop values for isFiltered/isFilterSource, fallback to lane.isFiltered if prop not provided
-  const laneIsFiltered = isFiltered || lane.isFiltered;
-  const displayConfig = getLaneDisplayConfig(laneType);
-  const showReasons = laneType === LaneTypes.EFFECTIVE_ENTITLEMENTS && focusNodeType === 'Identity';
-  // When maximized, always use 2 columns for better display
-  const effectiveColumns = isMaximized ? 2 : displayConfig.columns;
-  const isMultiColumn = effectiveColumns > 1;
-  const showFilters = laneType === LaneTypes.EFFECTIVE_ENTITLEMENTS; // Only show filters for Entitlements
-
-  // Determine which items to display (before filtering)
-  // IMPORTANT: When the lane is filtered by cross-lane filtering (laneIsFiltered),
-  // we must use the filtered `items` even in maximized mode, not `allItemsData` which is unfiltered
-  const baseItems = laneIsFiltered
-    ? items  // Use filtered items when cross-lane filtering is active
-    : (isMaximized && allItems ? allItems : (isMaximized && allItemsData ? allItemsData : items));
-
-  // Extract unique resource types from items for the dropdown (memoized for performance)
-  // When lane is filtered by cross-lane filtering, only show resource types from filtered items
-  // When not filtered, show all resource types from all items
-  const resourceTypeSource = laneIsFiltered ? items : (allItemsData || items || []);
+  // Memo: Extract unique resource types for the filter dropdown
   const allResourceTypes = useMemo(() => {
     if (!showFilters) return [];
+    const resourceTypeSource = laneIsFiltered ? items : (allItemsData || items || []);
     return [...new Set(
-      resourceTypeSource
-        .map(item => item.node?.metadata?.type || item.rawData?.resourceType?.name)
-        .filter(Boolean)
+      resourceTypeSource.map(getItemResourceType).filter(Boolean)
     )].sort();
-  }, [showFilters, resourceTypeSource]);
+  }, [showFilters, laneIsFiltered, items, allItemsData]);
 
-  // Apply filters for entitlements lane
-  let displayItems = baseItems;
-
-  // Apply resource type filter
-  if (showFilters && selectedResourceTypes.length > 0) {
-    displayItems = displayItems.filter(item => {
-      const itemType = item.node?.metadata?.type || item.rawData?.resourceType?.name;
-      return selectedResourceTypes.includes(itemType);
-    });
-  }
-
-  // Apply search filter
-  if (showFilters && searchQuery.trim()) {
-    const query = searchQuery.toLowerCase().trim();
-    displayItems = displayItems.filter(item => {
-      const name = (item.node?.displayName || '').toLowerCase();
-      return name.includes(query);
-    });
-  }
-
-  // When cross-lane filtered, all filtered items are already in `items`, so no "more" to show
-  const hasMoreItems = !laneIsFiltered && totalCount > items.length;
-
-  // Toggle resource type selection
-  const toggleResourceType = (type) => {
-    setSelectedResourceTypes(prev =>
-      prev.includes(type)
-        ? prev.filter(t => t !== type)
-        : [...prev, type]
-    );
-  };
-
-  // Clear all resource type filters
-  const clearResourceTypes = () => {
-    setSelectedResourceTypes([]);
-  };
-
-  const handleLoadMore = async () => {
-    if (!canLoadMore || isLoading) return;
-    setIsLoading(true);
-    try {
-      await onLoadMore?.(laneType);
-    } finally {
-      setIsLoading(false);
+  // Memo: Compute base items before local filtering
+  const baseItems = useMemo(() => {
+    if (laneIsFiltered) {
+      return items; // Use filtered items when cross-lane filtering is active
     }
-  };
+    if (isMaximized && allItems) {
+      return allItems;
+    }
+    if (isMaximized && allItemsData) {
+      return allItemsData;
+    }
+    return items;
+  }, [laneIsFiltered, items, isMaximized, allItems, allItemsData]);
 
-  // Handle maximize - show all items with constrained height
+  // Memo: Apply local filters (search and resource type)
+  const displayItems = useMemo(() => {
+    const hasTypeFilter = showFilters && validSelectedResourceTypes.length > 0;
+    const hasSearchFilter = showFilters && searchQuery.trim();
+
+    if (!hasTypeFilter && !hasSearchFilter) {
+      return baseItems;
+    }
+
+    const typeFilterSet = hasTypeFilter ? new Set(validSelectedResourceTypes) : null;
+    const searchQueryLower = hasSearchFilter ? searchQuery.toLowerCase().trim() : null;
+
+    return baseItems.filter(item => {
+      if (typeFilterSet) {
+        const itemType = getItemResourceType(item);
+        if (!itemType || !typeFilterSet.has(itemType)) {
+          return false;
+        }
+      }
+      if (searchQueryLower) {
+        const name = (item.node?.displayName || '').toLowerCase();
+        if (!name.includes(searchQueryLower)) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [baseItems, showFilters, validSelectedResourceTypes, searchQuery]);
+
+  // Callback: Handle maximize - show all items with constrained height
   const handleMaximize = useCallback(() => {
-    // Calculate available space to prevent card from going off-screen
     if (cardRef.current) {
       const rect = cardRef.current.getBoundingClientRect();
       const viewportHeight = window.innerHeight;
-
-      // Calculate how much space is available below the card header
-      // Leave some padding (40px) at the bottom of the viewport
-      const headerHeight = 50; // Approximate header height
+      const headerHeight = 50;
       const filterBarHeight = showFilters && allResourceTypes.length > 0 ? 40 : 0;
       const availableHeight = viewportHeight - rect.top - headerHeight - filterBarHeight - 60;
-
-      // Clamp between minimum (200px) and maximum (600px) heights
       const constrainedHeight = Math.max(200, Math.min(600, availableHeight));
-
       setCalculatedMaxHeight(constrainedHeight);
     } else {
-      // Fallback if ref not available
       setCalculatedMaxHeight(400);
     }
-
     setIsMaximized(true);
-    // If allItemsData is available from lane, use it
-    if (lane.allItemsData) {
-      setAllItems(lane.allItemsData);
+    if (allItemsData) {
+      setAllItems(allItemsData);
     }
-  }, [lane.allItemsData, showFilters, allResourceTypes.length]);
+  }, [allItemsData, showFilters, allResourceTypes.length]);
 
-  // Handle restore - back to normal view
+  // Callback: Handle restore - back to normal view
   const handleRestore = useCallback(() => {
     setIsMaximized(false);
     setCalculatedMaxHeight(null);
   }, []);
 
+  // ==========================================================================
+  // EARLY RETURN - Safe to return here, all hooks have been called
+  // ==========================================================================
+  if (!isVisible) return null;
+
+  // ==========================================================================
+  // DERIVED VALUES - Computed after early return (no hooks allowed here)
+  // ==========================================================================
+  const displayConfig = getLaneDisplayConfig(laneType);
+  const showReasons = laneType === LaneTypes.EFFECTIVE_ENTITLEMENTS && focusNodeType === 'Identity';
+  const effectiveColumns = isMaximized ? 2 : displayConfig.columns;
+  const isMultiColumn = effectiveColumns > 1;
+  const hasMoreItems = !laneIsFiltered && totalCount > items.length;
   const isCollapsed = !isExpanded;
+
+  // Regular functions (not hooks, so can be defined after early return)
+  const toggleResourceType = (type) => {
+    setSelectedResourceTypes(prev =>
+      prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
+    );
+  };
+
+  const clearResourceTypes = () => {
+    setSelectedResourceTypes([]);
+  };
 
   // Use width from displayConfig (350px for single column, 700px for multi-column)
   // Maximized mode uses 700px (2 columns), normal mode uses displayConfig width
@@ -252,7 +248,7 @@ const LaneCard = ({
         )}
 
         <span className="lane-count">
-          ({(searchQuery.trim() || selectedResourceTypes.length > 0)
+          ({(searchQuery.trim() || validSelectedResourceTypes.length > 0)
             ? `${displayItems.length}/${laneIsFiltered ? items.length : totalCount}`
             : (laneIsFiltered ? items.length : totalCount)})
         </span>
@@ -373,10 +369,9 @@ const LaneCard = ({
                 <button
                   className="lane-load-more"
                   onClick={handleMaximize}
-                  disabled={isLoading}
                   style={{ gridColumn: isMultiColumn ? '1 / -1' : undefined }}
                 >
-                  {isLoading ? 'Loading...' : `Show all ${totalCount} items`}
+                  Show all {totalCount} items
                 </button>
               )}
 

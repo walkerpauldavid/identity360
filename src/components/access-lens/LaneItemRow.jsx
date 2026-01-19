@@ -1,8 +1,10 @@
 /**
  * LaneItemRow Component
  * Displays a single item within a lane with node info and optional reasons
+ * Wrapped with React.memo for performance optimization
  */
 
+import { memo } from 'react';
 import { getNodeIcon, getNodeColor, getRiskColor, getStatusColor } from './accessLensTypes';
 import ReasonChips from './ReasonChips';
 
@@ -38,16 +40,24 @@ const LaneItemRow = ({
   // Email: try metadata.email (from OData enrichment), or rawData variants
   const identityEmail = node.metadata?.email || rawData?.email || rawData?.EMAIL || rawData?.mail || null;
 
-  // Debug: Log identity node data to trace attribute flow
-  if (isIdentityNode) {
-    console.log(`[LaneItemRow] Identity "${node.displayName}":`, {
-      employeeId: identityEmployeeId,
-      title: identityTitle,
-      email: identityEmail,
-      metadata: node.metadata,
-      rawData: rawData
-    });
-  }
+  // Check if this is an Entitlement type node (for compliance status display)
+  const isEntitlementNode = node.type === 'Entitlement' || node.type === 'Resource';
+  const complianceStatus = node.metadata?.complianceStatus || rawData?.complianceStatus || null;
+
+  // Check if this is an Account type node (for entitlement count display)
+  const isAccountNode = node.type === 'Account';
+  const accountResourceCount = node.metadata?.resourceCount || rawData?.resourceCount || 0;
+
+  // Debug: Log identity node data to trace attribute flow (suppressed for performance)
+  // if (isIdentityNode) {
+  //   console.log(`[LaneItemRow] Identity "${node.displayName}":`, {
+  //     employeeId: identityEmployeeId,
+  //     title: identityTitle,
+  //     email: identityEmail,
+  //     metadata: node.metadata,
+  //     rawData: rawData
+  //   });
+  // }
 
   // Get system description from multiple possible sources (OData enrichment)
   const systemDescription = node.description ||
@@ -60,17 +70,17 @@ const LaneItemRow = ({
     item.rawData?.description ||
     null;
 
-  // Debug: Log system node data to verify OData enrichment
-  if (isSystemNode) {
-    console.log(`[LaneItemRow] System "${node.displayName}":`, {
-      description: systemDescription,
-      type: systemType,
-      owner: systemOwner,
-      classification: systemClassification,
-      nodeMetadata: node.metadata,
-      rawData: rawData
-    });
-  }
+  // Debug: Log system node data to verify OData enrichment (suppressed for performance)
+  // if (isSystemNode) {
+  //   console.log(`[LaneItemRow] System "${node.displayName}":`, {
+  //     description: systemDescription,
+  //     type: systemType,
+  //     owner: systemOwner,
+  //     classification: systemClassification,
+  //     nodeMetadata: node.metadata,
+  //     rawData: rawData
+  //   });
+  // }
 
   // Build hover text from description - check multiple sources
   // For systems, build a more comprehensive tooltip
@@ -89,7 +99,7 @@ const LaneItemRow = ({
   // Handle click with proper event handling
   const handleClick = (e) => {
     e.stopPropagation(); // Prevent drag/parent interference
-    console.log('LaneItemRow clicked:', node.displayName);
+    // console.log('LaneItemRow clicked:', node.displayName);  // Suppressed for performance
     onClick?.(item);
   };
 
@@ -127,6 +137,14 @@ const LaneItemRow = ({
               {node.riskScore}
             </span>
           )}
+          {/* Compliance status for entitlements */}
+          {isEntitlementNode && complianceStatus && (
+            <span
+              className={`lane-item-compliance ${complianceStatus === 'Approved' ? 'approved' : complianceStatus === 'Not Approved' ? 'not-approved' : 'pending'}`}
+            >
+              {complianceStatus}
+            </span>
+          )}
         </div>
 
         {/* System description subtitle (for enriched system nodes from OData) */}
@@ -156,6 +174,15 @@ const LaneItemRow = ({
             {identityEmail && (
               <span className="identity-email">{identityEmail}</span>
             )}
+          </div>
+        )}
+
+        {/* Account entitlement count */}
+        {isAccountNode && accountResourceCount > 0 && (
+          <div className="lane-item-account-details">
+            <span className="account-entitlement-count">
+              {accountResourceCount} entitlement{accountResourceCount !== 1 ? 's' : ''}
+            </span>
           </div>
         )}
 
@@ -220,4 +247,35 @@ const LaneItemRow = ({
   );
 };
 
-export default LaneItemRow;
+// Custom comparison function for React.memo
+// Only re-render if props that affect display have changed
+const arePropsEqual = (prevProps, nextProps) => {
+  // Check callback identity - IMPORTANT: must re-render if callbacks change
+  // to avoid stale closure bugs where old callbacks capture outdated state
+  if (prevProps.onClick !== nextProps.onClick) return false;
+  if (prevProps.onPivot !== nextProps.onPivot) return false;
+  if (prevProps.onReasonClick !== nextProps.onReasonClick) return false;
+
+  // Check item identity
+  if (prevProps.item?.node?.id !== nextProps.item?.node?.id) return false;
+
+  // Check selection state
+  if (prevProps.isSelected !== nextProps.isSelected) return false;
+  if (prevProps.isActiveFilter !== nextProps.isActiveFilter) return false;
+  if (prevProps.selectedReasonId !== nextProps.selectedReasonId) return false;
+
+  // Check display options
+  if (prevProps.showReasons !== nextProps.showReasons) return false;
+  if (prevProps.viewMode !== nextProps.viewMode) return false;
+
+  // Check if item content changed (deep comparison of key fields)
+  const prevNode = prevProps.item?.node;
+  const nextNode = nextProps.item?.node;
+  if (prevNode?.displayName !== nextNode?.displayName) return false;
+  if (prevNode?.status !== nextNode?.status) return false;
+
+  // Props are effectively equal
+  return true;
+};
+
+export default memo(LaneItemRow, arePropsEqual);

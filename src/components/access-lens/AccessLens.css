@@ -1447,6 +1447,31 @@
   color: white;
 }
 
+/* Compliance status badge */
+.lane-item-compliance {
+  padding: 0.1rem 0.35rem;
+  border-radius: 3px;
+  font-size: 0.6rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.lane-item-compliance.approved {
+  background-color: #4caf50;
+  color: white;
+}
+
+.lane-item-compliance.not-approved {
+  background-color: #f44336;
+  color: white;
+}
+
+.lane-item-compliance.pending {
+  background-color: #ff9800;
+  color: white;
+}
+
 /* System description (from OData enrichment) */
 .lane-item-description {
   font-size: 0.7rem;
@@ -1500,6 +1525,20 @@
 
 .lane-item-identity-details .identity-email {
   color: #81a1c1;
+}
+
+/* Account details in access cards */
+.lane-item-account-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.2rem;
+  font-size: 0.7rem;
+}
+
+.lane-item-account-details .account-entitlement-count {
+  color: #a3be8c;
+  font-weight: 500;
 }
 
 .lane-item-identity-details .identity-risk {
