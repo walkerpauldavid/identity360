@@ -3,6 +3,44 @@
  * Types for the IGA access graph exploration widget
  */
 
+// ============================================================================
+// DEBUG CONFIGURATION
+// Set these flags to true to enable verbose logging for specific modules
+// ============================================================================
+export const DebugConfig = {
+  // API and data fetching
+  API_CALLS: false,           // Log API request/response details
+  API_ERRORS: false,          // Log API errors to console
+
+  // Lane building and data processing
+  LANE_BUILDING: false,       // Log lane construction details
+  ENTITLEMENTS: false,        // Log entitlement processing (deduplication, exclusion)
+  IDENTITIES: false,          // Log identity lane building
+  ACCOUNTS: false,            // Log account lane building
+  SYSTEMS: false,             // Log system lane building
+
+  // Cross-lane filtering
+  CROSS_LANE_FILTER: false,   // Log cross-lane filter operations
+  CASCADED_FILTER: false,     // Log cascaded filter operations (Policy -> Accounts)
+  ARRAY_FILTER: false,        // Log array contains filter operations
+
+  // UI interactions
+  ITEM_CLICK: false,          // Log item selection events
+  PIVOT: false,               // Log pivot operations
+
+  // Data transformations
+  EXCLUSION_RULES: false,     // Log exclusion rule applications
+  DATA_TRANSFORM: false,      // Log data transformation operations
+
+  // All modules - master switch
+  ALL: false                  // Enable all debug logging (overrides individual flags)
+};
+
+// Helper function to check if logging is enabled for a module
+export const shouldLog = (module) => {
+  return DebugConfig.ALL || DebugConfig[module] || false;
+};
+
 // Node types in the access graph
 export const NodeTypes = {
   IDENTITY: 'Identity',
@@ -163,6 +201,20 @@ export const LaneSchema = {
     apiSource: {
       type: 'derived',  // Derived from assignments, not fetched directly
       derivedFrom: 'calculatedAssignments'
+    },
+    // Inspector configuration for Logical Applications
+    inspectorConfig: {
+      showAttributes: [
+        { field: 'Name', label: 'Name', type: 'text' },
+        { field: 'DisplayName', label: 'Display Name', type: 'text' },
+        { field: 'Description', label: 'Description', type: 'text' },
+        { field: 'resourceCount', label: 'Resources', type: 'number' },
+        { field: 'underlyingSystems', label: 'Implemented By', type: 'array' },
+        { field: 'systemType', label: 'System Type', type: 'text' },
+        { field: 'owner', label: 'Owner', type: 'text' },
+        { field: 'classification', label: 'Classification', type: 'text' }
+      ],
+      hideAttributes: ['Id', 'UId', 'id', 'underlyingSystemIds', 'isLogical']
     }
   },
   [LaneTypes.ACCOUNTS]: {
@@ -233,7 +285,14 @@ export const LaneSchema = {
     description: 'Related identities',
     sortable: true,
     collapsible: true,
-    exclusionList: [],
+    exclusionList: [
+      {
+        // Exclude unresolved identities - these are placeholder entries for accounts without linked identities
+        fields: ['displayName', 'identity.displayName', 'DISPLAYNAME'],
+        values: ['UNRESOLVED IDENTITY', 'Unresolved Identity'],
+        matchType: 'equals'
+      }
+    ],
     defaultPosition: {
       compass: CompassOrientation.W,  // West (for system-centric view)
       priority: 1
@@ -441,34 +500,14 @@ export const ViewModes = {
   REVIEW: 'review'
 };
 
-// Get icon for node type
+// Get icon for node type - uses FocusNodeSchema
 export const getNodeIcon = (type) => {
-  switch (type) {
-    case NodeTypes.IDENTITY: return '👤';
-    case NodeTypes.ROLE: return '👥';
-    case NodeTypes.ENTITLEMENT: return '🔑';
-    case NodeTypes.POLICY: return '📋';
-    case NodeTypes.ASSIGNMENT_POLICY: return '📜';
-    case NodeTypes.ACCOUNT: return '💻';
-    case NodeTypes.SYSTEM: return '🖥️';
-    case NodeTypes.CONTEXT: return '🏷️';
-    default: return '📦';
-  }
+  return FocusNodeSchema[type]?.icon || '📦';
 };
 
-// Get color for node type
+// Get color for node type - uses FocusNodeSchema
 export const getNodeColor = (type) => {
-  switch (type) {
-    case NodeTypes.IDENTITY: return '#88c0d0';
-    case NodeTypes.ROLE: return '#a3be8c';
-    case NodeTypes.ENTITLEMENT: return '#ebcb8b';
-    case NodeTypes.POLICY: return '#b48ead';
-    case NodeTypes.ASSIGNMENT_POLICY: return '#d08770';  // Orange
-    case NodeTypes.ACCOUNT: return '#bf616a';
-    case NodeTypes.SYSTEM: return '#d08770';
-    case NodeTypes.CONTEXT: return '#5e81ac';
-    default: return '#4c566a';
-  }
+  return FocusNodeSchema[type]?.color || '#4c566a';
 };
 
 // Get color for reason type
@@ -522,6 +561,7 @@ export const FocusNodeSchema = {
   [NodeTypes.IDENTITY]: {
     title: 'Identity',
     icon: '👤',
+    color: '#88c0d0',
     primaryField: 'DISPLAYNAME|FIRSTNAME+LASTNAME',
     attributes: [
       { field: 'EMAIL', label: 'Email', type: 'email', required: true },
@@ -555,6 +595,7 @@ export const FocusNodeSchema = {
   [NodeTypes.ROLE]: {
     title: 'Role',
     icon: '👥',
+    color: '#a3be8c',
     primaryField: 'DisplayName|Name',
     attributes: [
       { field: 'Description', label: 'Description', type: 'text', required: false },
@@ -575,6 +616,7 @@ export const FocusNodeSchema = {
   [NodeTypes.ACCOUNT]: {
     title: 'Account',
     icon: '💻',
+    color: '#bf616a',
     primaryField: 'AccountName|DisplayName|Name',
     attributes: [
       { field: 'System.Name|SystemName', label: 'System', type: 'badge', required: true },
@@ -602,6 +644,7 @@ export const FocusNodeSchema = {
   [NodeTypes.ENTITLEMENT]: {
     title: 'Entitlement',
     icon: '🔑',
+    color: '#ebcb8b',
     primaryField: 'Name|DisplayName',
     // Note: System and Type are shown as badges, so they're excluded from attributes to avoid duplication
     // Note: Compliance is shown separately when an Identity is selected, not as a schema attribute
@@ -650,6 +693,7 @@ export const FocusNodeSchema = {
   [NodeTypes.SYSTEM]: {
     title: 'System',
     icon: '🖥️',
+    color: '#d08770',
     primaryField: 'DISPLAYNAME|DisplayName|Name|name',
     attributes: [
       { field: 'DESCRIPTION|Description', label: 'Description', type: 'text', required: false },
@@ -678,6 +722,7 @@ export const FocusNodeSchema = {
   [NodeTypes.CONTEXT]: {
     title: 'Context',
     icon: '🏷️',
+    color: '#5e81ac',
     primaryField: 'displayName|name|Name',
     attributes: [
       { field: 'type|Type', label: 'Type', type: 'badge', required: false },
@@ -693,6 +738,7 @@ export const FocusNodeSchema = {
   [NodeTypes.POLICY]: {
     title: 'Policy',
     icon: '📋',
+    color: '#b48ead',
     primaryField: 'Name|DisplayName',
     attributes: [
       { field: 'Description', label: 'Description', type: 'text', required: false },
@@ -726,6 +772,7 @@ export const FocusNodeSchema = {
   [NodeTypes.ASSIGNMENT_POLICY]: {
     title: 'Assignment Policy',
     icon: '📜',
+    color: '#d08770',
     primaryField: 'DISPLAYNAME|DisplayName|Name',
     attributes: [
       { field: 'DESCRIPTION|Description', label: 'Description', type: 'text', required: false },
@@ -778,7 +825,10 @@ export const CrossLaneFilterType = {
   // Filter by checking if ID is in an array of IDs
   ARRAY_CONTAINS: 'arrayContains',
   // Filter by matching against multiple possible fields
-  MULTI_FIELD_MATCH: 'multiFieldMatch'
+  MULTI_FIELD_MATCH: 'multiFieldMatch',
+  // Cascaded filter: first filter an intermediate lane, then extract field values to filter target lane
+  // Example: Policy -> Entitlements (by resourceIds) -> Accounts (by accountId from filtered entitlements)
+  CASCADED_THROUGH: 'cascadedThrough'
 };
 
 /**
@@ -808,7 +858,7 @@ export const LaneConfigSchema = {
         position: { x: -380, y: -220 },
         crossLaneFilters: {
           filtersLanes: [LaneTypes.ACCOUNTS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.LOGICAL_APPLICATIONS],
-          filteredByLanes: [LaneTypes.ACCOUNTS, LaneTypes.LOGICAL_APPLICATIONS],
+          filteredByLanes: [LaneTypes.ACCOUNTS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.ASSIGNMENT_POLICIES],
           filterMappings: {
             // When System is selected, filter Accounts by system
             [LaneTypes.ACCOUNTS]: {
@@ -821,6 +871,13 @@ export const LaneConfigSchema = {
               type: CrossLaneFilterType.MULTI_FIELD_MATCH,
               sourceFields: ['id', 'displayName'],
               targetFields: ['metadata.systemId', 'metadata.system']
+            },
+            // When System is selected, filter Logical Applications to those implemented by this system
+            // A logical app is shown if the selected system is one of its underlying (implementing) systems
+            [LaneTypes.LOGICAL_APPLICATIONS]: {
+              type: CrossLaneFilterType.ARRAY_CONTAINS,
+              sourceField: 'id',
+              targetField: 'metadata.underlyingSystemIds'
             }
           }
         }
@@ -833,19 +890,30 @@ export const LaneConfigSchema = {
         position: { x: 380, y: -220 },
         crossLaneFilters: {
           filtersLanes: [LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.SYSTEMS, LaneTypes.LOGICAL_APPLICATIONS],
-          filteredByLanes: [LaneTypes.SYSTEMS, LaneTypes.LOGICAL_APPLICATIONS],
+          filteredByLanes: [LaneTypes.SYSTEMS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.ASSIGNMENT_POLICIES],
           filterMappings: {
             // When Account is selected, filter Entitlements by account
+            // Uses ARRAY_CONTAINS because deduplicated entitlements store arrays of accountIds
             [LaneTypes.EFFECTIVE_ENTITLEMENTS]: {
-              type: CrossLaneFilterType.MULTI_FIELD_MATCH,
-              sourceFields: ['id', 'displayName'],
-              targetFields: ['metadata.accountId', 'metadata.accountName']
+              type: CrossLaneFilterType.ARRAY_CONTAINS,
+              sourceField: 'id',
+              targetField: 'metadata.accountIds'
             },
             // When Account is selected, filter Systems to show account's system
             [LaneTypes.SYSTEMS]: {
               type: CrossLaneFilterType.MULTI_FIELD_MATCH,
               sourceFields: ['metadata.systemId', 'metadata.system'],
               targetFields: ['id', 'displayName']
+            },
+            // When Account is selected, filter Logical Applications to show only those with entitlements accessible via this account
+            // This is a cascaded filter: Account -> Entitlements (by accountId) -> extract systemId/system -> match Logical App id/displayName
+            [LaneTypes.LOGICAL_APPLICATIONS]: {
+              type: CrossLaneFilterType.CASCADED_THROUGH,
+              intermediateLane: LaneTypes.EFFECTIVE_ENTITLEMENTS,
+              sourceField: 'id',                          // Account's ID
+              intermediateTargetField: 'metadata.accountIds',  // Match against entitlement's accountIds array
+              intermediateExtractFields: ['metadata.systemId', 'metadata.system'],  // Get systemId OR system name from each filtered entitlement
+              targetFields: ['id', 'displayName']         // Match against logical app's ID or displayName
             }
           }
         }
@@ -858,7 +926,7 @@ export const LaneConfigSchema = {
         position: { x: -380, y: 80 },
         crossLaneFilters: {
           filtersLanes: [],  // Entitlements don't filter other lanes in Identity view
-          filteredByLanes: [LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS, LaneTypes.LOGICAL_APPLICATIONS],
+          filteredByLanes: [LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.ASSIGNMENT_POLICIES],
           filterMappings: {}
         }
       },
@@ -878,12 +946,27 @@ export const LaneConfigSchema = {
         position: { x: 600, y: 80 },
         crossLaneFilters: {
           filtersLanes: [LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.SYSTEMS, LaneTypes.ACCOUNTS],
-          filteredByLanes: [LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS],
+          filteredByLanes: [LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS, LaneTypes.ASSIGNMENT_POLICIES],
           filterMappings: {
+            // When Logical App is selected, filter Entitlements to those on this logical system
             [LaneTypes.EFFECTIVE_ENTITLEMENTS]: {
               type: CrossLaneFilterType.MULTI_FIELD_MATCH,
               sourceFields: ['id', 'displayName'],
               targetFields: ['metadata.systemId', 'metadata.system']
+            },
+            // When Logical App is selected, filter Systems to show only the underlying physical systems
+            // The Logical App stores its implementing systems in metadata.underlyingSystemIds
+            [LaneTypes.SYSTEMS]: {
+              type: CrossLaneFilterType.ARRAY_CONTAINS,
+              sourceField: 'metadata.underlyingSystemIds',
+              targetField: 'id'
+            },
+            // When Logical App is selected, filter Accounts to those on the underlying physical systems
+            // Uses the same underlyingSystemIds to match accounts' system
+            [LaneTypes.ACCOUNTS]: {
+              type: CrossLaneFilterType.ARRAY_CONTAINS,
+              sourceField: 'metadata.underlyingSystemIds',
+              targetField: 'metadata.systemId'
             }
           }
         }
@@ -903,7 +986,7 @@ export const LaneConfigSchema = {
         apiSource: { type: 'derived', from: 'calculatedAssignments', extract: 'assignmentPolicies' },
         position: { x: -600, y: 80 },
         crossLaneFilters: {
-          filtersLanes: [LaneTypes.EFFECTIVE_ENTITLEMENTS],
+          filtersLanes: [LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS, LaneTypes.LOGICAL_APPLICATIONS],
           filteredByLanes: [],  // Policies are not filtered by other lanes
           filterMappings: {
             // When Policy is selected, filter Entitlements to show only those assigned by this policy
@@ -911,6 +994,39 @@ export const LaneConfigSchema = {
               type: CrossLaneFilterType.ARRAY_CONTAINS,
               sourceField: 'resourceIds',  // Array of resource IDs this policy assigns
               targetField: 'id'            // Match against entitlement's resource ID
+            },
+            // When Policy is selected, filter Accounts to show only those relevant to the policy's entitlements
+            // This is a cascaded filter: Policy -> Entitlements (by resourceIds) -> Accounts (by accountIds array)
+            [LaneTypes.ACCOUNTS]: {
+              type: CrossLaneFilterType.CASCADED_THROUGH,
+              // First, filter the intermediate lane (Entitlements)
+              intermediateLane: LaneTypes.EFFECTIVE_ENTITLEMENTS,
+              sourceField: 'resourceIds',           // Policy's array of resource IDs
+              intermediateTargetField: 'id',        // Match against entitlement's ID
+              // Then, extract values from filtered entitlements to filter Accounts
+              // Uses accountIds (array) because deduplicated entitlements aggregate all accounts
+              intermediateExtractField: 'metadata.accountIds',  // Get accountIds array from each filtered entitlement
+              targetField: 'id'                     // Match against account's ID
+            },
+            // When Policy is selected, filter Systems to show only systems with entitlements assigned by this policy
+            // This is a cascaded filter: Policy -> Entitlements (by resourceIds) -> Systems (by systemId/system)
+            [LaneTypes.SYSTEMS]: {
+              type: CrossLaneFilterType.CASCADED_THROUGH,
+              intermediateLane: LaneTypes.EFFECTIVE_ENTITLEMENTS,
+              sourceField: 'resourceIds',           // Policy's array of resource IDs
+              intermediateTargetField: 'id',        // Match against entitlement's ID
+              intermediateExtractFields: ['metadata.systemId', 'metadata.system'],  // Get systemId OR system name
+              targetFields: ['id', 'displayName']   // Match against system's ID or displayName
+            },
+            // When Policy is selected, filter Logical Applications to show only those with entitlements assigned by this policy
+            // This is a cascaded filter: Policy -> Entitlements (by resourceIds) -> Logical Apps (by systemId/system)
+            [LaneTypes.LOGICAL_APPLICATIONS]: {
+              type: CrossLaneFilterType.CASCADED_THROUGH,
+              intermediateLane: LaneTypes.EFFECTIVE_ENTITLEMENTS,
+              sourceField: 'resourceIds',           // Policy's array of resource IDs
+              intermediateTargetField: 'id',        // Match against entitlement's ID
+              intermediateExtractFields: ['metadata.systemId', 'metadata.system'],  // Get systemId OR system name
+              targetFields: ['id', 'displayName']   // Match against logical app's ID or displayName
             }
           }
         }
@@ -1012,7 +1128,7 @@ export const LaneConfigSchema = {
         position: { x: -850, y: -500 },
         crossLaneFilters: {
           filtersLanes: [LaneTypes.ACCOUNTS, LaneTypes.EFFECTIVE_ENTITLEMENTS],
-          filteredByLanes: [LaneTypes.ACCOUNTS],
+          filteredByLanes: [LaneTypes.ACCOUNTS, LaneTypes.EFFECTIVE_ENTITLEMENTS],  // Can be filtered by Accounts or Entitlements
           filterMappings: {
             // When Identity is selected, filter Accounts to show only that identity's accounts
             [LaneTypes.ACCOUNTS]: {
@@ -1021,10 +1137,11 @@ export const LaneConfigSchema = {
               targetField: 'metadata.identityIds'
             },
             // When Identity is selected, filter Entitlements to show only that identity's entitlements
+            // Uses ARRAY_CONTAINS because deduplicated entitlements store arrays of identityIds
             [LaneTypes.EFFECTIVE_ENTITLEMENTS]: {
-              type: CrossLaneFilterType.FIELD_MATCH,
+              type: CrossLaneFilterType.ARRAY_CONTAINS,
               sourceField: 'id',
-              targetField: 'metadata.identityId'
+              targetField: 'metadata.identityIds'
             }
           }
         }
@@ -1038,7 +1155,7 @@ export const LaneConfigSchema = {
         position: { x: 850, y: -500 },
         crossLaneFilters: {
           filtersLanes: [LaneTypes.IDENTITIES, LaneTypes.EFFECTIVE_ENTITLEMENTS],
-          filteredByLanes: [LaneTypes.IDENTITIES],
+          filteredByLanes: [LaneTypes.IDENTITIES, LaneTypes.EFFECTIVE_ENTITLEMENTS],  // Can be filtered by Identities or Entitlements
           filterMappings: {
             // When Account is selected, filter Identities to show the account owner(s)
             [LaneTypes.IDENTITIES]: {
@@ -1047,10 +1164,11 @@ export const LaneConfigSchema = {
               targetField: 'id'
             },
             // When Account is selected, filter Entitlements to show only that account's entitlements
+            // Uses ARRAY_CONTAINS because deduplicated entitlements store arrays of accountIds
             [LaneTypes.EFFECTIVE_ENTITLEMENTS]: {
-              type: CrossLaneFilterType.MULTI_FIELD_MATCH,
-              sourceFields: ['id', 'displayName'],
-              targetFields: ['metadata.accountId', 'metadata.accountName']
+              type: CrossLaneFilterType.ARRAY_CONTAINS,
+              sourceField: 'id',
+              targetField: 'metadata.accountIds'
             }
           }
         }
@@ -1063,9 +1181,44 @@ export const LaneConfigSchema = {
         apiSource: { type: 'GraphQL', query: 'getCalculatedAssignmentsDetailed', idParam: 'systemId' },
         position: { x: 0, y: 350 },
         crossLaneFilters: {
-          filtersLanes: [],  // Entitlements don't filter other lanes in System view
+          filtersLanes: [LaneTypes.IDENTITIES, LaneTypes.ACCOUNTS],  // Entitlements can filter both Identities and Accounts
           filteredByLanes: [LaneTypes.IDENTITIES, LaneTypes.ACCOUNTS],
-          filterMappings: {}
+          filterMappings: {
+            // When Entitlement is selected, filter Identities to show only those with this entitlement
+            // Uses ARRAY_CONTAINS because deduplicated entitlements store arrays of identityIds
+            [LaneTypes.IDENTITIES]: {
+              type: CrossLaneFilterType.ARRAY_CONTAINS,
+              sourceField: 'metadata.identityIds',  // Array of identity IDs that have this entitlement
+              targetField: 'id'                      // Match against identity's ID
+            },
+            // When Entitlement is selected, filter Accounts to show only those with this entitlement
+            // Uses ARRAY_CONTAINS because deduplicated entitlements store arrays of accountIds
+            [LaneTypes.ACCOUNTS]: {
+              type: CrossLaneFilterType.ARRAY_CONTAINS,
+              sourceField: 'metadata.accountIds',   // Array of account IDs that have this entitlement
+              targetField: 'id'                      // Match against account's ID
+            }
+          }
+        }
+      },
+      {
+        laneType: LaneTypes.LOGICAL_APPLICATIONS,
+        title: 'Logical Applications',
+        description: 'Logical applications implemented by this system',
+        required: false,  // Only show if there are logical apps implemented by this system
+        apiSource: { type: 'derived', from: 'calculatedAssignments', extract: 'logicalAppsForSystem' },
+        position: { x: 850, y: 350 },
+        crossLaneFilters: {
+          filtersLanes: [LaneTypes.EFFECTIVE_ENTITLEMENTS],
+          filteredByLanes: [],  // Focus system already filters this lane
+          filterMappings: {
+            // When Logical App is selected, filter Entitlements to those on the logical system
+            [LaneTypes.EFFECTIVE_ENTITLEMENTS]: {
+              type: CrossLaneFilterType.MULTI_FIELD_MATCH,
+              sourceFields: ['id', 'displayName'],
+              targetFields: ['metadata.systemId', 'metadata.system']
+            }
+          }
         }
       }
     ]
