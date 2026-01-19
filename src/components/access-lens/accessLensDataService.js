@@ -8,6 +8,18 @@
  */
 
 import { NodeTypes, LaneTypes, ReasonTypes, LaneConfigSchema, FocusNodeSchema, LaneDisplayConfig, LaneSchema, extractFieldValue } from './accessLensTypes';
+import {
+  buildLane,
+  buildIdentitiesLane as buildIdentitiesLaneGeneric,
+  buildAccountsLane as buildAccountsLaneGeneric,
+  buildEntitlementsLane as buildEntitlementsLaneGeneric,
+  buildSystemsLane as buildSystemsLaneGeneric,
+  buildLanesForFocusNode
+} from './laneBuilderService';
+
+// Feature flag to enable schema-driven lane building
+// Set to true to use the new laneBuilderService, false for legacy behavior
+const USE_SCHEMA_DRIVEN_LANE_BUILDING = false;
 
 // Configuration
 const CONFIG = {
@@ -487,11 +499,32 @@ export function buildContextsLane(contexts, filters = {}) {
  * @param {Object} options - Options for lane building
  * @param {boolean} options.includeIdentities - Include identities lane (for system-centric view)
  * @param {Object} options.systemDetailsMap - Map of systemId -> OData system details
+ * @param {string} options.focusNodeType - The NodeTypes value for the central node (for schema-driven building)
  */
 export function buildLanesFromAssignments(assignments, filters = {}, options = {}) {
   if (!assignments || !Array.isArray(assignments) || assignments.length === 0) {
     return [];
   }
+
+  // ============================================================================
+  // SCHEMA-DRIVEN LANE BUILDING PATH (when USE_SCHEMA_DRIVEN_LANE_BUILDING is enabled)
+  // Uses laneBuilderService for generic, configuration-based lane building
+  // ============================================================================
+  if (USE_SCHEMA_DRIVEN_LANE_BUILDING && options.focusNodeType) {
+    console.log('[Schema-Driven Lane Building] Using laneBuilderService for', options.focusNodeType);
+
+    const lanes = buildLanesForFocusNode(options.focusNodeType, assignments, {
+      filters,
+      systemDetailsMap: options.systemDetailsMap
+    });
+
+    console.log('[Schema-Driven Lane Building] Built lanes:', lanes.map(l => `${l.laneType}(${l.items?.length})`).join(', '));
+    return lanes;
+  }
+
+  // ============================================================================
+  // LEGACY LANE BUILDING PATH (original specialized logic)
+  // ============================================================================
 
   const lanes = [];
   const systemDetailsMap = options.systemDetailsMap || {};
@@ -516,6 +549,16 @@ export function buildLanesFromAssignments(assignments, filters = {}, options = {
 
   // Build Entitlements/Resources lane
   lanes.push(buildEntitlementsLane(assignments, filters));
+
+  // Build Assignment Policies lane (policies extracted from assignment reasons)
+  // Only show in Identity-centric view, not system-centric view
+  if (!options.includeIdentities) {
+    const assignmentPoliciesLane = buildAssignmentPoliciesLane(assignments, filters);
+    // Only add if there are policies
+    if (assignmentPoliciesLane.items.length > 0) {
+      lanes.push(assignmentPoliciesLane);
+    }
+  }
 
   // Build Identities lane (for system-centric view)
   if (options.includeIdentities) {
@@ -1047,6 +1090,10 @@ function buildIdentitiesLane(assignments, filters) {
         displayName: identity.displayName || `${identity.firstName || ''} ${identity.lastName || ''}`.trim(),
         firstName: identity.firstName,
         lastName: identity.lastName,
+        email: identity.email,
+        title: identity.title,
+        employeeId: identity.employeeId,
+        department: identity.department,
         riskLevel: identity.riskLevel?.name,
         accounts: identity.accounts || [],
         contexts: identity.contexts || [],
@@ -1084,6 +1131,10 @@ function buildIdentitiesLane(assignments, filters) {
         identityId: ident.identityId,
         firstName: ident.firstName,
         lastName: ident.lastName,
+        email: ident.email,
+        title: ident.title,
+        employeeId: ident.employeeId,
+        department: ident.department,
         riskLevel: ident.riskLevel,
         accountCount: ident.accounts?.length || 0,
         resourceCount: ident.resourceCount,
@@ -1096,6 +1147,10 @@ function buildIdentitiesLane(assignments, filters) {
         displayName: ident.displayName,
         firstName: ident.firstName,
         lastName: ident.lastName,
+        email: ident.email,
+        title: ident.title,
+        employeeId: ident.employeeId,
+        department: ident.department,
         riskLevel: ident.riskLevel,
         accounts: ident.accounts,
         contexts: ident.contexts,
@@ -1148,21 +1203,50 @@ function applyExclusionRules(items, exclusionList) {
   if (!exclusionList || exclusionList.length === 0) return items;
 
   let excludedCount = 0;
+  let keptCount = 0;
 
-  const filtered = items.filter(item => {
+  const filtered = items.filter((item, index) => {
+    const resourceName = getNestedValue(item, 'resource.name') || 'UNKNOWN';
+    const resourceType = getNestedValue(item, 'resource.resourceType.name') || 'NO_TYPE';
+    const resourceDesc = getNestedValue(item, 'resource.description') || '';
+
+    // Debug: Log first 20 items to see what we're processing
+    if (index < 20) {
+      console.log(`[Exclusion Check ${index}] "${resourceName}" type="${resourceType}"`);
+    }
+
     // Check each exclusion rule
     for (const rule of exclusionList) {
-      const { fields, values } = rule;
+      const { fields, values, matchType = 'exact' } = rule;
 
       // Check each field specified in the rule
       for (const field of fields) {
-        const fieldValue = (getNestedValue(item, field) || '').toLowerCase();
+        const fieldValue = (getNestedValue(item, field) || '').toLowerCase().trim();
 
-        // Check if field value contains any of the excluded values
+        // Check if field value matches any of the excluded values
         for (const excludeValue of values) {
-          if (fieldValue.includes(excludeValue.toLowerCase())) {
-            if (excludedCount < 3) {
-              console.log(`Exclusion match: field "${field}" = "${fieldValue}" contains "${excludeValue}"`);
+          const excludeLower = excludeValue.toLowerCase().trim();
+          // Support multiple match types: exact, contains, endsWith, startsWith
+          let isMatch = false;
+          switch (matchType) {
+            case 'contains':
+              isMatch = fieldValue.includes(excludeLower);
+              break;
+            case 'endsWith':
+              isMatch = fieldValue.endsWith(excludeLower);
+              break;
+            case 'startsWith':
+              isMatch = fieldValue.startsWith(excludeLower);
+              break;
+            case 'exact':
+            default:
+              isMatch = fieldValue === excludeLower;
+              break;
+          }
+
+          if (isMatch) {
+            if (excludedCount < 5) {
+              console.log(`  EXCLUDED: field "${field}" = "${fieldValue}" matches "${excludeValue}" (${matchType})`);
             }
             excludedCount++;
             return false; // Exclude this item
@@ -1170,12 +1254,17 @@ function applyExclusionRules(items, exclusionList) {
         }
       }
     }
-    return true; // Keep this item
+
+    // Item passed all rules - keep it
+    keptCount++;
+    if (keptCount <= 10) {
+      console.log(`  KEPT: "${resourceName}" [type: "${resourceType}"]`);
+    }
+    return true;
   });
 
-  if (excludedCount > 0) {
-    console.log(`Total items excluded by rules: ${excludedCount}`);
-  }
+  console.log(`Total items excluded by rules: ${excludedCount}`);
+  console.log(`Total items kept: ${keptCount}`);
 
   return filtered;
 }
@@ -1186,57 +1275,103 @@ function applyExclusionRules(items, exclusionList) {
  * Excludes account-type resources (these belong in the Accounts lane)
  */
 function buildEntitlementsLane(assignments, filters) {
+  console.log('');
+  console.log('='.repeat(70));
   console.log('=== buildEntitlementsLane: Starting ===');
+  console.log('='.repeat(70));
   console.log('Total assignments received:', assignments.length);
+
+  if (assignments.length === 0) {
+    console.warn('WARNING: No assignments provided to buildEntitlementsLane');
+    return {
+      laneType: LaneTypes.EFFECTIVE_ENTITLEMENTS,
+      totalCount: 0,
+      items: [],
+      allItemsData: [],
+      canLoadMore: false
+    };
+  }
 
   // Debug: Show ALL assignments by system to understand the data
   const bySystem = {};
+  const byResourceType = {};
   assignments.forEach(a => {
     const sysName = a.resource?.system?.name || 'Unknown';
+    const typeName = a.resource?.resourceType?.name || 'NO_TYPE';
     if (!bySystem[sysName]) bySystem[sysName] = [];
     bySystem[sysName].push(a.resource?.name);
+    byResourceType[typeName] = (byResourceType[typeName] || 0) + 1;
   });
-  console.log('Assignments by system:');
+
+  console.log('');
+  console.log('=== Assignments by System ===');
   Object.entries(bySystem).forEach(([sys, resources]) => {
     console.log(`  ${sys}: ${resources.length} resources`);
-    if (sys.toLowerCase().includes('servicenow')) {
-      console.log('    ServiceNow resources:', resources.slice(0, 10));
+  });
+
+  console.log('');
+  console.log('=== Resource Type Distribution ===');
+  Object.entries(byResourceType).forEach(([type, count]) => {
+    console.log(`  "${type}": ${count} assignments`);
+  });
+
+  // Show ALL unique resource names to understand the data
+  console.log('');
+  console.log('=== All Unique Resources ===');
+  const uniqueResources = new Map();
+  assignments.forEach(a => {
+    const key = `${a.resource?.name}::${a.resource?.resourceType?.name}`;
+    if (!uniqueResources.has(key)) {
+      uniqueResources.set(key, {
+        name: a.resource?.name,
+        type: a.resource?.resourceType?.name,
+        system: a.resource?.system?.name,
+        description: a.resource?.description?.substring(0, 50)
+      });
     }
+  });
+  uniqueResources.forEach((res, key) => {
+    console.log(`  - "${res.name}" [type: "${res.type || 'NONE'}"] on ${res.system}`);
+    if (res.description) console.log(`      desc: "${res.description}..."`);
   });
 
   // Get lane config for exclusion rules
   const laneConfig = LaneDisplayConfig[LaneTypes.EFFECTIVE_ENTITLEMENTS] || {};
+  console.log('');
+  console.log('=== Exclusion Rules ===');
+  console.log('Exclusion list:', JSON.stringify(laneConfig.exclusionList, null, 2));
 
-  // Apply exclusion rules from lane config
+  // Apply exclusion rules from lane config to filter out account-type resources
   const filteredAssignments = applyExclusionRules(assignments, laneConfig.exclusionList);
 
-  console.log('After exclusion rules:', filteredAssignments.length, 'assignments (excluded:', assignments.length - filteredAssignments.length, ')');
+  const excludedCount = assignments.length - filteredAssignments.length;
+  console.log('');
+  console.log(`=== Exclusion Results: ${filteredAssignments.length} kept, ${excludedCount} excluded ===`);
 
   // Debug: Show what was excluded
-  if (assignments.length !== filteredAssignments.length) {
+  if (excludedCount > 0) {
     const excluded = assignments.filter(a => !filteredAssignments.includes(a));
-    console.log('Excluded assignments (' + excluded.length + ' total):');
-    excluded.slice(0, 10).forEach((a, i) => {
-      console.log(`  ${i}: "${a.resource?.name}" - type: "${a.resource?.resourceType?.name}", category: "${a.resource?.resourceCategory?.name}", system: "${a.resource?.system?.name}"`);
+    console.log('Excluded resources:');
+    excluded.forEach((a, i) => {
+      console.log(`  ${i + 1}. "${a.resource?.name}"`);
+      console.log(`      type: "${a.resource?.resourceType?.name || 'NONE'}"`);
+      console.log(`      desc: "${(a.resource?.description || '').substring(0, 60)}"`);
     });
-
-    // Check if any ServiceNow resources were excluded
-    const excludedServiceNow = excluded.filter(a =>
-      (a.resource?.system?.name || '').toLowerCase().includes('servicenow')
-    );
-    if (excludedServiceNow.length > 0) {
-      console.log('WARNING: ServiceNow resources excluded:', excludedServiceNow.length);
-      excludedServiceNow.slice(0, 5).forEach((a, i) => {
-        console.log(`  ${i}: "${a.resource?.name}" - type: "${a.resource?.resourceType?.name}"`);
-      });
-    }
   }
 
-  // Debug: Show sample of included assignments
-  console.log('Included assignments (' + filteredAssignments.length + ' total):');
-  filteredAssignments.slice(0, 10).forEach((a, i) => {
-    console.log(`  ${i}: "${a.resource?.name}" - type: "${a.resource?.resourceType?.name}", system: "${a.resource?.system?.name}"`);
-  });
+  // Show what's being kept
+  if (filteredAssignments.length > 0) {
+    console.log('');
+    console.log('Kept resources (showing first 10):');
+    filteredAssignments.slice(0, 10).forEach((a, i) => {
+      console.log(`  ${i + 1}. "${a.resource?.name}" [type: "${a.resource?.resourceType?.name || 'NONE'}"]`);
+    });
+  } else {
+    console.warn('');
+    console.warn('!!! WARNING: ALL resources were excluded by exclusion rules !!!');
+    console.warn('This means the system has no entitlements other than account-type resources.');
+    console.warn('If you expect to see AD groups or other entitlements, check the data source.');
+  }
 
   const items = filteredAssignments.map((assignment, index) => {
     const entitlementNode = {
@@ -2158,6 +2293,167 @@ export function extractUniqueComplianceStatuses(assignments) {
   return Array.from(statusSet).sort((a, b) => a.localeCompare(b));
 }
 
+/**
+ * Parse policy name from assignment reason description
+ * The description format is: "Policy Name" [BOT - timestamp]
+ * We extract just the policy name between the quotes
+ *
+ * @param {string} description - The reason description string
+ * @returns {string|null} The parsed policy name or null if not found
+ */
+function parsePolicyNameFromDescription(description) {
+  if (!description || typeof description !== 'string') return null;
+
+  // Match text between double quotes at the start of the string
+  // Pattern: "Some Policy Name" [BOT - ...]
+  const quoteMatch = description.match(/^"([^"]+)"/);
+  if (quoteMatch && quoteMatch[1]) {
+    return quoteMatch[1].trim();
+  }
+
+  // Fallback: if no quotes, try to extract text before the [BOT part
+  const botMatch = description.match(/^(.+?)\s*\[BOT/);
+  if (botMatch && botMatch[1]) {
+    return botMatch[1].trim();
+  }
+
+  // Last resort: return the whole description if it's reasonably short
+  if (description.length <= 100) {
+    return description.trim();
+  }
+
+  return null;
+}
+
+/**
+ * Build Assignment Policies lane from calculated assignments data
+ * Extracts unique policies from assignment reasons where reasonType === "Policy"
+ *
+ * Data source: getCalculatedAssignments API -> assignment.reason array
+ * Each reason with reasonType "Policy" represents a policy that assigned an entitlement
+ *
+ * @param {Array} assignments - Array of assignment data from API
+ * @param {Object} filters - Active filters
+ * @returns {Object} Lane object with laneType, totalCount, items, etc.
+ */
+export function buildAssignmentPoliciesLane(assignments, filters = {}) {
+  console.log('=== buildAssignmentPoliciesLane: Starting ===');
+  console.log('Total assignments received:', assignments?.length);
+
+  if (!assignments || !Array.isArray(assignments) || assignments.length === 0) {
+    return {
+      laneType: LaneTypes.ASSIGNMENT_POLICIES,
+      totalCount: 0,
+      items: [],
+      allItemsData: [],
+      canLoadMore: false
+    };
+  }
+
+  // Map to track unique policies by their parsed name
+  // Key: policy name (parsed from description)
+  // Value: { name, description, resourceIds: Set, assignmentCount }
+  const policiesMap = new Map();
+
+  // Debug: Log first few assignments to see reason structure
+  assignments.slice(0, 3).forEach((assignment, index) => {
+    console.log(`Assignment ${index} reason:`, assignment.reason);
+  });
+
+  assignments.forEach((assignment) => {
+    // Reason can be a single object or an array
+    const reasons = Array.isArray(assignment.reason)
+      ? assignment.reason
+      : (assignment.reason ? [assignment.reason] : []);
+
+    reasons.forEach((reason) => {
+      // Only process reasons with reasonType === "Policy"
+      if (!reason || reason.reasonType !== 'Policy') return;
+
+      // Parse policy name from description
+      const policyName = parsePolicyNameFromDescription(reason.description);
+      if (!policyName) {
+        console.log('Could not parse policy name from description:', reason.description);
+        return;
+      }
+
+      // Get resource ID from this assignment
+      const resourceId = assignment.resource?.id;
+
+      if (!policiesMap.has(policyName)) {
+        policiesMap.set(policyName, {
+          name: policyName,
+          description: reason.description,  // Keep full description for tooltip
+          resourceIds: new Set(),
+          assignmentCount: 0,
+          causeObjectKey: reason.causeObjectKey || null  // Policy ID if available
+        });
+      }
+
+      const policy = policiesMap.get(policyName);
+      policy.assignmentCount++;
+      if (resourceId) {
+        policy.resourceIds.add(resourceId);
+      }
+    });
+  });
+
+  console.log('=== buildAssignmentPoliciesLane: Results ===');
+  console.log('Unique policies found:', policiesMap.size);
+  Array.from(policiesMap.values()).forEach((policy, i) => {
+    console.log(`  ${i + 1}. "${policy.name}" - ${policy.resourceIds.size} resources, ${policy.assignmentCount} assignments`);
+  });
+
+  // Convert to lane items
+  const items = Array.from(policiesMap.values()).map((policy, index) => {
+    const policyNode = {
+      id: policy.causeObjectKey || `policy-${index}-${policy.name.replace(/\s+/g, '-').toLowerCase()}`,
+      type: NodeTypes.POLICY,
+      displayName: policy.name,
+      status: 'active',
+      badges: [
+        `${policy.resourceIds.size} entitlement${policy.resourceIds.size !== 1 ? 's' : ''}`
+      ],
+      metadata: {
+        name: policy.name,
+        fullDescription: policy.description,
+        resourceCount: policy.resourceIds.size,
+        assignmentCount: policy.assignmentCount,
+        // Cross-lane filtering: store resource IDs this policy assigns
+        resourceIds: Array.from(policy.resourceIds)
+      },
+      rawData: {
+        name: policy.name,
+        description: policy.description,
+        resourceIds: Array.from(policy.resourceIds),
+        assignmentCount: policy.assignmentCount,
+        causeObjectKey: policy.causeObjectKey
+      }
+    };
+
+    return {
+      node: policyNode,
+      reasons: [],
+      groupKey: 'assignment-policies',
+      groupLabel: 'Assignment Policies',
+      rawData: {
+        ...policy,
+        resourceIds: Array.from(policy.resourceIds)
+      }
+    };
+  });
+
+  // Sort by number of resources (most resources first)
+  items.sort((a, b) => b.node.metadata.resourceCount - a.node.metadata.resourceCount);
+
+  return {
+    laneType: LaneTypes.ASSIGNMENT_POLICIES,
+    totalCount: items.length,
+    items: items,  // Show ALL items - lane card handles scrolling
+    allItemsData: items,
+    canLoadMore: false
+  };
+}
 
 /**
  * Export for use in AccessLens
@@ -2179,5 +2475,6 @@ export default {
   buildContextsLane,
   buildLanesFromAssignments,
   buildLanesForEntitlement,
+  buildAssignmentPoliciesLane,
   populateLanesForNodeType
 };

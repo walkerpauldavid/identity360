@@ -291,10 +291,13 @@ export const GraphQLQueries = {
    * @param {Object} pagination - Pagination options
    */
   getCalculatedAssignmentsDetailed: (identityIds = null, filters = {}, pagination = {}) => {
-    const { page = 1, rows = 50 } = pagination;
-    const { sortBy = 'RESOURCE_NAME', sortOrder = 'ASCENDING' } = filters;
+    const { page = 1, rows = 1000 } = pagination;  // Increased default to get more results
+    const { sortOrder = 'ASCENDING' } = filters;  // Removed sortBy to match expected query
 
     const filterParts = [];
+
+    // Always filter to active (non-disabled) assignments
+    filterParts.push('disabled: false');
 
     // Primary filter: either systemId or identityIds
     if (filters.systemId) {
@@ -324,12 +327,22 @@ export const GraphQLQueries = {
 
     const filterClause = filterParts.join(', ');
 
+    // Build query - only include pagination if explicitly requested with non-default values
+    const usePagination = pagination.page !== undefined || pagination.rows !== undefined;
+    const paginationClause = usePagination ? `pagination: {page: ${page}, rows: ${rows}}` : '';
+
+    // Debug: Log the query parameters
+    console.log('[GraphQL Query] getCalculatedAssignmentsDetailed');
+    console.log('[GraphQL Query] Filter parts:', filterParts);
+    console.log('[GraphQL Query] Filter clause:', filterClause);
+    console.log('[GraphQL Query] Pagination:', usePagination ? `page=${page}, rows=${rows}` : 'NONE (fetching all)');
+
     return {
       query: `
         query GetCalculatedAssignmentsDetailed {
           calculatedAssignments(
-            sorting: {sortOrder: ${sortOrder}, sortBy: ${sortBy}}
-            pagination: {page: ${page}, rows: ${rows}}
+            sorting: {sortOrder: ${sortOrder}}
+            ${paginationClause}
             filters: {${filterClause}}
           ) {
             pages
