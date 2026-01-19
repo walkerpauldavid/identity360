@@ -7,24 +7,35 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { DndContext, useDraggable, DragOverlay, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
-import { ViewModes, LaneTypes, NodeTypes, LaneSchema, CompassOrientation, getLaneDisplayConfig, getLanesForNodeType } from './accessLensTypes';
+import {
+  ViewModes,
+  LaneTypes,
+  NodeTypes,
+  LaneSchema,
+  CompassOrientation,
+  getLaneDisplayConfig,
+  getLanesForNodeType,
+  getRequiredLanes,
+  getCrossLaneFilterConfig
+} from './accessLensTypes';
 import accessLensDataService, { buildContextsLane, buildLanesFromAssignments, extractUniqueReasonTypes, extractUniqueComplianceStatuses } from './accessLensDataService';
+import {
+  applyCrossLaneFilters,
+  filterVisibleLanes,
+  isLaneFiltered,
+  isLaneFilterSource
+} from './crossLaneFilterService';
+
+// Feature flag to enable schema-driven cross-lane filtering
+// Set to true to use the new crossLaneFilterService, false for legacy behavior
+const USE_SCHEMA_DRIVEN_FILTERING = true;  // Enabled for CASCADED_THROUGH policy filtering
 import FilterBar from './FilterBar';
 import Breadcrumbs from './Breadcrumbs';
 import FocusCard from './FocusCard';
 import LaneCard from './LaneCard';
-import ExplanationPanel from './ExplanationPanel';
+import ObjectInspector from './ObjectInspector';
+import { getStringValue } from './accessLensUtils';
 import './AccessLens.css';
-
-// Safely extract string value from a field that might be string or object
-const getStringValue = (value, defaultValue = '') => {
-  if (!value) return defaultValue;
-  if (typeof value === 'string') return value;
-  if (typeof value === 'object') {
-    return value.DisplayName || value.Name || value.Value || defaultValue;
-  }
-  return String(value);
-};
 
 // Convert identity from IdentityDetail to AccessLens node format
 const identityToNode = (identity) => {
@@ -586,7 +597,12 @@ const AccessLens = ({
   identityContexts = null,
   systemDetailsMap = {},  // Map of systemId -> system OData details (SYSTEMTYPE, DESCRIPTION, OWNERREF, CLT_TAGS)
   onFetchObjectDetails = null,  // Callback to fetch full object details when lane item is clicked
-  onPivotToNode = null  // Callback when user pivots to a different node (changes central focus)
+  onPivotToNode = null,  // Callback when user pivots to a different node (changes central focus)
+  // Props for direct initialization (e.g., from heatmap navigation with system focus)
+  initialFocusNode = null,
+  initialLanes = null,
+  initialReasonTypes = null,
+  initialComplianceStatuses = null
 }) => {
   // Refs
   const fulcrumRef = useRef(null);
@@ -628,13 +644,15 @@ const AccessLens = ({
 
   // Inspector panel state
   const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
-  const [showObjectInspector, setShowObjectInspector] = useState(true); // Toggle for Object Inspector visibility
+  const [showObjectInspector, setShowObjectInspector] = useState(false); // Hidden by default on first load
 
   // Cross-lane filtering state
   const [selectedAccountId, setSelectedAccountId] = useState(null);
   const [selectedSystemId, setSelectedSystemId] = useState(null);
   const [selectedLogicalAppId, setSelectedLogicalAppId] = useState(null);  // For filtering by logical application
   const [selectedIdentityId, setSelectedIdentityId] = useState(null);  // For entitlement-centric view: filter accounts by identity
+  const [selectedPolicyId, setSelectedPolicyId] = useState(null);  // For filtering entitlements by assignment policy
+  const [selectedEntitlementId, setSelectedEntitlementId] = useState(null);  // For filtering identities/accounts by entitlement (System-centric view)
   const [pendingNodeType, setPendingNodeType] = useState(null);  // Track target node type during pivot for correct loading placeholders
 
   // Filter state
@@ -645,6 +663,7 @@ const AccessLens = ({
       LaneTypes.ACCOUNTS,
       LaneTypes.EFFECTIVE_ENTITLEMENTS,
       LaneTypes.POLICIES,
+      LaneTypes.ASSIGNMENT_POLICIES,  // Policies extracted from assignment reasons
       LaneTypes.SYSTEMS,
       LaneTypes.LOGICAL_APPLICATIONS,  // Logical applications lane (systems with resources but no direct accounts)
       LaneTypes.CONTEXTS,
@@ -692,9 +711,14 @@ const AccessLens = ({
       }, 100);
 
       // Step 2: Sort lanes by clockwise order and reveal them one by one
-      const lanesWithData = lanes.filter(lane =>
-        filters.visibleLanes.includes(lane.laneType) && lane.items && lane.items.length > 0
-      );
+      // For System focus node, include required lanes even if empty (they are shown in visibleLanes)
+      const requiredLanesForSystem = [LaneTypes.IDENTITIES, LaneTypes.ACCOUNTS, LaneTypes.EFFECTIVE_ENTITLEMENTS];
+      const lanesWithData = lanes.filter(lane => {
+        const isVisible = filters.visibleLanes.includes(lane.laneType);
+        const hasData = lane.items && lane.items.length > 0;
+        const isRequiredForSystem = focusNode?.type === NodeTypes.SYSTEM && requiredLanesForSystem.includes(lane.laneType);
+        return isVisible && (hasData || isRequiredForSystem);
+      });
 
       const sortedLanes = [...lanesWithData].sort((a, b) =>
         getClockwiseOrder(a.laneType) - getClockwiseOrder(b.laneType)
@@ -784,6 +808,47 @@ const AccessLens = ({
     }
     // No fallback to mock data - identity prop is required
   }, [identity]);
+
+  // Direct initialization from props (e.g., system-centric view from heatmap)
+  useEffect(() => {
+    if (initialFocusNode && initialLanes) {
+      console.log('');
+      console.log('='.repeat(70));
+      console.log('=== AccessLens: Direct initialization from props ===');
+      console.log('='.repeat(70));
+      console.log('Initial focus node:', initialFocusNode);
+      console.log('Initial lanes count:', initialLanes.length);
+
+      // Log each lane in detail
+      initialLanes.forEach(lane => {
+        console.log(`  Lane "${lane.laneType}": ${lane.items?.length || 0} items`);
+        if (lane.laneType === 'EffectiveEntitlements') {
+          console.log('    [EffectiveEntitlements] First 3 items:');
+          (lane.items || []).slice(0, 3).forEach((item, i) => {
+            console.log(`      ${i + 1}. "${item.node?.displayName}" [type: "${item.node?.metadata?.type}"]`);
+          });
+        }
+      });
+
+      setFocusNode(initialFocusNode);
+      setLanes(initialLanes);
+
+      if (initialReasonTypes) {
+        setAvailableReasonTypes(initialReasonTypes);
+      }
+      if (initialComplianceStatuses) {
+        setAvailableComplianceStatuses(initialComplianceStatuses);
+      }
+
+      // Add to history
+      setHistory([initialFocusNode]);
+      setHistoryIndex(0);
+
+      // Mark as loaded
+      setLanesLoading(false);
+      setIsLoading(false);
+    }
+  }, [initialFocusNode, initialLanes, initialReasonTypes, initialComplianceStatuses]);
 
   // Reload when filters change
   useEffect(() => {
@@ -1020,28 +1085,52 @@ const AccessLens = ({
     // Set the selected item for visual feedback (used for highlighting)
     setSelectedItem(item);
 
-    // Track account/system/logical-app/identity selection for cross-lane filtering
+    // Track account/system/logical-app/identity/policy selection for cross-lane filtering
     if (laneType === LaneTypes.ACCOUNTS) {
       setSelectedAccountId(prev => prev === item.node.id ? null : item.node.id);
       setSelectedSystemId(null);
       setSelectedLogicalAppId(null);
       setSelectedIdentityId(null);
+      setSelectedPolicyId(null);
+      setSelectedEntitlementId(null);
     } else if (laneType === LaneTypes.SYSTEMS) {
       setSelectedSystemId(prev => prev === item.node.id ? null : item.node.id);
       setSelectedAccountId(null);
       setSelectedLogicalAppId(null);
       setSelectedIdentityId(null);
+      setSelectedPolicyId(null);
+      setSelectedEntitlementId(null);
     } else if (laneType === LaneTypes.LOGICAL_APPLICATIONS) {
       setSelectedLogicalAppId(prev => prev === item.node.id ? null : item.node.id);
       setSelectedAccountId(null);
       setSelectedSystemId(null);
       setSelectedIdentityId(null);
+      setSelectedPolicyId(null);
+      setSelectedEntitlementId(null);
     } else if (laneType === LaneTypes.IDENTITIES) {
       // Entitlement-centric view: selecting an identity filters the Accounts lane
       setSelectedIdentityId(prev => prev === item.node.id ? null : item.node.id);
       setSelectedAccountId(null);
       setSelectedSystemId(null);
       setSelectedLogicalAppId(null);
+      setSelectedPolicyId(null);
+      setSelectedEntitlementId(null);
+    } else if (laneType === LaneTypes.ASSIGNMENT_POLICIES) {
+      // Identity-centric view: selecting a policy filters entitlements to show only those assigned by that policy
+      setSelectedPolicyId(prev => prev === item.node.id ? null : item.node.id);
+      setSelectedAccountId(null);
+      setSelectedSystemId(null);
+      setSelectedLogicalAppId(null);
+      setSelectedIdentityId(null);
+      setSelectedEntitlementId(null);
+    } else if (laneType === LaneTypes.EFFECTIVE_ENTITLEMENTS) {
+      // System-centric view: selecting an entitlement filters identities and accounts to show only those with this entitlement
+      setSelectedEntitlementId(prev => prev === item.node.id ? null : item.node.id);
+      setSelectedAccountId(null);
+      setSelectedSystemId(null);
+      setSelectedLogicalAppId(null);
+      setSelectedIdentityId(null);
+      setSelectedPolicyId(null);
     }
 
     // Only load Object Inspector data if it's enabled
@@ -1150,6 +1239,8 @@ const AccessLens = ({
     setSelectedAccountId(null);
     setSelectedSystemId(null);
     setSelectedLogicalAppId(null);
+    setSelectedPolicyId(null);
+    setSelectedEntitlementId(null);
     setSelectedReasonId(null);
 
     // Build the explanation from the identity data
@@ -1210,6 +1301,8 @@ const AccessLens = ({
     setSelectedSystemId(null);
     setSelectedLogicalAppId(null);
     setSelectedIdentityId(null);
+    setSelectedPolicyId(null);
+    setSelectedEntitlementId(null);
     setSelectedItem(null);
     setExplanation(null);
 
@@ -1434,6 +1527,9 @@ const AccessLens = ({
     setSelectedAccountId(null);
     setSelectedSystemId(null);
     setSelectedLogicalAppId(null);
+    setSelectedIdentityId(null);
+    setSelectedPolicyId(null);
+    setSelectedEntitlementId(null);
     // Collapse all lanes
     setLanesForceCollapsed(true);
     // Reset the forceCollapsed flag after a brief delay so lanes can be expanded again
@@ -1456,6 +1552,107 @@ const AccessLens = ({
   // ============================================================================
 
   const visibleLanes = useMemo(() => {
+    // ============================================================================
+    // SCHEMA-DRIVEN FILTERING PATH (when USE_SCHEMA_DRIVEN_FILTERING is enabled)
+    // Uses crossLaneFilterService for generic, configuration-based filtering
+    // ============================================================================
+    if (USE_SCHEMA_DRIVEN_FILTERING && focusNode?.type) {
+      console.log('[Schema-Driven Filtering] Using crossLaneFilterService for', focusNode.type);
+
+      // Build selections object from current state
+      const selections = {
+        identityId: selectedIdentityId,
+        accountId: selectedAccountId,
+        systemId: selectedSystemId,
+        logicalAppId: selectedLogicalAppId,
+        policyId: selectedPolicyId,
+        entitlementId: selectedEntitlementId
+      };
+
+      // Additional filters from toolbar
+      const additionalFilters = {
+        complianceStatuses: filters.complianceStatuses,
+        reasonTypes: filters.reasonTypes,
+        entitlementType: filters.entitlementType
+      };
+
+      // Step 1: Apply cross-lane filters using schema configuration
+      let filteredLanes = applyCrossLaneFilters(
+        lanes,
+        focusNode.type,
+        selections,
+        additionalFilters
+      );
+
+      // Step 2: Apply toolbar filters to Entitlements lane (these are independent of cross-lane filtering)
+      filteredLanes = filteredLanes.map(lane => {
+        if (lane.laneType !== LaneTypes.EFFECTIVE_ENTITLEMENTS) return lane;
+
+        let filteredItems = [...lane.items];
+        let isFiltered = lane.isFiltered || false;
+
+        // Apply compliance status filter
+        if (filters.complianceStatuses?.length > 0) {
+          filteredItems = filteredItems.filter(item =>
+            filters.complianceStatuses.includes(item.node.metadata?.complianceStatus)
+          );
+          isFiltered = true;
+        }
+
+        // Apply reason types filter
+        if (filters.reasonTypes?.length > 0) {
+          filteredItems = filteredItems.filter(item => {
+            const reasonType = item.rawData?.reason?.reasonType;
+            const reasonDesc = item.rawData?.reason?.description?.toLowerCase() || '';
+            return filters.reasonTypes.some(filterType => {
+              if (reasonType === filterType) return true;
+              if (filterType === 'Direct' && (reasonType === 'DirectAssignment' || reasonDesc.includes('direct'))) return true;
+              if (filterType === 'Implicit' && reasonDesc.includes('implicit')) return true;
+              if (filterType === 'Explicit' && reasonDesc.includes('explicit')) return true;
+              return false;
+            });
+          });
+          isFiltered = true;
+        }
+
+        // Apply entitlement type filter
+        if (filters.entitlementType && filters.entitlementType !== 'all') {
+          filteredItems = filteredItems.filter(item => {
+            const reasonType = item.rawData?.reason?.reasonType;
+            const reasonDesc = item.rawData?.reason?.description?.toLowerCase() || '';
+            if (filters.entitlementType === 'direct') {
+              return reasonType === 'DirectAssignment' || reasonDesc.includes('direct');
+            } else if (filters.entitlementType === 'inherited') {
+              return reasonType !== 'DirectAssignment' && !reasonDesc.includes('direct');
+            }
+            return true;
+          });
+          isFiltered = true;
+        }
+
+        return {
+          ...lane,
+          items: filteredItems,
+          totalCount: filteredItems.length,
+          isFiltered
+        };
+      });
+
+      // Step 3: Filter to visible lanes only and apply required lanes logic
+      const result = filterVisibleLanes(
+        filteredLanes,
+        focusNode.type,
+        filters.visibleLanes
+      );
+
+      console.log('[Schema-Driven Filtering] Result:', result.map(l => `${l.laneType}(${l.items?.length})`).join(', '));
+      return result;
+    }
+
+    // ============================================================================
+    // LEGACY FILTERING PATH (original hardcoded logic)
+    // ============================================================================
+
     // Step 1: Get the Effective Entitlements lane and apply all toolbar filters
     // NOTE: In entitlement-centric view (focusNode.type === ENTITLEMENT), there is no Entitlements lane
     // so isEntitlementsFiltered should remain false to prevent cross-lane filtering from empty data
@@ -1672,6 +1869,49 @@ const AccessLens = ({
       logicalAppUnderlyingSystemNames = (logicalAppNode.metadata?.underlyingSystems || []).map(s => s.name);
     }
     if (hasEntitlementsLane) isEntitlementsFiltered = true;
+  }
+
+  // Apply selected assignment policy filter
+  // When user clicks a policy in the Assignment Policies lane, filter entitlements to only show
+  // those that were assigned by that policy (using resourceIds stored in policy metadata)
+  if (selectedPolicyId && hasEntitlementsLane) {
+    const selectedPolicyIdStr = String(selectedPolicyId);
+    const policyItem = lanes
+      .find(l => l.laneType === LaneTypes.ASSIGNMENT_POLICIES)?.items
+      .find(item => String(item.node.id) === selectedPolicyIdStr);
+    const policyNode = policyItem?.node;
+
+    console.log('=== Assignment Policy Filter Debug ===');
+    console.log('Selected Policy ID:', selectedPolicyId);
+    console.log('Policy Node:', policyNode);
+    console.log('Resource IDs in policy:', policyNode?.metadata?.resourceIds);
+
+    if (policyNode) {
+      const policyName = policyNode.displayName;
+      // Get the array of resource IDs this policy assigns
+      const policyResourceIds = (policyNode.metadata?.resourceIds || []).map(id => String(id));
+
+      console.log('Policy name:', policyName);
+      console.log('Policy resource IDs:', policyResourceIds);
+      console.log('Entitlements before filter:', filteredEntitlementItems.length);
+
+      // Filter entitlements to only show those with IDs in the policy's resourceIds array
+      filteredEntitlementItems = filteredEntitlementItems.filter(item => {
+        const entitlementId = item.node.id;
+        const entitlementIdStr = String(entitlementId);
+        // Also check the resource ID from rawData
+        const rawResourceId = item.rawData?.resource?.id || item.rawData?.id;
+        const rawResourceIdStr = rawResourceId ? String(rawResourceId) : null;
+
+        const isMatch = policyResourceIds.includes(entitlementIdStr) ||
+                        (rawResourceIdStr && policyResourceIds.includes(rawResourceIdStr));
+
+        return isMatch;
+      });
+
+      console.log('Entitlements after policy filter:', filteredEntitlementItems.length);
+    }
+    isEntitlementsFiltered = true;
   }
 
   // Step 2: Extract unique accounts and systems from the FILTERED entitlements
@@ -2137,6 +2377,7 @@ const AccessLens = ({
     selectedSystemId,
     selectedLogicalAppId,
     selectedIdentityId,
+    selectedPolicyId,
     focusNode
   ]);
 
@@ -2363,11 +2604,13 @@ const AccessLens = ({
                                   lane.laneType === LaneTypes.SYSTEMS ? selectedSystemId !== null :
                                   lane.laneType === LaneTypes.LOGICAL_APPLICATIONS ? selectedLogicalAppId !== null :
                                   lane.laneType === LaneTypes.IDENTITIES ? selectedIdentityId !== null :
+                                  lane.laneType === LaneTypes.ASSIGNMENT_POLICIES ? selectedPolicyId !== null :
                                   lane.isFiltered}
                   activeFilterId={lane.laneType === LaneTypes.ACCOUNTS ? selectedAccountId :
                                   lane.laneType === LaneTypes.SYSTEMS ? selectedSystemId :
                                   lane.laneType === LaneTypes.LOGICAL_APPLICATIONS ? selectedLogicalAppId :
-                                  lane.laneType === LaneTypes.IDENTITIES ? selectedIdentityId : null}
+                                  lane.laneType === LaneTypes.IDENTITIES ? selectedIdentityId :
+                                  lane.laneType === LaneTypes.ASSIGNMENT_POLICIES ? selectedPolicyId : null}
                   forceCollapsed={lanesForceCollapsed}
                   forceExpanded={lanesForceExpanded}
                   isFilterSource={
@@ -2375,17 +2618,19 @@ const AccessLens = ({
                     (lane.laneType === LaneTypes.ACCOUNTS && selectedAccountId !== null) ||
                     (lane.laneType === LaneTypes.SYSTEMS && selectedSystemId !== null) ||
                     (lane.laneType === LaneTypes.LOGICAL_APPLICATIONS && selectedLogicalAppId !== null) ||
-                    (lane.laneType === LaneTypes.IDENTITIES && selectedIdentityId !== null)
+                    (lane.laneType === LaneTypes.IDENTITIES && selectedIdentityId !== null) ||
+                    (lane.laneType === LaneTypes.ASSIGNMENT_POLICIES && selectedPolicyId !== null)
                   }
                   isFiltered={
                     // A lane is "filtered" (shows "Filtered") if it's being filtered BY another lane or toolbar
-                    // Effective Entitlements: filtered by toolbar filters OR by clicking account/system/logical-app
+                    // Effective Entitlements: filtered by toolbar filters OR by clicking account/system/logical-app/policy
                     // Accounts/Systems: filtered by cross-lane filtering when entitlements are filtered
                     lane.isFiltered && !(
                       (lane.laneType === LaneTypes.ACCOUNTS && selectedAccountId !== null) ||
                       (lane.laneType === LaneTypes.SYSTEMS && selectedSystemId !== null) ||
                       (lane.laneType === LaneTypes.LOGICAL_APPLICATIONS && selectedLogicalAppId !== null) ||
-                      (lane.laneType === LaneTypes.IDENTITIES && selectedIdentityId !== null)
+                      (lane.laneType === LaneTypes.IDENTITIES && selectedIdentityId !== null) ||
+                      (lane.laneType === LaneTypes.ASSIGNMENT_POLICIES && selectedPolicyId !== null)
                     )
                   }
                 />
@@ -2413,7 +2658,7 @@ const AccessLens = ({
         {/* Object Inspector Panel - only render when enabled */}
         {showObjectInspector && (
           <div className={`access-lens-explanation ${inspectorCollapsed ? 'collapsed' : ''}`}>
-            <ExplanationPanel
+            <ObjectInspector
               explanation={explanation}
               selectedReasonId={selectedReasonId}
               onReasonSelect={setSelectedReasonId}

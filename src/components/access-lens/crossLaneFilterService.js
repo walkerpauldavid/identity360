@@ -14,31 +14,7 @@ import {
   getRequiredLanes,
   getCrossLaneFilterConfig
 } from './accessLensTypes';
-
-/**
- * Get a nested value from an object using dot notation
- * @param {Object} obj - The object to extract from
- * @param {string} path - Dot-notation path (e.g., 'metadata.systemId')
- * @returns {*} The value at the path, or undefined
- */
-const getNestedValue = (obj, path) => {
-  if (!obj || !path) return undefined;
-  return path.split('.').reduce((current, key) => current?.[key], obj);
-};
-
-/**
- * Get value from an item, checking both node and item level
- * @param {Object} item - Lane item with node property
- * @param {string} path - Field path
- * @returns {*} The value
- */
-const getItemValue = (item, path) => {
-  // Try node first, then item root, then rawData
-  return getNestedValue(item.node, path) ??
-         getNestedValue(item, path) ??
-         getNestedValue(item.rawData, path) ??
-         getNestedValue(item.node?.rawData, path);
-};
+import { getNestedValue, getItemValue } from './accessLensUtils';
 
 /**
  * Apply a single field match filter

@@ -16,10 +16,11 @@ import {
   buildSystemsLane as buildSystemsLaneGeneric,
   buildLanesForFocusNode
 } from './laneBuilderService';
+import { getNestedValue as getNestedValueUtil } from './accessLensUtils';
 
 // Feature flag to enable schema-driven lane building
 // Set to true to use the new laneBuilderService, false for legacy behavior
-const USE_SCHEMA_DRIVEN_LANE_BUILDING = false;
+const USE_SCHEMA_DRIVEN_LANE_BUILDING = true;
 
 // Configuration
 const CONFIG = {
@@ -28,6 +29,166 @@ const CONFIG = {
   graphqlEndpoint: '/graphql',
   odataEndpoint: '/odata'
 };
+
+// Default limits for lane display and pagination
+const DEFAULTS = {
+  // Pagination
+  INITIAL_PAGE: 1,
+  ROWS_PER_PAGE: 100,
+
+  // Lane display
+  ITEMS_PER_LANE: 10,          // Default number of items shown per lane (before "show all")
+  MAX_BADGES_PER_ITEM: 3,      // Maximum badges shown on lane items
+
+  // Debug
+  DEBUG_LOG_SAMPLE_SIZE: 3     // Number of items to log for debugging
+};
+
+// ============================================================================
+// EXTRACTOR REGISTRY
+// Maps extract type names (from schema) to extractor functions
+// Each function signature: (sourceData, focusNode, filters, context) => items[]
+// ============================================================================
+
+/**
+ * Extractor registry - single source of truth for derived data extraction
+ * To add a new extractor:
+ * 1. Create the extractor function
+ * 2. Add it to this registry with the extract key matching the schema
+ */
+const extractorRegistry = {
+  // From calculatedAssignments
+  'systems': (sourceData, focusNode, filters, context) =>
+    extractSystemsFromAssignments(sourceData),
+
+  'accounts': (sourceData, focusNode, filters, context) =>
+    extractAccountsFromAssignments(sourceData),
+
+  'roles': (sourceData, focusNode, filters, context) =>
+    extractRolesFromAssignments(sourceData),
+
+  'entitlements': (sourceData, focusNode, filters, context) =>
+    extractEntitlementsFromAssignments(sourceData),
+
+  'logicalApps': (sourceData, focusNode, filters, context) => {
+    const lane = buildLogicalApplicationsLane(sourceData, filters, context?.systemDetailsMap || {});
+    return lane.items || [];
+  },
+
+  'logicalAppsForSystem': (sourceData, focusNode, filters, context) => {
+    const lane = buildLogicalAppsForSystemLane(
+      sourceData,
+      filters,
+      focusNode?.id,
+      context?.systemDetailsMap || {}
+    );
+    return lane.items || [];
+  },
+
+  'assignmentPolicies': (sourceData, focusNode, filters, context) => {
+    const lane = buildAssignmentPoliciesLane(sourceData, filters);
+    return lane.items || [];
+  },
+
+  'identities': (sourceData, focusNode, filters, context) => {
+    const lane = buildIdentitiesLane(sourceData, filters);
+    return lane.items || [];
+  },
+
+  // From focusNode (single item extraction)
+  'system': (sourceData, focusNode, filters, context) => {
+    if (!focusNode?.metadata?.system) return [];
+    return [{
+      node: {
+        id: focusNode.metadata.systemId || 'system-1',
+        type: NodeTypes.SYSTEM,
+        displayName: focusNode.metadata.system,
+        status: 'active',
+        badges: [],
+        metadata: {}
+      }
+    }];
+  },
+
+  'identity': (sourceData, focusNode, filters, context) => {
+    if (!focusNode?.metadata?.identity) return [];
+    return [{
+      node: {
+        id: focusNode.metadata.identityId || 'identity-1',
+        type: NodeTypes.IDENTITY,
+        displayName: focusNode.metadata.identity,
+        status: 'active',
+        badges: [],
+        metadata: {}
+      }
+    }];
+  },
+
+  // Assignment Policy related extractions (from focusNode data)
+  'AP_CONTEXTS': (sourceData, focusNode, filters, context) => {
+    const contexts = focusNode?.rawData?.AP_CONTEXTS || focusNode?.AP_CONTEXTS || [];
+    return contexts.map(ctx => ({
+      node: {
+        id: ctx.Id || ctx.id,
+        type: NodeTypes.CONTEXT,
+        displayName: ctx.DisplayName || ctx.Name || ctx.displayName || 'Unknown Context',
+        status: 'active',
+        badges: [],
+        metadata: { ...ctx }
+      }
+    }));
+  },
+
+  'AP_RESOURCES': (sourceData, focusNode, filters, context) => {
+    const resources = focusNode?.rawData?.AP_RESOURCES || focusNode?.AP_RESOURCES || [];
+    return resources.map(res => ({
+      node: {
+        id: res.Id || res.id,
+        type: NodeTypes.ENTITLEMENT,
+        displayName: res.DisplayName || res.Name || res.displayName || 'Unknown Resource',
+        status: 'active',
+        badges: [],
+        metadata: { ...res }
+      }
+    }));
+  },
+
+  'AP_ACCOUNTRESOURCES': (sourceData, focusNode, filters, context) => {
+    const accountResources = focusNode?.rawData?.AP_ACCOUNTRESOURCES || focusNode?.AP_ACCOUNTRESOURCES || [];
+    return accountResources.map(acc => ({
+      node: {
+        id: acc.Id || acc.id,
+        type: NodeTypes.ACCOUNT,
+        displayName: acc.DisplayName || acc.Name || acc.displayName || 'Unknown Account Resource',
+        status: 'active',
+        badges: [],
+        metadata: { ...acc }
+      }
+    }));
+  }
+};
+
+/**
+ * Get an extractor function by name
+ * @param {string} extractName - The extract type from schema
+ * @returns {Function|null} The extractor function or null if not found
+ */
+export function getExtractor(extractName) {
+  return extractorRegistry[extractName] || null;
+}
+
+/**
+ * Register a custom extractor (for extensibility)
+ * @param {string} name - The extract type name
+ * @param {Function} fn - The extractor function
+ */
+export function registerExtractor(name, fn) {
+  if (typeof fn !== 'function') {
+    console.warn(`registerExtractor: ${name} must be a function`);
+    return;
+  }
+  extractorRegistry[name] = fn;
+}
 
 /**
  * Data Contract Interface
@@ -410,7 +571,7 @@ async function fetchLanesForNode(focusNode, filters, apiContext) {
         bearerToken,
         impersonateUser,
         {},
-        { page: 1, rows: 100 }
+        { page: DEFAULTS.INITIAL_PAGE, rows: DEFAULTS.ROWS_PER_PAGE }
       );
 
       if (assignmentsResult.status === 'success' && assignmentsResult.data) {
@@ -500,6 +661,7 @@ export function buildContextsLane(contexts, filters = {}) {
  * @param {boolean} options.includeIdentities - Include identities lane (for system-centric view)
  * @param {Object} options.systemDetailsMap - Map of systemId -> OData system details
  * @param {string} options.focusNodeType - The NodeTypes value for the central node (for schema-driven building)
+ * @param {string} options.focusSystemId - The system ID when in system-centric view (for logical apps lane)
  */
 export function buildLanesFromAssignments(assignments, filters = {}, options = {}) {
   if (!assignments || !Array.isArray(assignments) || assignments.length === 0) {
@@ -563,6 +725,21 @@ export function buildLanesFromAssignments(assignments, filters = {}, options = {
   // Build Identities lane (for system-centric view)
   if (options.includeIdentities) {
     lanes.push(buildIdentitiesLane(assignments, filters));
+  }
+
+  // Build Logical Applications lane for system-centric view
+  // Shows logical apps implemented by the focus system
+  if (options.includeIdentities && options.focusSystemId) {
+    const logicalAppsLane = buildLogicalAppsForSystemLane(
+      assignments,
+      filters,
+      options.focusSystemId,
+      systemDetailsMap
+    );
+    // Only add if there are logical applications
+    if (logicalAppsLane.items.length > 0) {
+      lanes.push(logicalAppsLane);
+    }
   }
 
   return lanes;
@@ -861,7 +1038,7 @@ function buildLogicalApplicationsLane(assignments, filters, systemDetailsMap = {
       displayName: app.name || 'Unknown Application',
       description: description,  // For hover tooltip
       status: 'active',
-      badges: badges.slice(0, 3),
+      badges: badges.slice(0, DEFAULTS.MAX_BADGES_PER_ITEM),
       metadata: {
         resourceCount: app.resourceCount,
         isLogical: true,
@@ -898,6 +1075,187 @@ function buildLogicalApplicationsLane(assignments, filters, systemDetailsMap = {
     laneType: LaneTypes.LOGICAL_APPLICATIONS,
     totalCount: items.length,
     items: items,  // Show ALL items - lane card handles scrolling
+    allItemsData: items,
+    canLoadMore: false
+  };
+}
+
+/**
+ * Build Logical Applications lane for System-centric view
+ * When the focus is a physical system, find logical applications that are implemented by this system.
+ * A logical app is implemented by this system when:
+ * - The assignment's account is on this system (focus system)
+ * - The assignment's resource is on a DIFFERENT system (the logical app)
+ *
+ * @param {Array} assignments - Array of assignment data
+ * @param {Object} filters - Active filters
+ * @param {string} focusSystemId - The ID of the focus system
+ * @param {Object} systemDetailsMap - Map of systemId -> OData system details
+ */
+function buildLogicalAppsForSystemLane(assignments, filters, focusSystemId, systemDetailsMap = {}) {
+  console.log('=== buildLogicalAppsForSystemLane: Starting ===');
+  console.log('Focus System ID:', focusSystemId);
+  console.log('Focus System ID type:', typeof focusSystemId);
+  console.log('Total assignments:', assignments?.length);
+
+  if (!assignments || !focusSystemId) {
+    console.log('[LogicalApps] Returning empty - no assignments or focusSystemId');
+    return {
+      laneType: LaneTypes.LOGICAL_APPLICATIONS,
+      totalCount: 0,
+      items: [],
+      allItemsData: [],
+      canLoadMore: false
+    };
+  }
+
+  // Use the Identity-centric approach: find systems with resources but no accounts
+  // These are "logical applications" - systems accessed via other physical systems
+  const systemsMap = new Map();
+  const logicalToPhysicalMap = new Map(); // logicalSystemId -> Set of physicalSystemIds
+  const focusSystemIdStr = String(focusSystemId);
+
+  // First pass: count accounts and resources per system
+  assignments.forEach((assignment) => {
+    const accountSystem = assignment.account?.system;
+    const resourceSystem = assignment.resource?.system;
+
+    // Track account systems
+    if (accountSystem && accountSystem.id) {
+      const accountSystemIdStr = String(accountSystem.id);
+      if (!systemsMap.has(accountSystemIdStr)) {
+        systemsMap.set(accountSystemIdStr, {
+          id: accountSystem.id,
+          name: accountSystem.name || '',
+          accountCount: 0,
+          resourceCount: 0
+        });
+      }
+      systemsMap.get(accountSystemIdStr).accountCount++;
+    }
+
+    // Track resource systems
+    if (resourceSystem && resourceSystem.id) {
+      const resourceSystemIdStr = String(resourceSystem.id);
+      if (!systemsMap.has(resourceSystemIdStr)) {
+        systemsMap.set(resourceSystemIdStr, {
+          id: resourceSystem.id,
+          name: resourceSystem.name || '',
+          accountCount: 0,
+          resourceCount: 0
+        });
+      }
+      systemsMap.get(resourceSystemIdStr).resourceCount++;
+
+      // If resource system differs from account system, track the relationship
+      if (accountSystem && String(accountSystem.id) !== resourceSystemIdStr) {
+        if (!logicalToPhysicalMap.has(resourceSystemIdStr)) {
+          logicalToPhysicalMap.set(resourceSystemIdStr, new Set());
+        }
+        logicalToPhysicalMap.get(resourceSystemIdStr).add(String(accountSystem.id));
+      }
+    }
+  });
+
+  // Debug: Show all systems found
+  console.log('[LogicalApps] Systems found:', systemsMap.size);
+  systemsMap.forEach((sys, id) => {
+    console.log(`  - System ${id} (${sys.name}): ${sys.accountCount} accounts, ${sys.resourceCount} resources`);
+  });
+
+  // Find logical applications: systems that have resources but no direct accounts
+  // AND are accessible via the focus system (or any physical system if no focus match)
+  const logicalAppsMap = new Map();
+
+  systemsMap.forEach((system, systemIdStr) => {
+    // Skip the focus system itself
+    if (systemIdStr === focusSystemIdStr) return;
+
+    // Logical app criteria: has resources but no accounts
+    if (system.resourceCount > 0 && system.accountCount === 0) {
+      // Check if this logical app is accessible via the focus system
+      const implementingSystemIds = logicalToPhysicalMap.get(systemIdStr);
+
+      // Include if it's implemented by the focus system OR if we want to show all logical apps
+      const isImplementedByFocus = implementingSystemIds?.has(focusSystemIdStr);
+
+      if (isImplementedByFocus || implementingSystemIds?.size > 0) {
+        // Get implementing system names
+        const implementingNames = new Set();
+        implementingSystemIds?.forEach(implId => {
+          const implSystem = systemsMap.get(implId);
+          if (implSystem?.name) implementingNames.add(implSystem.name);
+        });
+
+        logicalAppsMap.set(systemIdStr, {
+          id: system.id,
+          name: system.name || 'Unknown',
+          resourceCount: system.resourceCount,
+          // Track which systems implement this logical app
+          implementingSystemIds: implementingSystemIds ? Array.from(implementingSystemIds) : [],
+          implementingSystemNames: implementingNames ? Array.from(implementingNames) : []
+        });
+      }
+    }
+  });
+
+  const logicalApps = Array.from(logicalAppsMap.values())
+    .sort((a, b) => (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase()));
+
+  console.log('[LogicalApps] Logical Applications found:', logicalApps.length);
+  logicalApps.forEach(app => {
+    console.log(`  - ${app.name}: ${app.resourceCount} resources, implemented via: ${app.implementingSystemNames.join(', ')}`);
+  });
+
+  const items = logicalApps.map((app) => {
+    // Get enriched details from OData if available
+    const odataDetails = systemDetailsMap[app.id] || {};
+
+    // Extract system type from OData
+    const systemTypeObj = odataDetails.SYSTEMTYPE || odataDetails.SystemType;
+    const systemType = Array.isArray(systemTypeObj)
+      ? systemTypeObj[0]?.DisplayName || systemTypeObj[0]?.Name
+      : systemTypeObj?.DisplayName || systemTypeObj?.Name || null;
+
+    const appNode = {
+      id: app.id,
+      type: NodeTypes.SYSTEM,
+      displayName: app.name,
+      status: 'active',
+      badges: [
+        systemType || 'Logical App',
+        `${app.resourceCount} resource${app.resourceCount !== 1 ? 's' : ''}`
+      ].filter(Boolean),
+      metadata: {
+        resourceCount: app.resourceCount,
+        isLogical: true,
+        systemType: systemType,
+        // Store the implementing systems for cross-lane filtering
+        underlyingSystemIds: app.implementingSystemIds,
+        underlyingSystems: app.implementingSystemNames.map(name => ({ name }))
+      },
+      rawData: {
+        id: app.id,
+        name: app.name,
+        resourceCount: app.resourceCount,
+        isLogical: true,
+        ...odataDetails
+      }
+    };
+
+    return {
+      node: appNode,
+      reasons: [],
+      groupKey: 'logical-applications',
+      groupLabel: 'Logical Applications',
+      rawData: { ...app, ...odataDetails }
+    };
+  });
+
+  return {
+    laneType: LaneTypes.LOGICAL_APPLICATIONS,
+    totalCount: items.length,
+    items: items,
     allItemsData: items,
     canLoadMore: false
   };
@@ -1065,21 +1423,14 @@ function buildAccountsLane(assignments, filters) {
  * Data source: getCalculatedAssignments API (filtered by systemId) -> assignment.identity
  */
 function buildIdentitiesLane(assignments, filters) {
-  console.log('=== buildIdentitiesLane: Starting ===');
-  console.log('Total assignments received:', assignments.length);
+  // Suppressed verbose logging for performance
+  // console.log('[buildIdentitiesLane] Starting with', assignments.length, 'assignments');
 
   // Extract unique identities from assignments
   const identitiesMap = new Map();
 
   assignments.forEach((assignment, index) => {
     const identity = assignment.identity;
-
-    // Debug first few assignments
-    if (index < 3) {
-      console.log(`Assignment ${index}:`);
-      console.log('  - identity:', identity);
-      console.log('  - identity.displayName:', identity?.displayName);
-    }
 
     if (identity && identity.id && !identitiesMap.has(identity.id)) {
       // Store account info for cross-lane filtering in System-centric view
@@ -1115,8 +1466,7 @@ function buildIdentitiesLane(assignments, filters) {
     }
   });
 
-  console.log('Unique identities extracted:', identitiesMap.size);
-  console.log('Identity names:', Array.from(identitiesMap.values()).map(i => i.displayName));
+  // console.log('[buildIdentitiesLane] Unique identities:', identitiesMap.size);
 
   const items = Array.from(identitiesMap.values()).map((ident) => {
     const identityNode = {
@@ -1171,27 +1521,68 @@ function buildIdentitiesLane(assignments, filters) {
     };
   });
 
+  // Apply exclusion rules to filter out unwanted identities (e.g., "UNRESOLVED IDENTITY")
+  const laneConfig = LaneDisplayConfig[LaneTypes.IDENTITIES] || {};
+  let filteredItems = items;
+
+  if (laneConfig.exclusionList && laneConfig.exclusionList.length > 0) {
+    filteredItems = items.filter(item => {
+      const displayName = (item.node?.displayName || '').toLowerCase().trim();
+
+      // Check each exclusion rule
+      for (const rule of laneConfig.exclusionList) {
+        const { fields, values, matchType = 'exact' } = rule;
+
+        // Check if displayName matches any excluded value
+        for (const excludeValue of values) {
+          const excludeLower = excludeValue.toLowerCase().trim();
+          let isMatch = false;
+
+          switch (matchType) {
+            case 'contains':
+              isMatch = displayName.includes(excludeLower);
+              break;
+            case 'endsWith':
+              isMatch = displayName.endsWith(excludeLower);
+              break;
+            case 'startsWith':
+              isMatch = displayName.startsWith(excludeLower);
+              break;
+            case 'equals':
+            case 'exact':
+            default:
+              isMatch = displayName === excludeLower;
+              break;
+          }
+
+          if (isMatch) {
+            // console.log(`[buildIdentitiesLane] Excluding identity: "${item.node?.displayName}"`);
+            return false; // Exclude this item
+          }
+        }
+      }
+      return true; // Keep this item
+    });
+
+    // console.log(`[buildIdentitiesLane] Exclusion: ${items.length} -> ${filteredItems.length} identities`);
+  }
+
   // Sort identities alphabetically by displayName
-  items.sort((a, b) =>
+  filteredItems.sort((a, b) =>
     (a.node.displayName || '').toLowerCase().localeCompare((b.node.displayName || '').toLowerCase())
   );
 
   return {
     laneType: LaneTypes.IDENTITIES,
-    totalCount: items.length,
-    items: items,  // Show ALL items - lane card handles scrolling
-    allItemsData: items,  // All items for maximize view
+    totalCount: filteredItems.length,
+    items: filteredItems,  // Show ALL items - lane card handles scrolling
+    allItemsData: filteredItems,  // All items for maximize view
     canLoadMore: false
   };
 }
 
-/**
- * Get nested field value from object using dot notation path
- * e.g., 'resource.resourceType.name' -> assignment.resource.resourceType.name
- */
-function getNestedValue(obj, path) {
-  return path.split('.').reduce((current, key) => current?.[key], obj);
-}
+// Use getNestedValue from accessLensUtils (imported as getNestedValueUtil)
+const getNestedValue = getNestedValueUtil;
 
 /**
  * Apply exclusion rules from lane config to filter out unwanted items
@@ -1275,14 +1666,11 @@ function applyExclusionRules(items, exclusionList) {
  * Excludes account-type resources (these belong in the Accounts lane)
  */
 function buildEntitlementsLane(assignments, filters) {
-  console.log('');
-  console.log('='.repeat(70));
-  console.log('=== buildEntitlementsLane: Starting ===');
-  console.log('='.repeat(70));
-  console.log('Total assignments received:', assignments.length);
+  // Suppressed verbose logging for performance
+  // console.log('[buildEntitlementsLane] Starting with', assignments.length, 'assignments');
 
   if (assignments.length === 0) {
-    console.warn('WARNING: No assignments provided to buildEntitlementsLane');
+    // console.warn('[buildEntitlementsLane] No assignments provided');
     return {
       laneType: LaneTypes.EFFECTIVE_ENTITLEMENTS,
       totalCount: 0,
@@ -1292,126 +1680,116 @@ function buildEntitlementsLane(assignments, filters) {
     };
   }
 
-  // Debug: Show ALL assignments by system to understand the data
-  const bySystem = {};
-  const byResourceType = {};
-  assignments.forEach(a => {
-    const sysName = a.resource?.system?.name || 'Unknown';
-    const typeName = a.resource?.resourceType?.name || 'NO_TYPE';
-    if (!bySystem[sysName]) bySystem[sysName] = [];
-    bySystem[sysName].push(a.resource?.name);
-    byResourceType[typeName] = (byResourceType[typeName] || 0) + 1;
-  });
-
-  console.log('');
-  console.log('=== Assignments by System ===');
-  Object.entries(bySystem).forEach(([sys, resources]) => {
-    console.log(`  ${sys}: ${resources.length} resources`);
-  });
-
-  console.log('');
-  console.log('=== Resource Type Distribution ===');
-  Object.entries(byResourceType).forEach(([type, count]) => {
-    console.log(`  "${type}": ${count} assignments`);
-  });
-
-  // Show ALL unique resource names to understand the data
-  console.log('');
-  console.log('=== All Unique Resources ===');
-  const uniqueResources = new Map();
-  assignments.forEach(a => {
-    const key = `${a.resource?.name}::${a.resource?.resourceType?.name}`;
-    if (!uniqueResources.has(key)) {
-      uniqueResources.set(key, {
-        name: a.resource?.name,
-        type: a.resource?.resourceType?.name,
-        system: a.resource?.system?.name,
-        description: a.resource?.description?.substring(0, 50)
-      });
-    }
-  });
-  uniqueResources.forEach((res, key) => {
-    console.log(`  - "${res.name}" [type: "${res.type || 'NONE'}"] on ${res.system}`);
-    if (res.description) console.log(`      desc: "${res.description}..."`);
-  });
-
   // Get lane config for exclusion rules
   const laneConfig = LaneDisplayConfig[LaneTypes.EFFECTIVE_ENTITLEMENTS] || {};
-  console.log('');
-  console.log('=== Exclusion Rules ===');
-  console.log('Exclusion list:', JSON.stringify(laneConfig.exclusionList, null, 2));
 
   // Apply exclusion rules from lane config to filter out account-type resources
   const filteredAssignments = applyExclusionRules(assignments, laneConfig.exclusionList);
 
   const excludedCount = assignments.length - filteredAssignments.length;
-  console.log('');
-  console.log(`=== Exclusion Results: ${filteredAssignments.length} kept, ${excludedCount} excluded ===`);
+  // Log only summary info
+  // console.log(`[buildEntitlementsLane] After exclusion: ${filteredAssignments.length} kept, ${excludedCount} excluded`);
 
-  // Debug: Show what was excluded
-  if (excludedCount > 0) {
-    const excluded = assignments.filter(a => !filteredAssignments.includes(a));
-    console.log('Excluded resources:');
-    excluded.forEach((a, i) => {
-      console.log(`  ${i + 1}. "${a.resource?.name}"`);
-      console.log(`      type: "${a.resource?.resourceType?.name || 'NONE'}"`);
-      console.log(`      desc: "${(a.resource?.description || '').substring(0, 60)}"`);
-    });
+  if (filteredAssignments.length === 0) {
+    // console.warn('[buildEntitlementsLane] All resources were excluded by exclusion rules');
   }
 
-  // Show what's being kept
-  if (filteredAssignments.length > 0) {
-    console.log('');
-    console.log('Kept resources (showing first 10):');
-    filteredAssignments.slice(0, 10).forEach((a, i) => {
-      console.log(`  ${i + 1}. "${a.resource?.name}" [type: "${a.resource?.resourceType?.name || 'NONE'}"]`);
-    });
-  } else {
-    console.warn('');
-    console.warn('!!! WARNING: ALL resources were excluded by exclusion rules !!!');
-    console.warn('This means the system has no entitlements other than account-type resources.');
-    console.warn('If you expect to see AD groups or other entitlements, check the data source.');
-  }
+  // DEDUPLICATION: Group assignments by resource ID to avoid showing the same entitlement multiple times
+  // This is especially important for System-centric view where the same entitlement appears
+  // once per identity/account that has it
+  const resourceMap = new Map();
 
-  const items = filteredAssignments.map((assignment, index) => {
+  filteredAssignments.forEach((assignment) => {
+    const resourceId = assignment.resource?.id;
+    if (!resourceId) return;
+
+    if (!resourceMap.has(resourceId)) {
+      // First occurrence - create the resource entry
+      resourceMap.set(resourceId, {
+        resource: assignment.resource,
+        assignments: [],
+        identityIds: new Set(),
+        accountIds: new Set(),
+        complianceStatuses: new Set(),
+        reasons: []
+      });
+    }
+
+    // Aggregate data from this assignment
+    const entry = resourceMap.get(resourceId);
+    entry.assignments.push(assignment);
+    if (assignment.identity?.id) entry.identityIds.add(assignment.identity.id);
+    if (assignment.account?.id) entry.accountIds.add(assignment.account.id);
+    if (assignment.complianceStatus) entry.complianceStatuses.add(assignment.complianceStatus);
+    if (assignment.reason) entry.reasons.push(assignment.reason);
+  });
+
+  // console.log(`[buildEntitlementsLane] Deduplication: ${filteredAssignments.length} assignments -> ${resourceMap.size} unique resources`);
+
+  // Build lane items from deduplicated resources
+  const items = Array.from(resourceMap.entries()).map(([resourceId, entry], index) => {
+    const resource = entry.resource;
+    const firstAssignment = entry.assignments[0]; // Use first assignment for base data
+
+    // Determine overall compliance status (prefer "Not Approved" if any exist)
+    let overallComplianceStatus = 'Approved';
+    if (entry.complianceStatuses.has('Not Approved')) {
+      overallComplianceStatus = 'Not Approved';
+    } else if (entry.complianceStatuses.has('Pending')) {
+      overallComplianceStatus = 'Pending';
+    }
+
     const entitlementNode = {
-      id: assignment.resource?.id || `ent-${index}`,
+      id: resourceId,
       type: NodeTypes.ENTITLEMENT,
-      displayName: assignment.resource?.name || 'Unknown',
+      displayName: resource?.name || 'Unknown',
       status: 'active',
       badges: [
-        assignment.resource?.system?.name,
-        assignment.resource?.resourceType?.name
+        resource?.system?.name,
+        resource?.resourceType?.name,
+        entry.identityIds.size > 1 ? `${entry.identityIds.size} users` : null
       ].filter(Boolean),
       metadata: {
-        system: assignment.resource?.system?.name,
-        systemId: assignment.resource?.system?.id,
-        type: assignment.resource?.resourceType?.name,
-        complianceStatus: assignment.complianceStatus,
-        validFrom: assignment.validFrom || null,
-        validTo: assignment.validTo || null,
-        // Cross-lane filtering: Account and Identity info
-        accountName: assignment.account?.accountName,
-        accountId: assignment.account?.id,
-        identityId: assignment.identity?.id,
-        identityDisplayName: assignment.identity?.displayName
+        system: resource?.system?.name,
+        systemId: resource?.system?.id,
+        type: resource?.resourceType?.name,
+        complianceStatus: overallComplianceStatus,
+        validFrom: firstAssignment.validFrom || null,
+        validTo: firstAssignment.validTo || null,
+        // Aggregated info for cross-lane filtering
+        // Store arrays of all related accounts/identities for proper filtering
+        accountIds: Array.from(entry.accountIds),
+        identityIds: Array.from(entry.identityIds),
+        assignmentCount: entry.assignments.length,
+        // Keep first assignment's account/identity for backward compatibility
+        accountName: firstAssignment.account?.accountName,
+        accountId: firstAssignment.account?.id,
+        identityId: firstAssignment.identity?.id,
+        identityDisplayName: firstAssignment.identity?.displayName
       },
-      // Include full assignment data for Object Inspector
+      // Include full resource data for Object Inspector
       rawData: {
-        ...assignment.resource,
-        validFrom: assignment.validFrom,
-        validTo: assignment.validTo,
-        complianceStatus: assignment.complianceStatus,
-        disabled: assignment.disabled,
-        reason: assignment.reason,
-        account: assignment.account,
-        identity: assignment.identity,  // Include identity for cross-lane filtering
-        violations: assignment.violations
+        ...resource,
+        validFrom: firstAssignment.validFrom,
+        validTo: firstAssignment.validTo,
+        complianceStatus: overallComplianceStatus,
+        disabled: firstAssignment.disabled,
+        reason: firstAssignment.reason,
+        account: firstAssignment.account,
+        identity: firstAssignment.identity,
+        violations: firstAssignment.violations,
+        // Aggregated data
+        _aggregated: {
+          assignmentCount: entry.assignments.length,
+          identityCount: entry.identityIds.size,
+          accountCount: entry.accountIds.size,
+          complianceStatuses: Array.from(entry.complianceStatuses)
+        }
       }
     };
 
-    // Transform reasons if available
-    const reasons = (assignment.reasons || []).map((r, i) => transformReason(r, i));
+    // Transform reasons if available (from first assignment)
+    const reasons = (firstAssignment.reasons || []).map((r, i) => transformReason(r, i));
 
     return {
       node: entitlementNode,
@@ -1420,13 +1798,15 @@ function buildEntitlementsLane(assignments, filters) {
           id: `reason-${index}-default`,
           type: ReasonTypes.OTHER,
           title: 'Assignment',
-          description: `Assigned via ${assignment.assignmentType || 'unknown method'}`,
+          description: entry.assignments.length > 1
+            ? `Assigned to ${entry.identityIds.size} user(s) via ${entry.accountIds.size} account(s)`
+            : `Assigned via ${firstAssignment.assignmentType || 'unknown method'}`,
           confidence: 'high'
         }
       ],
-      groupKey: assignment.resource?.system?.id,
-      groupLabel: assignment.resource?.system?.name,
-      rawData: assignment
+      groupKey: resource?.system?.id,
+      groupLabel: resource?.system?.name,
+      rawData: firstAssignment
     };
   });
 
@@ -1445,8 +1825,7 @@ function buildEntitlementsLane(assignments, filters) {
     );
   }
 
-  console.log('=== buildEntitlementsLane: Final ===');
-  console.log('Total entitlement items:', filteredItems.length);
+  // console.log('[buildEntitlementsLane] Final:', filteredItems.length, 'entitlements');
 
   return {
     laneType: LaneTypes.EFFECTIVE_ENTITLEMENTS,
@@ -1540,72 +1919,36 @@ function populateSingleLane(laneConfig, focusNode, apiData, filters) {
 
 /**
  * Populate a lane that derives its data from other API responses
+ * Uses the extractorRegistry to look up the appropriate extractor function
  * (e.g., extract systems/accounts from calculatedAssignments)
  */
 function populateDerivedLane(laneConfig, focusNode, apiData, filters) {
   const { laneType, apiSource } = laneConfig;
   const { from, extract } = apiSource;
 
-  // Get the source data
+  // Get the source data (may be null for focusNode extractions)
   const sourceData = apiData[from];
-  if (!sourceData || !Array.isArray(sourceData)) {
+
+  // For 'calculatedAssignments' source, require array data
+  if (from === 'calculatedAssignments' && (!sourceData || !Array.isArray(sourceData))) {
     return { laneType, totalCount: 0, items: [], canLoadMore: false };
   }
 
-  let items = [];
-
-  switch (extract) {
-    case 'systems':
-      items = extractSystemsFromAssignments(sourceData);
-      break;
-
-    case 'accounts':
-      items = extractAccountsFromAssignments(sourceData);
-      break;
-
-    case 'roles':
-      items = extractRolesFromAssignments(sourceData);
-      break;
-
-    case 'entitlements':
-      items = extractEntitlementsFromAssignments(sourceData);
-      break;
-
-    case 'system':
-      // Single system from focus node
-      if (focusNode.metadata?.system) {
-        items = [{
-          node: {
-            id: focusNode.metadata.systemId || 'system-1',
-            type: NodeTypes.SYSTEM,
-            displayName: focusNode.metadata.system,
-            status: 'active',
-            badges: [],
-            metadata: {}
-          }
-        }];
-      }
-      break;
-
-    case 'identity':
-      // Single identity from focus node
-      if (focusNode.metadata?.identity) {
-        items = [{
-          node: {
-            id: focusNode.metadata.identityId || 'identity-1',
-            type: NodeTypes.IDENTITY,
-            displayName: focusNode.metadata.identity,
-            status: 'active',
-            badges: [],
-            metadata: {}
-          }
-        }];
-      }
-      break;
-
-    default:
-      console.warn(`Unknown extract type: ${extract}`);
+  // Look up the extractor from the registry
+  const extractor = extractorRegistry[extract];
+  if (!extractor) {
+    console.warn(`No extractor registered for: ${extract}`);
+    return { laneType, totalCount: 0, items: [], canLoadMore: false };
   }
+
+  // Build context for extractors that need additional data
+  const context = {
+    systemDetailsMap: apiData.systemDetailsMap || {},
+    // Add more context as needed
+  };
+
+  // Execute the extractor
+  const items = extractor(sourceData, focusNode, filters, context);
 
   // Apply filters if any
   const filteredItems = applyLaneFilters(items, filters, laneType);
@@ -1613,8 +1956,8 @@ function populateDerivedLane(laneConfig, focusNode, apiData, filters) {
   return {
     laneType,
     totalCount: filteredItems.length,
-    items: filters.showAll ? filteredItems : filteredItems.slice(0, 10),
-    canLoadMore: filteredItems.length > 10
+    items: filters.showAll ? filteredItems : filteredItems.slice(0, DEFAULTS.ITEMS_PER_LANE),
+    canLoadMore: filteredItems.length > DEFAULTS.ITEMS_PER_LANE
   };
 }
 
@@ -1843,12 +2186,11 @@ export function configureDataService(options) {
  */
 export function buildLanesForEntitlement(assignments, filters = {}, entitlementNode = null) {
   if (!assignments || !Array.isArray(assignments) || assignments.length === 0) {
-    console.log('buildLanesForEntitlement: No assignments provided');
+    // console.log('[buildLanesForEntitlement] No assignments provided');
     return [];
   }
 
-  console.log('=== buildLanesForEntitlement ===');
-  console.log('Processing', assignments.length, 'assignments for entitlement-centric view');
+  // console.log('[buildLanesForEntitlement] Processing', assignments.length, 'assignments');
 
   const lanes = [];
 
@@ -1863,10 +2205,7 @@ export function buildLanesForEntitlement(assignments, filters = {}, entitlementN
   const systemLanes = buildSystemLanesForEntitlement(assignments, filters, entitlementNode);
   lanes.push(...systemLanes);
 
-  console.log('Built lanes for entitlement-centric view:');
-  lanes.forEach(lane => {
-    console.log(`  - ${lane.laneType}: ${lane.items.length} items`);
-  });
+  // console.log('[buildLanesForEntitlement] Built:', lanes.map(l => `${l.laneType}(${l.items.length})`).join(', '));
 
   return lanes;
 }
@@ -1878,15 +2217,10 @@ export function buildLanesForEntitlement(assignments, filters = {}, entitlementN
 function buildIdentitiesLaneForEntitlement(assignments, filters) {
   const identitiesMap = new Map();
 
-  // Debug: Log first assignment to see what data is available
-  if (assignments.length > 0) {
-    console.log('=== buildIdentitiesLaneForEntitlement Debug ===');
-    console.log('First assignment identity:', assignments[0].identity);
-    console.log('  - email:', assignments[0].identity?.email);
-    console.log('  - title:', assignments[0].identity?.title);
-    console.log('  - employeeId:', assignments[0].identity?.employeeId);
-    console.log('  - identityId:', assignments[0].identity?.identityId);
-  }
+  // Suppressed verbose logging for performance
+  // if (assignments.length > 0) {
+  //   console.log('[buildIdentitiesLaneForEntitlement] First assignment identity:', assignments[0].identity);
+  // }
 
   assignments.forEach((assignment) => {
     const identity = assignment.identity;
@@ -1939,17 +2273,60 @@ function buildIdentitiesLaneForEntitlement(assignments, filters) {
     rawData: ident
   }));
 
+  // Apply exclusion rules to filter out unwanted identities (e.g., "UNRESOLVED IDENTITY")
+  const laneConfig = LaneDisplayConfig[LaneTypes.IDENTITIES] || {};
+  let filteredItems = items;
+
+  if (laneConfig.exclusionList && laneConfig.exclusionList.length > 0) {
+    filteredItems = items.filter(item => {
+      const displayName = (item.node?.displayName || '').toLowerCase().trim();
+
+      // Check each exclusion rule
+      for (const rule of laneConfig.exclusionList) {
+        const { values, matchType = 'exact' } = rule;
+
+        // Check if displayName matches any excluded value
+        for (const excludeValue of values) {
+          const excludeLower = excludeValue.toLowerCase().trim();
+          let isMatch = false;
+
+          switch (matchType) {
+            case 'contains':
+              isMatch = displayName.includes(excludeLower);
+              break;
+            case 'endsWith':
+              isMatch = displayName.endsWith(excludeLower);
+              break;
+            case 'startsWith':
+              isMatch = displayName.startsWith(excludeLower);
+              break;
+            case 'equals':
+            case 'exact':
+            default:
+              isMatch = displayName === excludeLower;
+              break;
+          }
+
+          if (isMatch) {
+            return false; // Exclude this item
+          }
+        }
+      }
+      return true; // Keep this item
+    });
+  }
+
   // Sort alphabetically by displayName
-  items.sort((a, b) =>
+  filteredItems.sort((a, b) =>
     (a.node.displayName || '').toLowerCase().localeCompare((b.node.displayName || '').toLowerCase())
   );
 
   return {
     laneType: LaneTypes.IDENTITIES,
-    totalCount: items.length,
-    items: filters.showAll ? items : items.slice(0, 10),
-    allItemsData: items,
-    canLoadMore: items.length > 10
+    totalCount: filteredItems.length,
+    items: filters.showAll ? filteredItems : filteredItems.slice(0, DEFAULTS.ITEMS_PER_LANE),
+    allItemsData: filteredItems,
+    canLoadMore: filteredItems.length > 10
   };
 }
 
@@ -2021,7 +2398,7 @@ function buildAccountsLaneForEntitlement(assignments, filters) {
   return {
     laneType: LaneTypes.ACCOUNTS,
     totalCount: items.length,
-    items: filters.showAll ? items : items.slice(0, 10),
+    items: filters.showAll ? items : items.slice(0, DEFAULTS.ITEMS_PER_LANE),
     allItemsData: items,
     canLoadMore: items.length > 10
   };
@@ -2476,5 +2853,8 @@ export default {
   buildLanesFromAssignments,
   buildLanesForEntitlement,
   buildAssignmentPoliciesLane,
-  populateLanesForNodeType
+  populateLanesForNodeType,
+  // Extractor registry functions
+  getExtractor,
+  registerExtractor
 };

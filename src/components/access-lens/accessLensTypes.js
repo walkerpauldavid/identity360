@@ -1,7 +1,41 @@
 /**
  * AccessLens Type Definitions
  * Types for the IGA access graph exploration widget
+ *
+ * This module re-exports base enums from ./schemas/baseEnums.js and defines
+ * complex schemas that depend on those enums. For cleaner imports in new code,
+ * consider importing directly from './schemas'.
  */
+
+// ============================================================================
+// RE-EXPORT BASE ENUMS FROM SCHEMAS MODULE
+// ============================================================================
+export {
+  NodeTypes,
+  EdgeTypes,
+  BaseReasonTypes,
+  ReasonTypes,
+  LaneTypes,
+  ViewModes,
+  ActionTypes,
+  CompassOrientation,
+  CrossLaneFilterType,
+  LaneDisplayRules
+} from './schemas/baseEnums';
+
+// Import for local use in this file
+import {
+  NodeTypes,
+  EdgeTypes,
+  BaseReasonTypes,
+  ReasonTypes,
+  LaneTypes,
+  ViewModes,
+  ActionTypes,
+  CompassOrientation,
+  CrossLaneFilterType,
+  LaneDisplayRules
+} from './schemas/baseEnums';
 
 // ============================================================================
 // DEBUG CONFIGURATION
@@ -41,100 +75,10 @@ export const shouldLog = (module) => {
   return DebugConfig.ALL || DebugConfig[module] || false;
 };
 
-// Node types in the access graph
-export const NodeTypes = {
-  IDENTITY: 'Identity',
-  ROLE: 'Role',
-  ENTITLEMENT: 'Entitlement',
-  POLICY: 'Policy',
-  ASSIGNMENT_POLICY: 'AssignmentPolicy',  // Omada Assignment Policy (automatic entitlement/account assignment)
-  ACCOUNT: 'Account',
-  SYSTEM: 'System',
-  CONTEXT: 'Context'
-};
-
-// Edge/relationship types
-export const EdgeTypes = {
-  ASSIGNED_DIRECT: 'assigned_direct',
-  INHERITED: 'inherited',
-  POLICY_DRIVEN: 'policy_driven',
-  LINKED_ACCOUNT: 'linked_account',
-  MEMBER_OF: 'member_of',
-  PROVIDES: 'provides',
-  GOVERNS: 'governs'
-};
-
-// Base reason types - always shown in dropdown
-export const BaseReasonTypes = {
-  DIRECT: 'Direct',
-  IMPLICIT: 'Implicit',
-  EXPLICIT: 'Explicit'
-};
-
-// Extended reason types for entitlement effectiveness (from API)
-export const ReasonTypes = {
-  DIRECT: 'Direct',
-  IMPLICIT: 'Implicit',
-  EXPLICIT: 'Explicit',
-  DIRECT_ASSIGNMENT: 'DirectAssignment',
-  ROLE_MEMBERSHIP: 'RoleMembership',
-  POLICY_RULE: 'PolicyRule',
-  ACCOUNT_LINK: 'AccountLink',
-  BIRTHRIGHT: 'Birthright',
-  SOD_EXCEPTION: 'SoDException',
-  OTHER: 'Other'
-};
-
-// Lane types for relationship display
-export const LaneTypes = {
-  ROLES: 'Roles',
-  ACCOUNTS: 'Accounts',
-  EFFECTIVE_ENTITLEMENTS: 'EffectiveEntitlements',
-  DIRECT_ENTITLEMENTS: 'DirectEntitlements',
-  POLICIES: 'Policies',
-  ASSIGNMENT_POLICIES: 'AssignmentPolicies',  // Policies extracted from assignment reasons (reasonType=Policy)
-  SYSTEMS: 'Systems',
-  LOGICAL_APPLICATIONS: 'LogicalApplications',  // Logical systems that have resources but no direct accounts
-  IDENTITIES: 'Identities',
-  CONTEXTS: 'Contexts'
-};
-
 // ============================================================================
 // LANE SCHEMA - Defines display rules based on data type
+// Note: LaneDisplayRules and CompassOrientation are imported from ./schemas/baseEnums.js
 // ============================================================================
-
-/**
- * Display rules by data type:
- * - SINGLE_COLUMN: System, Account, Context, Identity, Role, Policy (1 column, 350px)
- * - MULTI_COLUMN: Entitlement (2 columns, 700px)
- */
-export const LaneDisplayRules = {
-  SINGLE_COLUMN: {
-    columns: 1,
-    width: 350,
-    maxVisibleItems: 10
-  },
-  MULTI_COLUMN: {
-    columns: 2,
-    width: 700,
-    maxVisibleItems: 20
-  }
-};
-
-/**
- * Compass orientations for lane positioning relative to central node
- * Used to determine default positions when layout is reset
- */
-export const CompassOrientation = {
-  N: 'N',     // North - top center
-  NE: 'NE',   // North-East - top right
-  E: 'E',     // East - right center
-  SE: 'SE',   // South-East - bottom right
-  S: 'S',     // South - bottom center
-  SW: 'SW',   // South-West - bottom left
-  W: 'W',     // West - left center
-  NW: 'NW'    // North-West - top left
-};
 
 /**
  * Lane Schema - Single source of truth for lane configuration
@@ -493,12 +437,7 @@ export const LaneDisplayConfig = Object.keys(LaneSchema).reduce((acc, laneType) 
   return acc;
 }, {});
 
-// View modes
-export const ViewModes = {
-  EXPLORE: 'explore',
-  RISK: 'risk',
-  REVIEW: 'review'
-};
+// Note: ViewModes is imported from ./schemas/baseEnums.js
 
 // Get icon for node type - uses FocusNodeSchema
 export const getNodeIcon = (type) => {
@@ -814,22 +753,7 @@ export const FocusNodeSchema = {
 // ============================================================================
 // LANE CONFIGURATION SCHEMA - Defines lanes for each focus node type
 // ============================================================================
-
-/**
- * Cross-lane filter relationship types
- * Defines how selecting an item in one lane affects other lanes
- */
-export const CrossLaneFilterType = {
-  // Filter by matching a single field value
-  FIELD_MATCH: 'fieldMatch',
-  // Filter by checking if ID is in an array of IDs
-  ARRAY_CONTAINS: 'arrayContains',
-  // Filter by matching against multiple possible fields
-  MULTI_FIELD_MATCH: 'multiFieldMatch',
-  // Cascaded filter: first filter an intermediate lane, then extract field values to filter target lane
-  // Example: Policy -> Entitlements (by resourceIds) -> Accounts (by accountId from filtered entitlements)
-  CASCADED_THROUGH: 'cascadedThrough'
-};
+// Note: CrossLaneFilterType is imported from ./schemas/baseEnums.js
 
 /**
  * Schema defining which lanes to show for each focus node type,
