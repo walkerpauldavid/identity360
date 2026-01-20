@@ -26,14 +26,14 @@
 
 .header-left h2 {
   color: #e0e0e0;
-  font-size: 1.25rem;
+  font-size: 1.5rem;
   font-weight: 600;
   margin: 0 0 0.25rem 0;
 }
 
 .header-subtitle {
   color: #808090;
-  font-size: 0.75rem;
+  font-size: 0.9rem;
 }
 
 .header-stats {
@@ -52,13 +52,13 @@
 }
 
 .header-stat .stat-value {
-  font-size: 1.25rem;
+  font-size: 1.5rem;
   font-weight: 600;
   color: #88c0d0;
 }
 
 .header-stat .stat-label {
-  font-size: 0.65rem;
+  font-size: 0.8rem;
   color: #808090;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -296,7 +296,7 @@
 
 .tile-name {
   font-weight: 600;
-  font-size: 0.85rem;
+  font-size: 1rem;
   line-height: 1.2;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -305,12 +305,12 @@
 }
 
 .tile-name.small {
-  font-size: 0.75rem;
+  font-size: 0.9rem;
   -webkit-line-clamp: 1;
 }
 
 .tile-name.tiny {
-  font-size: 0.7rem;
+  font-size: 0.85rem;
   -webkit-line-clamp: 1;
 }
 
@@ -322,12 +322,12 @@
 }
 
 .tile-compliance-rate .rate-value {
-  font-size: 1.5rem;
+  font-size: 1.75rem;
   font-weight: 700;
 }
 
 .tile-compliance-rate .rate-label {
-  font-size: 0.65rem;
+  font-size: 0.8rem;
   opacity: 0.8;
   text-transform: uppercase;
 }
@@ -337,7 +337,7 @@
 }
 
 .tile-compliance-rate.tiny .rate-value {
-  font-size: 1.1rem;
+  font-size: 1.3rem;
 }
 
 /* Stats */
@@ -353,7 +353,7 @@
   display: flex;
   align-items: center;
   gap: 0.25rem;
-  font-size: 0.7rem;
+  font-size: 0.85rem;
 }
 
 .stat-icon {
@@ -383,7 +383,7 @@
 
 .stat-percent {
   color: var(--secondary-color, rgba(0, 0, 0, 0.6));
-  font-size: 0.65rem;
+  font-size: 0.8rem;
 }
 
 /* Footer */
@@ -393,7 +393,7 @@
   margin-top: auto;
   padding-top: 0.5rem;
   border-top: 1px solid var(--secondary-color);
-  font-size: 0.65rem;
+  font-size: 0.8rem;
 }
 
 .tile-footer.small {

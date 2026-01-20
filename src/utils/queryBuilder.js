@@ -364,12 +364,6 @@ export const GraphQLQueries = {
     // Always include pagination for consistent API behavior
     const paginationClause = `pagination: {page: ${page}, rows: ${rows}}`;
 
-    // Debug: Log the query parameters
-    console.log('[GraphQL Query] getCalculatedAssignmentsDetailed');
-    console.log('[GraphQL Query] Filter parts:', filterParts);
-    console.log('[GraphQL Query] Filter clause:', filterClause);
-    console.log('[GraphQL Query] Pagination:', `page=${page}, rows=${rows}`);
-
     return {
       query: `
         query GetCalculatedAssignmentsDetailed {
@@ -499,11 +493,6 @@ export const GraphQLQueries = {
 
     // Always include pagination for consistent API behavior
     const paginationClause = `pagination: {page: ${page}, rows: ${rows}}`;
-
-    console.log('getIdentitiesHavingResource - resourceId:', resourceId);
-    console.log('getIdentitiesHavingResource - complianceStatus:', complianceStatus);
-    console.log('getIdentitiesHavingResource - pagination:', `page=${page}, rows=${rows}`);
-    console.log('getIdentitiesHavingResource - filterClause:', filterClause);
 
     return {
       query: `

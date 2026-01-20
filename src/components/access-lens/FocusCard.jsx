@@ -87,14 +87,6 @@ const FocusCard = ({ node, onNavigateBack, isLoading = false, selectedIdentityCo
   // First check node.rawData (full API response), then node.metadata, then node itself
   const sourceData = node.rawData || node.metadata || node;
 
-  // Debug: Log what data FocusCard is receiving
-  console.log('=== FocusCard Debug ===');
-  console.log('Node type:', node.type);
-  console.log('Node rawData:', node.rawData);
-  console.log('Node metadata:', node.metadata);
-  console.log('Source data used:', sourceData);
-  console.log('Schema attributes:', schema?.attributes?.map(a => a.field));
-
   // Build the display attributes based on schema
   const displayAttributes = [];
 

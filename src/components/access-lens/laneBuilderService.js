@@ -11,7 +11,8 @@ import {
   NodeTypes,
   LaneSchema,
   LaneConfigSchema,
-  LaneDisplayConfig
+  LaneDisplayConfig,
+  shouldLog
 } from './accessLensTypes';
 
 // Import shared utilities from canonical source
@@ -260,12 +261,16 @@ export const buildLane = (laneType, assignments, extractType, options = {}) => {
   const laneSchema = LaneSchema[laneType];
   const nodeType = laneSchema?.dataType || extractType;
 
-  console.log(`[LaneBuilder] Building ${laneType} lane from ${assignments.length} assignments (extractType: ${extractType})`);
+  if (shouldLog('LANES')) {
+    console.log(`[LaneBuilder] Building ${laneType} lane from ${assignments.length} assignments`);
+  }
 
   // Extract unique items
   const itemsMap = extractUniqueItems(assignments, extractType, options);
 
-  console.log(`[LaneBuilder] Extracted ${itemsMap.size} unique items`);
+  if (shouldLog('LANES')) {
+    console.log(`[LaneBuilder] Extracted ${itemsMap.size} unique items`);
+  }
 
   // Convert to lane items
   const items = Array.from(itemsMap.values()).map(extractedData => {
@@ -341,15 +346,42 @@ export const buildEntitlementsLane = (assignments, options = {}) => {
 
       // Check exclusion rules
       for (const rule of laneConfig.exclusionList) {
-        const { field, values, condition } = rule;
-        const fieldValue = getNestedValue(resource, field);
-        const normalizedValue = getStringValue(fieldValue).toLowerCase();
+        // Support both old (field/condition) and new (fields/matchType) property names
+        const fields = rule.fields || (rule.field ? [rule.field] : []);
+        const values = rule.values || [];
+        const matchType = rule.matchType || rule.condition || 'exact';
 
-        if (condition === 'equals' && values.some(v => v.toLowerCase() === normalizedValue)) {
-          return false;  // Exclude this item
-        }
-        if (condition === 'contains' && values.some(v => normalizedValue.includes(v.toLowerCase()))) {
-          return false;
+        // Check each field specified in the rule
+        for (const field of fields) {
+          const fieldValue = getNestedValue(resource, field);
+          const normalizedValue = getStringValue(fieldValue).toLowerCase().trim();
+
+          // Check if field value matches any of the excluded values
+          for (const excludeValue of values) {
+            const excludeLower = excludeValue.toLowerCase().trim();
+            let isMatch = false;
+
+            switch (matchType) {
+              case 'contains':
+                isMatch = normalizedValue.includes(excludeLower);
+                break;
+              case 'endsWith':
+                isMatch = normalizedValue.endsWith(excludeLower);
+                break;
+              case 'startsWith':
+                isMatch = normalizedValue.startsWith(excludeLower);
+                break;
+              case 'equals':
+              case 'exact':
+              default:
+                isMatch = normalizedValue === excludeLower;
+                break;
+            }
+
+            if (isMatch) {
+              return false;  // Exclude this item
+            }
+          }
         }
       }
 
@@ -451,8 +483,10 @@ export const buildLanesForFocusNode = (focusNodeType, assignments, options = {})
     }
   }
 
-  console.log(`[LaneBuilder] Built ${lanes.length} lanes for ${focusNodeType}:`,
-    lanes.map(l => `${l.laneType}(${l.items.length})`).join(', '));
+  if (shouldLog('LANES')) {
+    console.log(`[LaneBuilder] Built ${lanes.length} lanes for ${focusNodeType}:`,
+      lanes.map(l => `${l.laneType}(${l.items.length})`).join(', '));
+  }
 
   return lanes;
 };

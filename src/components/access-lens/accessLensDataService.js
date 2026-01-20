@@ -7,7 +7,7 @@
  * or real API calls for production.
  */
 
-import { NodeTypes, LaneTypes, ReasonTypes, LaneConfigSchema, FocusNodeSchema, LaneDisplayConfig, LaneSchema, extractFieldValue } from './accessLensTypes';
+import { NodeTypes, LaneTypes, ReasonTypes, LaneConfigSchema, FocusNodeSchema, LaneDisplayConfig, LaneSchema, extractFieldValue, shouldLog } from './accessLensTypes';
 import {
   buildLane,
   buildIdentitiesLane as buildIdentitiesLaneGeneric,
@@ -673,14 +673,18 @@ export function buildLanesFromAssignments(assignments, filters = {}, options = {
   // Uses laneBuilderService for generic, configuration-based lane building
   // ============================================================================
   if (USE_SCHEMA_DRIVEN_LANE_BUILDING && options.focusNodeType) {
-    console.log('[Schema-Driven Lane Building] Using laneBuilderService for', options.focusNodeType);
+    if (shouldLog('LANES')) {
+      console.log('[Schema-Driven Lane Building] Using laneBuilderService for', options.focusNodeType);
+    }
 
     const lanes = buildLanesForFocusNode(options.focusNodeType, assignments, {
       filters,
       systemDetailsMap: options.systemDetailsMap
     });
 
-    console.log('[Schema-Driven Lane Building] Built lanes:', lanes.map(l => `${l.laneType}(${l.items?.length})`).join(', '));
+    if (shouldLog('LANES')) {
+      console.log('[Schema-Driven Lane Building] Built lanes:', lanes.map(l => `${l.laneType}(${l.items?.length})`).join(', '));
+    }
     return lanes;
   }
 
@@ -710,6 +714,24 @@ export function buildLanesFromAssignments(assignments, filters = {}, options = {
   lanes.push(buildAccountsLane(assignments, filters));
 
   // Build Entitlements/Resources lane
+  if (shouldLog('LANES')) {
+    console.log('[buildLanesFromAssignments] Building entitlements lane with', assignments.length, 'assignments');
+    console.log('[buildLanesFromAssignments] options.includeIdentities:', options.includeIdentities);
+    if (assignments.length > 0) {
+      const withResource = assignments.filter(a => a.resource).length;
+      const withResourceId = assignments.filter(a => a.resource?.id).length;
+      console.log('[buildLanesFromAssignments] Assignments with resource:', withResource, '| with resource.id:', withResourceId);
+      console.log('[buildLanesFromAssignments] First assignment keys:', Object.keys(assignments[0]));
+      console.log('[buildLanesFromAssignments] First assignment.resource:', assignments[0].resource ? 'EXISTS' : 'MISSING');
+      if (assignments[0].resource) {
+        console.log('[buildLanesFromAssignments] First resource:', JSON.stringify({
+          id: assignments[0].resource.id,
+          name: assignments[0].resource.name,
+          resourceType: assignments[0].resource.resourceType
+        }));
+      }
+    }
+  }
   lanes.push(buildEntitlementsLane(assignments, filters));
 
   // Build Assignment Policies lane (policies extracted from assignment reasons)
@@ -738,7 +760,9 @@ export function buildLanesFromAssignments(assignments, filters = {}, options = {
       systemDetailsMap
     );
     lanes.push(logicalAppsLane);
-    console.log(`[buildLanesFromAssignments] Logical Apps lane: ${logicalAppsLane.items.length} items`);
+    if (shouldLog('LANES')) {
+      console.log(`[buildLanesFromAssignments] Logical Apps lane: ${logicalAppsLane.items.length} items`);
+    }
   }
 
   return lanes;
@@ -758,30 +782,24 @@ export function buildLanesFromAssignments(assignments, filters = {}, options = {
  * @param {Object} systemDetailsMap - Map of systemId -> OData system details
  */
 function buildSystemsLane(assignments, filters, systemDetailsMap = {}) {
-  console.log('=== buildSystemsLane: Starting ===');
-  console.log('Total assignments received:', assignments.length);
-  console.log('System details available for:', Object.keys(systemDetailsMap).length, 'systems');
+  if (shouldLog('SYSTEMS')) {
+    console.log('=== buildSystemsLane ===');
+    console.log('Assignments:', assignments.length, '| System details:', Object.keys(systemDetailsMap).length);
+  }
 
   // Extract unique systems from BOTH accounts and resources
   const systemsMap = new Map();
 
-  assignments.forEach((assignment, index) => {
+  assignments.forEach((assignment) => {
     // Extract system from account
     const accountSystem = assignment.account?.system;
     if (accountSystem && accountSystem.id && !systemsMap.has(accountSystem.id)) {
-      // Debug: Log the full system object to see available fields
-      if (index < 3) {
-        console.log(`[buildSystemsLane] Raw account.system object:`, accountSystem);
-      }
       systemsMap.set(accountSystem.id, {
         id: accountSystem.id,
         name: accountSystem.name || '',
         accountCount: 0,
         resourceCount: 0
       });
-      if (index < 5) {
-        console.log(`Found account system: "${accountSystem.name}" (id: ${accountSystem.id})`);
-      }
     }
 
     // Extract system from resource (may be different from account system!)
@@ -793,7 +811,6 @@ function buildSystemsLane(assignments, filters, systemDetailsMap = {}) {
         accountCount: 0,
         resourceCount: 0
       });
-      console.log(`Found resource system: "${resourceSystem.name}" (id: ${resourceSystem.id}) - different from account system`);
     }
 
     // Count accounts per system (using account's system)
@@ -813,36 +830,18 @@ function buildSystemsLane(assignments, filters, systemDetailsMap = {}) {
     sys.isLogical = sys.resourceCount > 0 && sys.accountCount === 0;
   });
 
-  console.log('All systems found:', systemsMap.size);
-  Array.from(systemsMap.values()).forEach(sys => {
-    const logicalLabel = sys.isLogical ? ' (LOGICAL - excluded)' : '';
-    console.log(`  - ${sys.name}${logicalLabel}: ${sys.accountCount} accounts, ${sys.resourceCount} resources`);
-  });
-
   // Filter to only PHYSICAL systems (exclude logical applications)
   const physicalSystems = Array.from(systemsMap.values())
     .filter(sys => !sys.isLogical)
     .sort((a, b) => (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase()));
 
-  console.log('Physical systems (for Systems lane):', physicalSystems.length);
-
-  // Debug: Log systemDetailsMap keys
-  console.log('[buildSystemsLane] systemDetailsMap keys:', Object.keys(systemDetailsMap));
+  if (shouldLog('SYSTEMS')) {
+    console.log('Physical systems:', physicalSystems.length, '| Logical (excluded):', systemsMap.size - physicalSystems.length);
+  }
 
   const items = physicalSystems.map((sys) => {
     // Get enriched details from OData if available
     const odataDetails = systemDetailsMap[sys.id] || {};
-
-    // Debug: Log OData lookup for each system - show ALL keys to find correct field names
-    console.log(`[buildSystemsLane] System "${sys.name}" (ID: ${sys.id}):`, {
-      hasODataDetails: Object.keys(odataDetails).length > 0,
-      allODataKeys: Object.keys(odataDetails),
-      DESCRIPTION: odataDetails.DESCRIPTION,
-      SYSTEMTYPE: odataDetails.SYSTEMTYPE,
-      C_SYSTEMTYPE: odataDetails.C_SYSTEMTYPE,  // Alternative field name
-      OWNERREF: odataDetails.OWNERREF,
-      CLT_TAGS: odataDetails.CLT_TAGS
-    });
 
     // Extract system type, description, owner, and classification from OData
     // Note: SYSTEMTYPE might be named differently, and OWNERREF is an array
@@ -929,8 +928,9 @@ function buildSystemsLane(assignments, filters, systemDetailsMap = {}) {
  * @param {Object} systemDetailsMap - Map of systemId -> OData system details
  */
 function buildLogicalApplicationsLane(assignments, filters, systemDetailsMap = {}) {
-  console.log('=== buildLogicalApplicationsLane: Starting ===');
-  console.log('System details available for:', Object.keys(systemDetailsMap).length, 'systems');
+  if (shouldLog('SYSTEMS')) {
+    console.log('=== buildLogicalApplicationsLane ===');
+  }
 
   // Map to track systems: { systemId -> { ...systemData, underlyingSystemIds: Set } }
   const systemsMap = new Map();
@@ -981,14 +981,9 @@ function buildLogicalApplicationsLane(assignments, filters, systemDetailsMap = {
     .filter(sys => sys.resourceCount > 0 && sys.accountCount === 0)
     .sort((a, b) => (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase()));
 
-  console.log('Logical Applications found:', logicalApps.length);
-  logicalApps.forEach(app => {
-    const physicalIds = logicalToPhysicalMap.get(app.id);
-    const physicalNames = physicalIds
-      ? Array.from(physicalIds).map(id => systemsMap.get(id)?.name || id).join(', ')
-      : 'Unknown';
-    console.log(`  - ${app.name}: ${app.resourceCount} resources, implemented via: ${physicalNames}`);
-  });
+  if (shouldLog('SYSTEMS')) {
+    console.log('Logical Applications found:', logicalApps.length);
+  }
 
   const items = logicalApps.map((app) => {
     // Get enriched details from OData if available
@@ -1092,26 +1087,12 @@ function buildLogicalApplicationsLane(assignments, filters, systemDetailsMap = {
  * @param {Object} systemDetailsMap - Map of systemId -> OData system details
  */
 function buildLogicalAppsForSystemLane(assignments, filters, focusSystemId, systemDetailsMap = {}) {
-  console.log('=== buildLogicalAppsForSystemLane: Starting ===');
-  console.log('Focus System ID:', focusSystemId);
-  console.log('Focus System ID type:', typeof focusSystemId);
-  console.log('Total assignments:', assignments?.length);
-
-  // Debug: Log first few assignments to see what IDs look like
-  if (assignments?.length > 0) {
-    console.log('[LogicalApps] Sample assignments (first 3):');
-    assignments.slice(0, 3).forEach((a, i) => {
-      console.log(`  Assignment ${i + 1}:`, {
-        accountSystemId: a.account?.system?.id,
-        accountSystemName: a.account?.system?.name,
-        resourceSystemId: a.resource?.system?.id,
-        resourceSystemName: a.resource?.system?.name
-      });
-    });
+  if (shouldLog('SYSTEMS')) {
+    console.log('=== buildLogicalAppsForSystemLane ===');
+    console.log('Focus System ID:', focusSystemId, '| Assignments:', assignments?.length);
   }
 
   if (!assignments || !focusSystemId) {
-    console.log('[LogicalApps] Returning empty - no assignments or focusSystemId');
     return {
       laneType: LaneTypes.LOGICAL_APPLICATIONS,
       totalCount: 0,
@@ -1169,18 +1150,6 @@ function buildLogicalAppsForSystemLane(assignments, filters, focusSystemId, syst
     }
   });
 
-  // Debug: Show all systems found
-  console.log('[LogicalApps] Focus System ID (string):', focusSystemIdStr);
-  console.log('[LogicalApps] Systems found:', systemsMap.size);
-  systemsMap.forEach((sys, id) => {
-    console.log(`  - System ${id} (${sys.name}): ${sys.accountCount} accounts, ${sys.resourceCount} resources`);
-  });
-  console.log('[LogicalApps] Logical-to-Physical mappings:', logicalToPhysicalMap.size);
-  logicalToPhysicalMap.forEach((physicalIds, logicalId) => {
-    const logicalName = systemsMap.get(logicalId)?.name || 'Unknown';
-    console.log(`  - Logical ${logicalId} (${logicalName}) implemented by:`, Array.from(physicalIds));
-  });
-
   // Find logical applications: systems that have resources but no direct accounts
   // AND are accessible via the focus system (or any physical system if no focus match)
   const logicalAppsMap = new Map();
@@ -1191,14 +1160,7 @@ function buildLogicalAppsForSystemLane(assignments, filters, focusSystemId, syst
 
     // Logical app criteria: has resources but no accounts
     if (system.resourceCount > 0 && system.accountCount === 0) {
-      // In system-centric view, assignments are already filtered by focusSystemId
-      // So any logical app found here is accessible via the focus system
       const implementingSystemIds = logicalToPhysicalMap.get(systemIdStr);
-
-      console.log(`[LogicalApps] Found logical app ${systemIdStr} (${system.name}):`, {
-        implementingSystemIds: implementingSystemIds ? Array.from(implementingSystemIds) : [],
-        resourceCount: system.resourceCount
-      });
 
       // Include ALL logical apps found since assignments are already filtered by focus system
       if (implementingSystemIds?.size > 0) {
@@ -1224,10 +1186,9 @@ function buildLogicalAppsForSystemLane(assignments, filters, focusSystemId, syst
   const logicalApps = Array.from(logicalAppsMap.values())
     .sort((a, b) => (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase()));
 
-  console.log('[LogicalApps] Logical Applications found:', logicalApps.length);
-  logicalApps.forEach(app => {
-    console.log(`  - ${app.name}: ${app.resourceCount} resources, implemented via: ${app.implementingSystemNames.join(', ')}`);
-  });
+  if (shouldLog('SYSTEMS')) {
+    console.log('[LogicalApps] Found:', logicalApps.length, 'logical applications');
+  }
 
   const items = logicalApps.map((app) => {
     // Get enriched details from OData if available
@@ -1291,13 +1252,9 @@ function buildLogicalAppsForSystemLane(assignments, filters, focusSystemId, syst
  * accounts with the same name on different systems are treated as separate accounts.
  */
 function buildAccountsLane(assignments, filters) {
-  console.log('=== buildAccountsLane: Starting ===');
-  console.log('Total assignments received:', assignments.length);
-
-  // Debug: Show full structure of first few assignments to understand account data
-  if (assignments.length > 0) {
-    console.log('First assignment account structure:', JSON.stringify(assignments[0]?.account, null, 2));
-    console.log('First assignment account.system:', assignments[0]?.account?.system);
+  if (shouldLog('ACCOUNTS')) {
+    console.log('=== buildAccountsLane: Starting ===');
+    console.log('Total assignments received:', assignments.length);
   }
 
   // Extract unique accounts from assignments
@@ -1308,9 +1265,6 @@ function buildAccountsLane(assignments, filters) {
     const account = assignment.account;
 
     if (!account) {
-      if (index < 5) {
-        console.log(`Assignment ${index}: No account data`);
-      }
       return;
     }
 
@@ -1322,11 +1276,6 @@ function buildAccountsLane(assignments, filters) {
 
     // Composite key ensures same account name on different systems are unique
     const uniqueKey = accountId || `${accountName}::${systemId || 'unknown'}`;
-
-    // Debug: Show all unique accounts being found
-    if (index < 10 || !accountsMap.has(uniqueKey)) {
-      console.log(`Assignment ${index}: Account "${accountName}" on system "${account.system?.name}" (key: ${uniqueKey})`);
-    }
 
     if (accountName && !accountsMap.has(uniqueKey)) {
       // Store the identity that owns this account (for cross-lane filtering in System-centric view)
@@ -1360,12 +1309,10 @@ function buildAccountsLane(assignments, filters) {
     }
   });
 
-  console.log('=== buildAccountsLane: Results ===');
-  console.log('Unique accounts extracted:', accountsMap.size);
-  console.log('Account details:');
-  Array.from(accountsMap.values()).forEach((acc, i) => {
-    console.log(`  ${i + 1}. ${acc.accountName} on ${acc.system?.name || 'Unknown'} (${acc.resourceCount} resources)`);
-  });
+  if (shouldLog('ACCOUNTS')) {
+    console.log('=== buildAccountsLane: Results ===');
+    console.log('Unique accounts extracted:', accountsMap.size);
+  }
 
   const items = Array.from(accountsMap.values()).map((acc, index) => {
     const accountNode = {
@@ -1622,13 +1569,26 @@ function applyExclusionRules(items, exclusionList) {
   let excludedCount = 0;
   let keptCount = 0;
 
+  // Debug logging for exclusion rules
+  if (shouldLog('EXCLUSION_RULES')) {
+    console.log('[applyExclusionRules] Processing', items.length, 'items with', exclusionList.length, 'exclusion rules');
+    if (items.length > 0) {
+      console.log('[applyExclusionRules] Sample item structure:', JSON.stringify({
+        hasResource: !!items[0].resource,
+        resourceName: items[0].resource?.name,
+        resourceTypeName: items[0].resource?.resourceType?.name,
+        resourceTypeObj: items[0].resource?.resourceType
+      }, null, 2));
+    }
+  }
+
   const filtered = items.filter((item, index) => {
     const resourceName = getNestedValue(item, 'resource.name') || 'UNKNOWN';
     const resourceType = getNestedValue(item, 'resource.resourceType.name') || 'NO_TYPE';
     const resourceDesc = getNestedValue(item, 'resource.description') || '';
 
-    // Debug: Log first 20 items to see what we're processing
-    if (index < 20) {
+    // Debug log first 5 items
+    if (shouldLog('EXCLUSION_RULES') && index < 5) {
       console.log(`[Exclusion Check ${index}] "${resourceName}" type="${resourceType}"`);
     }
 
@@ -1662,7 +1622,7 @@ function applyExclusionRules(items, exclusionList) {
           }
 
           if (isMatch) {
-            if (excludedCount < 5) {
+            if (shouldLog('EXCLUSION_RULES') && excludedCount < 5) {
               console.log(`  EXCLUDED: field "${field}" = "${fieldValue}" matches "${excludeValue}" (${matchType})`);
             }
             excludedCount++;
@@ -1674,14 +1634,15 @@ function applyExclusionRules(items, exclusionList) {
 
     // Item passed all rules - keep it
     keptCount++;
-    if (keptCount <= 10) {
+    if (shouldLog('EXCLUSION_RULES') && keptCount <= 10) {
       console.log(`  KEPT: "${resourceName}" [type: "${resourceType}"]`);
     }
     return true;
   });
 
-  console.log(`Total items excluded by rules: ${excludedCount}`);
-  console.log(`Total items kept: ${keptCount}`);
+  if (shouldLog('EXCLUSION_RULES')) {
+    console.log(`[applyExclusionRules] SUMMARY: ${excludedCount} excluded, ${keptCount} kept out of ${items.length} total`);
+  }
 
   return filtered;
 }
@@ -1692,11 +1653,15 @@ function applyExclusionRules(items, exclusionList) {
  * Excludes account-type resources (these belong in the Accounts lane)
  */
 function buildEntitlementsLane(assignments, filters) {
-  // Suppressed verbose logging for performance
-  // console.log('[buildEntitlementsLane] Starting with', assignments.length, 'assignments');
+  // Debug logging to diagnose empty entitlements issue
+  if (shouldLog('ENTITLEMENTS') || shouldLog('EXCLUSION_RULES')) {
+    console.log('[buildEntitlementsLane] Starting with', assignments.length, 'assignments');
+  }
 
   if (assignments.length === 0) {
-    // console.warn('[buildEntitlementsLane] No assignments provided');
+    if (shouldLog('ENTITLEMENTS')) {
+      console.warn('[buildEntitlementsLane] No assignments provided');
+    }
     return {
       laneType: LaneTypes.EFFECTIVE_ENTITLEMENTS,
       totalCount: 0,
@@ -1709,15 +1674,34 @@ function buildEntitlementsLane(assignments, filters) {
   // Get lane config for exclusion rules
   const laneConfig = LaneDisplayConfig[LaneTypes.EFFECTIVE_ENTITLEMENTS] || {};
 
+  // Debug logging for exclusion rules
+  if (shouldLog('ENTITLEMENTS')) {
+    console.log('[buildEntitlementsLane] Exclusion rules:', JSON.stringify(laneConfig.exclusionList, null, 2));
+    const withResource = assignments.filter(a => a.resource).length;
+    const withoutResource = assignments.length - withResource;
+    console.log(`[buildEntitlementsLane] Assignments with resource: ${withResource}, without resource: ${withoutResource}`);
+    console.log('[buildEntitlementsLane] Sample assignment structure:',
+      JSON.stringify(assignments.slice(0, 3).map(a => ({
+        hasResource: !!a.resource,
+        resourceName: a.resource?.name,
+        resourceTypeName: a.resource?.resourceType?.name,
+        resourceDescription: a.resource?.description?.substring(0, 50)
+      })), null, 2));
+  }
+
   // Apply exclusion rules from lane config to filter out account-type resources
   const filteredAssignments = applyExclusionRules(assignments, laneConfig.exclusionList);
 
   const excludedCount = assignments.length - filteredAssignments.length;
-  // Log only summary info
-  // console.log(`[buildEntitlementsLane] After exclusion: ${filteredAssignments.length} kept, ${excludedCount} excluded`);
+  // Log summary info when debugging
+  if (shouldLog('ENTITLEMENTS') || shouldLog('EXCLUSION_RULES')) {
+    console.log(`[buildEntitlementsLane] After exclusion: ${filteredAssignments.length} kept, ${excludedCount} excluded`);
+  }
 
-  if (filteredAssignments.length === 0) {
-    // console.warn('[buildEntitlementsLane] All resources were excluded by exclusion rules');
+  if (filteredAssignments.length === 0 && assignments.length > 0) {
+    if (shouldLog('ENTITLEMENTS')) {
+      console.warn('[buildEntitlementsLane] WARNING: All resources were excluded by exclusion rules or had no resource data!');
+    }
   }
 
   // DEDUPLICATION: Group assignments by resource ID to avoid showing the same entitlement multiple times
@@ -1750,7 +1734,10 @@ function buildEntitlementsLane(assignments, filters) {
     if (assignment.reason) entry.reasons.push(assignment.reason);
   });
 
-  // console.log(`[buildEntitlementsLane] Deduplication: ${filteredAssignments.length} assignments -> ${resourceMap.size} unique resources`);
+  if (shouldLog('ENTITLEMENTS') || shouldLog('EXCLUSION_RULES')) {
+    const assignmentsWithResourceId = filteredAssignments.filter(a => a.resource?.id).length;
+    console.log(`[buildEntitlementsLane] Deduplication: ${filteredAssignments.length} assignments, ${assignmentsWithResourceId} have resource.id -> ${resourceMap.size} unique resources`);
+  }
 
   // Build lane items from deduplicated resources
   const items = Array.from(resourceMap.entries()).map(([resourceId, entry], index) => {
@@ -1902,8 +1889,10 @@ export function populateLanesForNodeType(focusNode, apiData = {}, filters = {}) 
     return [];
   }
 
-  console.log(`=== Populating lanes for ${nodeType} ===`);
-  console.log('Available API data:', Object.keys(apiData));
+  if (shouldLog('LANES')) {
+    console.log(`=== Populating lanes for ${nodeType} ===`);
+    console.log('Available API data:', Object.keys(apiData));
+  }
 
   const lanes = [];
 
@@ -1911,8 +1900,10 @@ export function populateLanesForNodeType(focusNode, apiData = {}, filters = {}) 
     const lane = populateSingleLane(config, focusNode, apiData, filters);
     if (lane && lane.items.length > 0) {
       lanes.push(lane);
-      console.log(`  Lane ${config.laneType}: ${lane.items.length} items`);
-    } else {
+      if (shouldLog('LANES')) {
+        console.log(`  Lane ${config.laneType}: ${lane.items.length} items`);
+      }
+    } else if (shouldLog('LANES')) {
       console.log(`  Lane ${config.laneType}: empty, skipping`);
     }
   }
@@ -2032,7 +2023,9 @@ function populateGraphQLLane(laneConfig, focusNode, apiData, filters) {
 function populateODataLane(laneConfig, focusNode, apiData, filters) {
   const { laneType, apiSource } = laneConfig;
   // TODO: Implement OData fetching when needed
-  console.log(`OData lane ${laneType} not yet implemented`);
+  if (shouldLog('LANES')) {
+    console.log(`OData lane ${laneType} not yet implemented`);
+  }
   return { laneType, totalCount: 0, items: [], canLoadMore: false };
 }
 
@@ -2451,9 +2444,11 @@ function buildAccountsLaneForEntitlement(assignments, filters) {
  * @returns {Array} Array of lane objects
  */
 function buildSystemLanesForEntitlement(assignments, filters, entitlementNode) {
-  console.log('=== buildSystemLanesForEntitlement ===');
-  console.log('Entitlement node:', entitlementNode?.displayName);
-  console.log('Assignments count:', assignments?.length);
+  if (shouldLog('SYSTEMS')) {
+    console.log('=== buildSystemLanesForEntitlement ===');
+    console.log('Entitlement node:', entitlementNode?.displayName);
+    console.log('Assignments count:', assignments?.length);
+  }
 
   const lanes = [];
 
@@ -2471,7 +2466,9 @@ function buildSystemLanesForEntitlement(assignments, filters, entitlementNode) {
         id: apiResourceSystem.id,
         name: apiResourceSystem.name || 'Unknown System'
       };
-      console.log('Got resource.system from API response:', resourceSystem);
+      if (shouldLog('SYSTEMS')) {
+        console.log('Got resource.system from API response:', resourceSystem);
+      }
     }
   }
 
@@ -2482,17 +2479,23 @@ function buildSystemLanesForEntitlement(assignments, filters, entitlementNode) {
         id: entitlementNode.metadata.systemId,
         name: entitlementNode.metadata.system || 'Unknown System'
       };
-      console.log('Fallback: Got resource system from entitlementNode.metadata:', resourceSystem);
+      if (shouldLog('SYSTEMS')) {
+        console.log('Fallback: Got resource system from entitlementNode.metadata:', resourceSystem);
+      }
     } else if (entitlementNode.rawData?.system) {
       resourceSystem = {
         id: entitlementNode.rawData.system.id,
         name: entitlementNode.rawData.system.name || 'Unknown System'
       };
-      console.log('Fallback: Got resource system from entitlementNode.rawData:', resourceSystem);
+      if (shouldLog('SYSTEMS')) {
+        console.log('Fallback: Got resource system from entitlementNode.rawData:', resourceSystem);
+      }
     }
   }
 
-  console.log('Resource system (where entitlement lives):', resourceSystem);
+  if (shouldLog('SYSTEMS')) {
+    console.log('Resource system (where entitlement lives):', resourceSystem);
+  }
 
   // Get unique account systems (account.system) - where accounts live (always physical systems)
   const accountSystemsMap = new Map();
@@ -2518,7 +2521,9 @@ function buildSystemLanesForEntitlement(assignments, filters, entitlementNode) {
   });
 
   const accountSystems = Array.from(accountSystemsMap.values());
-  console.log('Account systems (where accounts live):', accountSystems.map(s => s.name));
+  if (shouldLog('SYSTEMS')) {
+    console.log('Account systems (where accounts live):', accountSystems.map(s => s.name));
+  }
 
   // Determine if the entitlement is on a logical application
   // A logical app is when the resource.system is different from all account.systems
@@ -2526,11 +2531,15 @@ function buildSystemLanesForEntitlement(assignments, filters, entitlementNode) {
     accountSystems.length > 0 &&
     !accountSystems.some(as => as.id === resourceSystem.id);
 
-  console.log('Is entitlement on a logical application?', isLogicalApp);
+  if (shouldLog('SYSTEMS')) {
+    console.log('Is entitlement on a logical application?', isLogicalApp);
+  }
 
   if (isLogicalApp) {
     // Show LOGICAL_APPLICATIONS lane for where the entitlement lives
-    console.log('Building Logical Applications lane for:', resourceSystem.name);
+    if (shouldLog('SYSTEMS')) {
+      console.log('Building Logical Applications lane for:', resourceSystem.name);
+    }
 
     // Build underlyingSystems array for cross-lane filtering compatibility
     const underlyingSystems = accountSystems.map(sys => ({
@@ -2570,7 +2579,9 @@ function buildSystemLanesForEntitlement(assignments, filters, entitlementNode) {
     });
 
     // Show SYSTEMS lane for the physical system(s) where accounts live
-    console.log('Building Systems lane for physical systems:', accountSystems.map(s => s.name));
+    if (shouldLog('SYSTEMS')) {
+      console.log('Building Systems lane for physical systems:', accountSystems.map(s => s.name));
+    }
 
     const systemItems = accountSystems.map(sys => ({
       node: {
@@ -2740,8 +2751,10 @@ function parsePolicyNameFromDescription(description) {
  * @returns {Object} Lane object with laneType, totalCount, items, etc.
  */
 export function buildAssignmentPoliciesLane(assignments, filters = {}) {
-  console.log('=== buildAssignmentPoliciesLane: Starting ===');
-  console.log('Total assignments received:', assignments?.length);
+  if (shouldLog('POLICIES')) {
+    console.log('=== buildAssignmentPoliciesLane: Starting ===');
+    console.log('Total assignments received:', assignments?.length);
+  }
 
   if (!assignments || !Array.isArray(assignments) || assignments.length === 0) {
     return {
@@ -2759,9 +2772,11 @@ export function buildAssignmentPoliciesLane(assignments, filters = {}) {
   const policiesMap = new Map();
 
   // Debug: Log first few assignments to see reason structure
-  assignments.slice(0, 3).forEach((assignment, index) => {
-    console.log(`Assignment ${index} reason:`, assignment.reason);
-  });
+  if (shouldLog('POLICIES')) {
+    assignments.slice(0, 3).forEach((assignment, index) => {
+      console.log(`Assignment ${index} reason:`, assignment.reason);
+    });
+  }
 
   assignments.forEach((assignment) => {
     // Reason can be a single object or an array
@@ -2776,7 +2791,9 @@ export function buildAssignmentPoliciesLane(assignments, filters = {}) {
       // Parse policy name from description
       const policyName = parsePolicyNameFromDescription(reason.description);
       if (!policyName) {
-        console.log('Could not parse policy name from description:', reason.description);
+        if (shouldLog('POLICIES')) {
+          console.log('Could not parse policy name from description:', reason.description);
+        }
         return;
       }
 
@@ -2801,11 +2818,13 @@ export function buildAssignmentPoliciesLane(assignments, filters = {}) {
     });
   });
 
-  console.log('=== buildAssignmentPoliciesLane: Results ===');
-  console.log('Unique policies found:', policiesMap.size);
-  Array.from(policiesMap.values()).forEach((policy, i) => {
-    console.log(`  ${i + 1}. "${policy.name}" - ${policy.resourceIds.size} resources, ${policy.assignmentCount} assignments`);
-  });
+  if (shouldLog('POLICIES')) {
+    console.log('=== buildAssignmentPoliciesLane: Results ===');
+    console.log('Unique policies found:', policiesMap.size);
+    Array.from(policiesMap.values()).forEach((policy, i) => {
+      console.log(`  ${i + 1}. "${policy.name}" - ${policy.resourceIds.size} resources, ${policy.assignmentCount} assignments`);
+    });
+  }
 
   // Convert to lane items
   const items = Array.from(policiesMap.values()).map((policy, index) => {

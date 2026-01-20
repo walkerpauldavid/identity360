@@ -16,7 +16,8 @@ import {
   getLaneDisplayConfig,
   getLanesForNodeType,
   getRequiredLanes,
-  getCrossLaneFilterConfig
+  getCrossLaneFilterConfig,
+  shouldLog
 } from './accessLensTypes';
 import accessLensDataService, { buildContextsLane, buildLanesFromAssignments, extractUniqueReasonTypes, extractUniqueComplianceStatuses } from './accessLensDataService';
 import {
@@ -798,11 +799,15 @@ const AccessLens = ({
   // Initial load - use identity from props
   useEffect(() => {
     if (identity) {
-      console.log('=== AccessLens: Creating node from identity ===');
-      console.log('Identity prop received:', identity);
+      if (shouldLog('INIT')) {
+        console.log('=== AccessLens: Creating node from identity ===');
+        console.log('Identity prop received:', identity);
+      }
 
       const identityNode = identityToNode(identity);
-      console.log('Created identity node:', identityNode);
+      if (shouldLog('INIT')) {
+        console.log('Created identity node:', identityNode);
+      }
 
       loadFocus(identityNode);
     }
@@ -812,23 +817,25 @@ const AccessLens = ({
   // Direct initialization from props (e.g., system-centric view from heatmap)
   useEffect(() => {
     if (initialFocusNode && initialLanes) {
-      console.log('');
-      console.log('='.repeat(70));
-      console.log('=== AccessLens: Direct initialization from props ===');
-      console.log('='.repeat(70));
-      console.log('Initial focus node:', initialFocusNode);
-      console.log('Initial lanes count:', initialLanes.length);
+      if (shouldLog('INIT')) {
+        console.log('');
+        console.log('='.repeat(70));
+        console.log('=== AccessLens: Direct initialization from props ===');
+        console.log('='.repeat(70));
+        console.log('Initial focus node:', initialFocusNode);
+        console.log('Initial lanes count:', initialLanes.length);
 
-      // Log each lane in detail
-      initialLanes.forEach(lane => {
-        console.log(`  Lane "${lane.laneType}": ${lane.items?.length || 0} items`);
-        if (lane.laneType === 'EffectiveEntitlements') {
-          console.log('    [EffectiveEntitlements] First 3 items:');
-          (lane.items || []).slice(0, 3).forEach((item, i) => {
-            console.log(`      ${i + 1}. "${item.node?.displayName}" [type: "${item.node?.metadata?.type}"]`);
-          });
-        }
-      });
+        // Log each lane in detail
+        initialLanes.forEach(lane => {
+          console.log(`  Lane "${lane.laneType}": ${lane.items?.length || 0} items`);
+          if (lane.laneType === 'EffectiveEntitlements') {
+            console.log('    [EffectiveEntitlements] First 3 items:');
+            (lane.items || []).slice(0, 3).forEach((item, i) => {
+              console.log(`      ${i + 1}. "${item.node?.displayName}" [type: "${item.node?.metadata?.type}"]`);
+            });
+          }
+        });
+      }
 
       setFocusNode(initialFocusNode);
       setLanes(initialLanes);
@@ -859,41 +866,20 @@ const AccessLens = ({
 
   // Update lanes when calculatedAssignments API data is provided (from AccessLensPage)
   useEffect(() => {
-    console.log('=== AccessLens useEffect triggered ===');
-    console.log('  calculatedAssignments:', calculatedAssignments?.length || 0);
-    console.log('  systemDetailsMap entries:', Object.keys(systemDetailsMap).length);
-    console.log('  systemDetailsMap keys:', Object.keys(systemDetailsMap));
+    if (shouldLog('LANES')) {
+      console.log('=== AccessLens useEffect triggered ===');
+      console.log('  calculatedAssignments:', calculatedAssignments?.length || 0);
+      console.log('  systemDetailsMap entries:', Object.keys(systemDetailsMap).length);
+    }
 
     if (calculatedAssignments && Array.isArray(calculatedAssignments) && calculatedAssignments.length > 0) {
       // Mark lanes as loading while we process the data
       setLanesLoading(true);
 
-      console.log('=== AccessLens: Processing calculatedAssignments ===');
-      console.log('Raw calculatedAssignments count:', calculatedAssignments.length);
-      console.log('First assignment sample:', calculatedAssignments[0]);
-      console.log('System details map has', Object.keys(systemDetailsMap).length, 'entries');
-
-      // Debug: Extract and log all unique accounts from raw data
-      const rawAccountsDebug = new Map();
-      calculatedAssignments.forEach((a, i) => {
-        if (a.account) {
-          const key = `${a.account.accountName}::${a.account.system?.name || 'NoSystem'}`;
-          if (!rawAccountsDebug.has(key)) {
-            rawAccountsDebug.set(key, {
-              accountName: a.account.accountName,
-              accountId: a.account.id,
-              systemName: a.account.system?.name,
-              systemId: a.account.system?.id,
-              accountType: a.account.accountType?.name
-            });
-          }
-        }
-      });
-      console.log('=== DEBUG: All unique accounts in raw API data ===');
-      console.log(`Found ${rawAccountsDebug.size} unique account+system combinations:`);
-      Array.from(rawAccountsDebug.values()).forEach((acc, i) => {
-        console.log(`  ${i + 1}. "${acc.accountName}" on "${acc.systemName}" (id: ${acc.accountId}, type: ${acc.accountType})`);
-      });
+      if (shouldLog('LANES')) {
+        console.log('=== AccessLens: Processing calculatedAssignments ===');
+        console.log('Raw calculatedAssignments count:', calculatedAssignments.length);
+      }
 
       // Build Systems, Accounts, and Entitlements lanes from assignments data
       // Pass systemDetailsMap for enriching Systems and Logical Applications lanes
@@ -901,41 +887,31 @@ const AccessLens = ({
         systemDetailsMap: systemDetailsMap
       });
 
-      console.log('Built lanes from assignments:');
-      assignmentLanes.forEach(lane => {
-        console.log(`  - ${lane.laneType}: ${lane.items.length} items`);
-        // Log enriched system details if it's a systems lane
-        if (lane.laneType === LaneTypes.SYSTEMS || lane.laneType === LaneTypes.LOGICAL_APPLICATIONS) {
-          lane.items.forEach(item => {
-            if (item.node.metadata?.systemType || item.node.metadata?.classification) {
-              console.log(`    * ${item.node.displayName}: type="${item.node.metadata.systemType}", class="${item.node.metadata.classification}"`);
-            }
-          });
-        }
-      });
+      if (shouldLog('LANES')) {
+        console.log('Built lanes from assignments:');
+        assignmentLanes.forEach(lane => {
+          console.log(`  - ${lane.laneType}: ${lane.items.length} items`);
+        });
+      }
 
       // Extract unique reason types for the filter dropdown
       const reasonTypes = extractUniqueReasonTypes(calculatedAssignments);
-      console.log('Extracted reason types:', reasonTypes);
       setAvailableReasonTypes(reasonTypes);
 
       // Extract unique compliance statuses for the filter dropdown
       const complianceStatuses = extractUniqueComplianceStatuses(calculatedAssignments);
-      console.log('Extracted compliance statuses:', complianceStatuses);
       setAvailableComplianceStatuses(complianceStatuses);
 
       setLanes(prevLanes => {
         // Keep the contexts lane if it exists, replace others
         const contextsLane = prevLanes.find(l => l.laneType === LaneTypes.CONTEXTS);
         const newLanes = contextsLane ? [...assignmentLanes, contextsLane] : assignmentLanes;
-        console.log('Final lanes count:', newLanes.length);
         return newLanes;
       });
 
       // Mark lanes as loaded after a brief delay to allow render
       setTimeout(() => {
         setLanesLoading(false);
-        console.log('Lanes loading complete');
       }, 100);
     }
   }, [calculatedAssignments, filters, systemDetailsMap]);
@@ -943,14 +919,12 @@ const AccessLens = ({
   // Update contexts lane when identityContexts API data is provided
   useEffect(() => {
     if (identityContexts && Array.isArray(identityContexts)) {
-      console.log('=== AccessLens: Processing identityContexts ===');
-      console.log('Raw identityContexts count:', identityContexts.length);
-      console.log('First context sample:', identityContexts[0]);
-
       // Build contexts lane from API data
       const contextsLane = buildContextsLane(identityContexts, filters);
 
-      console.log('Built contexts lane:', contextsLane.items.length, 'items');
+      if (shouldLog('LANES')) {
+        console.log('Built contexts lane:', contextsLane.items.length, 'items');
+      }
 
       setLanes(prevLanes => {
         // Remove existing contexts lane if any
@@ -982,9 +956,9 @@ const AccessLens = ({
       prevFilter !== null &&  // Not initial mount
       JSON.stringify(prevFilter) !== JSON.stringify(currentFilter)  // Actually changed
     ) {
-      console.log('=== Compliance Filter Changed - Refetching ===');
-      console.log('Previous filter:', prevFilter);
-      console.log('New filter:', currentFilter);
+      if (shouldLog('FILTERS')) {
+        console.log('=== Compliance Filter Changed - Refetching ===');
+      }
 
       // Get the first selected compliance status (API takes single value)
       const complianceStatus = currentFilter?.length > 0 ? currentFilter[0] : null;
@@ -1041,8 +1015,6 @@ const AccessLens = ({
         y: basePosition.y + delta.y
       };
 
-      console.log(`Drag end: ${laneType} moved from (${basePosition.x}, ${basePosition.y}) to (${newPosition.x}, ${newPosition.y})`);
-
       setLanePositions(prev => ({
         ...prev,
         [laneType]: newPosition
@@ -1070,15 +1042,11 @@ const AccessLens = ({
 
   // Handle item selection - fetch full object details from OData and show in Object Inspector
   const handleItemClick = useCallback(async (item, laneType) => {
-    console.log('=== handleItemClick called ===');
-    console.log('Item:', item);
-    console.log('LaneType:', laneType);
-    console.log('Item node:', item?.node);
-    console.log('Item node displayName:', item?.node?.displayName);
-    console.log('showObjectInspector:', showObjectInspector);
+    if (shouldLog('CLICKS')) {
+      console.log('=== handleItemClick ===', item?.node?.displayName, 'laneType:', laneType);
+    }
 
     if (!item || !item.node) {
-      console.error('Invalid item passed to handleItemClick');
       return;
     }
 
@@ -1135,7 +1103,6 @@ const AccessLens = ({
 
     // Auto-show Object Inspector when an item is clicked
     if (!showObjectInspector) {
-      console.log('Auto-showing Object Inspector');
       setShowObjectInspector(true);
     }
 
@@ -1162,15 +1129,10 @@ const AccessLens = ({
 
     // Fetch full object details from OData if callback is provided
     if (onFetchObjectDetails) {
-      console.log('Fetching object details via callback for laneType:', laneType);
       try {
         const result = await onFetchObjectDetails(laneType, item);
-        console.log('Fetch result:', result);
 
         if (result?.data) {
-          console.log('=== Object Inspector: Loaded full object details ===');
-          console.log('Data keys:', Object.keys(result.data));
-
           setExplanation({
             title: item.node?.displayName || 'Selected Item',
             summaryText: result.data.Description || result.data.DESCRIPTION || item.node?.description || null,
@@ -1183,7 +1145,6 @@ const AccessLens = ({
             laneType: result.laneType
           });
         } else {
-          console.log('No data returned from API, showing item data');
           // Update explanation with item data (no API data available)
           setExplanation({
             title: item.node?.displayName || 'Selected Item',
@@ -1196,7 +1157,6 @@ const AccessLens = ({
           });
         }
       } catch (err) {
-        console.error('Error fetching object details:', err);
         // Show item data on error
         setExplanation({
           title: item.node?.displayName || 'Selected Item',
@@ -1209,7 +1169,6 @@ const AccessLens = ({
         });
       }
     } else {
-      console.log('No fetch callback provided (onFetchObjectDetails is null/undefined)');
       // No fetch callback, show item data directly
       setExplanation({
         title: item.node?.displayName || 'Selected Item',
@@ -1231,7 +1190,6 @@ const AccessLens = ({
 
     // Skip if Object Inspector is disabled
     if (!showObjectInspector) {
-      console.log('Object Inspector disabled, skipping central node click');
       return;
     }
 
@@ -1246,9 +1204,6 @@ const AccessLens = ({
     // Build the explanation from the identity data
     // The identity prop contains the full OData response
     const identityData = identity || focusNode.rawData || {};
-
-    console.log('=== Central Node Click ===');
-    console.log('Identity data for inspector:', identityData);
 
     // Set the explanation with all identity attributes
     setExplanation({
@@ -1287,9 +1242,9 @@ const AccessLens = ({
 
   // Handle pivot to new focus - change central node to the selected item
   const handlePivot = useCallback(async (node) => {
-    console.log('=== Pivot requested ===');
-    console.log('Pivoting to node:', node);
-    console.log('Node type:', node?.type);
+    if (shouldLog('PIVOT')) {
+      console.log('=== Pivot to:', node?.displayName, 'type:', node?.type);
+    }
 
     if (!node) return;
 
@@ -1315,12 +1270,10 @@ const AccessLens = ({
     // If callback is provided, use it to fetch data for the new node
     if (onPivotToNode) {
       try {
-        console.log('Calling onPivotToNode callback...');
         setPivotLoadingStatus(`Fetching access data for ${node.displayName || node.type}...`);
         const pivotResult = await onPivotToNode(node);
 
         if (pivotResult) {
-          console.log('Pivot result:', pivotResult);
           setPivotLoadingStatus('Building access relationship graph...');
 
           // Update focus node with full details if available
@@ -1370,11 +1323,9 @@ const AccessLens = ({
           }
         } else {
           // Fallback: just set the node as focus without new lane data
-          console.log('No pivot result, using node directly');
           loadFocus(node);
         }
       } catch (err) {
-        console.error('Error during pivot:', err);
         setError(`Failed to pivot to ${node.displayName}: ${err.message}`);
         setPendingNodeType(null);  // Clear pending type on error
       } finally {
@@ -1383,16 +1334,12 @@ const AccessLens = ({
       }
     } else {
       // No callback, just change the focus node (lanes may be empty)
-      console.log('No onPivotToNode callback, using loadFocus');
       loadFocus(node);
     }
   }, [loadFocus, onPivotToNode, focusNode?.type]);
 
   // Handle breadcrumb navigation - re-fetch data for the selected node
   const handleBreadcrumbNavigate = useCallback(async (node, index) => {
-    console.log('=== Breadcrumb Navigate ===');
-    console.log('Navigating to node:', node.displayName, 'type:', node.type);
-
     setHistoryIndex(index);
     setIsLoading(true);
     setPivotLoadingStatus(`Navigating to ${node.displayName || node.type}...`);
@@ -1492,11 +1439,8 @@ const AccessLens = ({
 
   // Handle removing a breadcrumb from history
   const handleRemoveBreadcrumb = useCallback((indexToRemove) => {
-    console.log('Removing breadcrumb at index:', indexToRemove);
-
     // Don't allow removing the current item
     if (indexToRemove === historyIndex) {
-      console.log('Cannot remove current breadcrumb');
       return;
     }
 
@@ -1515,7 +1459,6 @@ const AccessLens = ({
   // Handle load more for a lane
   // TODO: Implement pagination via API when needed
   const handleLoadMore = useCallback(async (laneType) => {
-    console.log('Load more requested for lane:', laneType);
     // Pagination would be implemented here by calling the appropriate API
   }, []);
 
@@ -1557,7 +1500,6 @@ const AccessLens = ({
     // Uses crossLaneFilterService for generic, configuration-based filtering
     // ============================================================================
     if (USE_SCHEMA_DRIVEN_FILTERING && focusNode?.type) {
-      console.log('[Schema-Driven Filtering] Using crossLaneFilterService for', focusNode.type);
 
       // Build selections object from current state
       const selections = {
@@ -1645,7 +1587,6 @@ const AccessLens = ({
         filters.visibleLanes
       );
 
-      console.log('[Schema-Driven Filtering] Result:', result.map(l => `${l.laneType}(${l.items?.length})`).join(', '));
       return result;
     }
 
@@ -1722,14 +1663,6 @@ const AccessLens = ({
       .find(item => String(item.node.id) === selectedAccountIdStr);
     const accountNode = accountItem?.node;
 
-    console.log('=== Account Filter Debug ===');
-    console.log('Selected Account ID:', selectedAccountId, '(type:', typeof selectedAccountId, ')');
-    console.log('Account Node found:', !!accountNode);
-    if (accountNode) {
-      console.log('Account System:', accountNode?.metadata?.system);
-      console.log('Account Name:', accountNode?.displayName);
-    }
-
     if (accountNode) {
       const accountSystem = accountNode.metadata?.system;
       const accountSystemId = accountNode.metadata?.systemId;
@@ -1738,12 +1671,6 @@ const AccessLens = ({
       // Store for cross-lane filtering of Systems and Logical Apps
       selectedAccountSystemName = accountSystem;
       selectedAccountSystemId = accountSystemId ? String(accountSystemId) : null;
-
-      // Debug: Show all entitlements and their systems before filtering
-      console.log('Before filter - Entitlements count:', filteredEntitlementItems.length);
-      filteredEntitlementItems.slice(0, 10).forEach((item, i) => {
-        console.log(`  ${i}: "${item.node.displayName}" - system: "${item.node.metadata?.system}", groupLabel: "${item.groupLabel}", rawData.account: "${item.rawData?.account?.accountName}"`);
-      });
 
       // Filter entitlements that belong to this account
       // Use the same pattern as system filtering - check metadata first, then rawData
@@ -1759,14 +1686,8 @@ const AccessLens = ({
 
         const idMatch = entitlementAccountIdStr === selectedAccountIdStr;
         const nameMatch = accountName && entitlementAccountName === accountName;
-        const match = idMatch || nameMatch;
-
-        console.log(`  Entitlement "${item.node.displayName}": accName="${entitlementAccountName}", accId="${entitlementAccountIdStr}" -> idMatch=${idMatch}, nameMatch=${nameMatch}, MATCH=${match}`);
-
-        return match;
+        return idMatch || nameMatch;
       });
-
-      console.log('After filter - Entitlements count:', filteredEntitlementItems.length);
     }
     if (hasEntitlementsLane) isEntitlementsFiltered = true;
   }
@@ -1776,24 +1697,15 @@ const AccessLens = ({
   if (selectedIdentityId && focusNode?.type === NodeTypes.SYSTEM && hasEntitlementsLane) {
     const selectedIdentityIdStr = String(selectedIdentityId);
 
-    console.log('=== Entitlements Identity Filter (System-centric) ===');
-    console.log('Selected Identity ID:', selectedIdentityIdStr);
-    console.log('Entitlements before filter:', filteredEntitlementItems.length);
-
     filteredEntitlementItems = filteredEntitlementItems.filter(item => {
       // Get identity info from metadata (set in buildEntitlementsLane)
       const entitlementIdentityId = item.node.metadata?.identityId ||
                                     item.rawData?.identity?.id;
       const entitlementIdentityIdStr = entitlementIdentityId ? String(entitlementIdentityId) : null;
 
-      const match = entitlementIdentityIdStr === selectedIdentityIdStr;
-
-      console.log(`  Entitlement "${item.node.displayName}": identityId="${entitlementIdentityIdStr}" -> MATCH=${match}`);
-
-      return match;
+      return entitlementIdentityIdStr === selectedIdentityIdStr;
     });
 
-    console.log('Entitlements after identity filter:', filteredEntitlementItems.length);
     isEntitlementsFiltered = true;
   }
 
@@ -1806,9 +1718,6 @@ const AccessLens = ({
 
     if (systemNode) {
       const systemName = systemNode.displayName;
-      console.log('=== Entitlements System Filter ===');
-      console.log('Filtering entitlements for system:', systemName, '(ID:', selectedSystemId, ')');
-      console.log('Entitlements before filter:', filteredEntitlementItems.length);
 
       filteredEntitlementItems = filteredEntitlementItems.filter(item => {
         const entitlementSystem = item.node.metadata?.system;
@@ -1821,8 +1730,6 @@ const AccessLens = ({
 
         return idMatch || nameMatch;
       });
-
-      console.log('Entitlements after filter:', filteredEntitlementItems.length);
     }
     if (hasEntitlementsLane) isEntitlementsFiltered = true;
   }
@@ -1839,11 +1746,6 @@ const AccessLens = ({
       .find(l => l.laneType === LaneTypes.LOGICAL_APPLICATIONS)?.items
       .find(item => String(item.node.id) === selectedLogicalAppIdStr);
     const logicalAppNode = logicalAppItem?.node;
-
-    console.log('=== Logical Application Filter Debug ===');
-    console.log('Selected Logical App ID:', selectedLogicalAppId);
-    console.log('Logical App Node:', logicalAppNode);
-    console.log('Underlying Systems:', logicalAppNode?.metadata?.underlyingSystems);
 
     if (logicalAppNode) {
       const logicalAppName = logicalAppNode.displayName;
@@ -1862,8 +1764,6 @@ const AccessLens = ({
         return idMatch || nameMatch;
       });
 
-      console.log('After logical app filter - Entitlements count:', filteredEntitlementItems.length);
-
       // Store the underlying physical systems for filtering the Systems lane
       logicalAppUnderlyingSystemIds = (logicalAppNode.metadata?.underlyingSystemIds || []).map(id => String(id));
       logicalAppUnderlyingSystemNames = (logicalAppNode.metadata?.underlyingSystems || []).map(s => s.name);
@@ -1881,19 +1781,9 @@ const AccessLens = ({
       .find(item => String(item.node.id) === selectedPolicyIdStr);
     const policyNode = policyItem?.node;
 
-    console.log('=== Assignment Policy Filter Debug ===');
-    console.log('Selected Policy ID:', selectedPolicyId);
-    console.log('Policy Node:', policyNode);
-    console.log('Resource IDs in policy:', policyNode?.metadata?.resourceIds);
-
     if (policyNode) {
-      const policyName = policyNode.displayName;
       // Get the array of resource IDs this policy assigns
       const policyResourceIds = (policyNode.metadata?.resourceIds || []).map(id => String(id));
-
-      console.log('Policy name:', policyName);
-      console.log('Policy resource IDs:', policyResourceIds);
-      console.log('Entitlements before filter:', filteredEntitlementItems.length);
 
       // Filter entitlements to only show those with IDs in the policy's resourceIds array
       filteredEntitlementItems = filteredEntitlementItems.filter(item => {
@@ -1903,13 +1793,9 @@ const AccessLens = ({
         const rawResourceId = item.rawData?.resource?.id || item.rawData?.id;
         const rawResourceIdStr = rawResourceId ? String(rawResourceId) : null;
 
-        const isMatch = policyResourceIds.includes(entitlementIdStr) ||
-                        (rawResourceIdStr && policyResourceIds.includes(rawResourceIdStr));
-
-        return isMatch;
+        return policyResourceIds.includes(entitlementIdStr) ||
+               (rawResourceIdStr && policyResourceIds.includes(rawResourceIdStr));
       });
-
-      console.log('Entitlements after policy filter:', filteredEntitlementItems.length);
     }
     isEntitlementsFiltered = true;
   }
@@ -1972,17 +1858,12 @@ const AccessLens = ({
       if (selectedIdentityId) {
         const selectedIdentityIdStr = String(selectedIdentityId);
 
-        console.log('=== Accounts Identity Filter Debug ===');
-        console.log('Selected Identity ID:', selectedIdentityId, '(type:', typeof selectedIdentityId, ')');
-        console.log('Total accounts before filter:', filteredAccountItems.length);
-
         // Also find the selected identity node to get alternative IDs (identityId field)
         const identitiesLane = lanes.find(l => l.laneType === LaneTypes.IDENTITIES);
         const selectedIdentityNode = identitiesLane?.items?.find(
           item => String(item.node.id) === selectedIdentityIdStr
         )?.node;
         const selectedIdentityIdAlt = selectedIdentityNode?.metadata?.identityId; // IDENTITYID field
-        console.log('Selected Identity alternative ID (identityId):', selectedIdentityIdAlt);
 
         filteredAccountItems = filteredAccountItems.filter(item => {
           // Get the identity associated with this account from multiple possible paths
@@ -1998,38 +1879,22 @@ const AccessLens = ({
           // Match on either the UUID (id) or the IDENTITYID field
           const idMatch = accountIdentityIdStr === selectedIdentityIdStr;
           const altIdMatch = selectedIdentityIdAlt && accountIdentityIdAltStr === String(selectedIdentityIdAlt);
-          const match = idMatch || altIdMatch;
-
-          console.log(`  Account "${item.node.displayName}": id="${accountIdentityIdStr}", identityId="${accountIdentityIdAltStr}" -> idMatch=${idMatch}, altIdMatch=${altIdMatch}, MATCH=${match}`);
-
-          return match;
+          return idMatch || altIdMatch;
         });
 
-        console.log('Accounts after identity filter:', filteredAccountItems.length);
         accountsFiltered = true;
       }
       // Direct system filter: when user clicks a system, show only accounts on that system
       else if (selectedSystemId) {
-        console.log('=== Accounts System Filter Debug ===');
-        console.log('Selected System ID:', selectedSystemId, '(type:', typeof selectedSystemId, ')');
-
         // Find the selected system node - use string comparison to avoid type mismatches
         const selectedSystemIdStr = String(selectedSystemId);
         const systemsLane = lanes.find(l => l.laneType === LaneTypes.SYSTEMS);
-        console.log('Systems lane found:', !!systemsLane, 'items:', systemsLane?.items?.length || 0);
 
         const selectedSystemNode = systemsLane?.items
           .find(item => String(item.node.id) === selectedSystemIdStr)?.node;
 
-        console.log('Selected System Node found:', !!selectedSystemNode);
-        if (selectedSystemNode) {
-          console.log('Selected System Name:', selectedSystemNode.displayName);
-        }
-
         // Get the system name - use selectedSystemNode if found, otherwise try to get from accounts
         const selectedSystemName = selectedSystemNode?.displayName;
-
-        console.log('Starting accounts filter. Total accounts:', filteredAccountItems.length);
 
         filteredAccountItems = filteredAccountItems.filter(item => {
           // Check account's system in multiple places - use string comparison
@@ -2045,22 +1910,13 @@ const AccessLens = ({
 
           const idMatch = accountSystemIdStr === selectedSystemIdStr;
           const nameMatch = selectedSystemName && accountSystemName === selectedSystemName;
-          const match = idMatch || nameMatch;
-
-          console.log(`  Account "${item.node.displayName}": sysName="${accountSystemName}", sysId="${accountSystemId}" -> idMatch=${idMatch}, nameMatch=${nameMatch}, MATCH=${match}`);
-
-          return match;
+          return idMatch || nameMatch;
         });
 
-        console.log('Filtered accounts count:', filteredAccountItems.length);
         accountsFiltered = true;
       }
       // When a Logical Application is selected, filter accounts by underlying physical systems
       else if (selectedLogicalAppId && (logicalAppUnderlyingSystemIds.length > 0 || logicalAppUnderlyingSystemNames.length > 0)) {
-        console.log('=== Accounts Logical App Filter Debug ===');
-        console.log('Filtering accounts for Logical App with underlying systems:', logicalAppUnderlyingSystemNames);
-        console.log('Underlying system IDs:', logicalAppUnderlyingSystemIds);
-
         filteredAccountItems = filteredAccountItems.filter(item => {
           // Get account's system info
           const accountSystemName = item.node.metadata?.system ||
@@ -2074,14 +1930,9 @@ const AccessLens = ({
           // Check if account's system is one of the underlying physical systems
           const idMatch = accountSystemIdStr && logicalAppUnderlyingSystemIds.includes(accountSystemIdStr);
           const nameMatch = accountSystemName && logicalAppUnderlyingSystemNames.includes(accountSystemName);
-          const match = idMatch || nameMatch;
-
-          console.log(`  Account "${item.node.displayName}": sysName="${accountSystemName}", sysId="${accountSystemId}" -> idMatch=${idMatch}, nameMatch=${nameMatch}, MATCH=${match}`);
-
-          return match;
+          return idMatch || nameMatch;
         });
 
-        console.log('Filtered accounts count:', filteredAccountItems.length);
         accountsFiltered = true;
       }
       // Cross-lane filter from entitlements (when entitlements are filtered by other criteria)
@@ -2121,7 +1972,6 @@ const AccessLens = ({
         if (selectedAccountId && (selectedAccountSystemName || selectedAccountSystemId)) {
           const idMatch = selectedAccountSystemId && systemIdStr === selectedAccountSystemId;
           const nameMatch = selectedAccountSystemName && systemName === selectedAccountSystemName;
-          console.log(`Systems filter (account): "${systemName}" (${systemIdStr}) vs account system "${selectedAccountSystemName}" (${selectedAccountSystemId}) -> idMatch=${idMatch}, nameMatch=${nameMatch}`);
           return idMatch || nameMatch;
         }
 
@@ -2165,10 +2015,6 @@ const AccessLens = ({
           .find(item => String(item.node.id) === selectedSystemIdStr)?.node;
         const selectedSystemName = selectedSystemNode?.displayName;
 
-        console.log('=== Logical Apps System Filter Debug ===');
-        console.log('Selected System:', selectedSystemName, '(ID:', selectedSystemId, ')');
-        console.log('Logical Apps before filter:', filteredLogicalAppItems.length);
-
         filteredLogicalAppItems = filteredLogicalAppItems.filter(item => {
           // A Logical App is related to a System if:
           // 1. The System is in the Logical App's underlyingSystemIds
@@ -2178,22 +2024,13 @@ const AccessLens = ({
 
           const idMatch = underlyingSystemIds.includes(selectedSystemIdStr);
           const nameMatch = selectedSystemName && underlyingSystemNames.includes(selectedSystemName);
-          const match = idMatch || nameMatch;
-
-          console.log(`  Logical App "${item.node.displayName}": underlyingIds=[${underlyingSystemIds.join(',')}], underlyingNames=[${underlyingSystemNames.join(',')}] -> idMatch=${idMatch}, nameMatch=${nameMatch}, MATCH=${match}`);
-
-          return match;
+          return idMatch || nameMatch;
         });
 
-        console.log('Logical Apps after filter:', filteredLogicalAppItems.length);
         logicalAppsFiltered = true;
       }
       // When an Account is selected, filter to Logical Apps whose underlying systems include the account's system
       else if (selectedAccountId && (selectedAccountSystemName || selectedAccountSystemId)) {
-        console.log('=== Logical Apps Account Filter Debug ===');
-        console.log('Account System:', selectedAccountSystemName, '(ID:', selectedAccountSystemId, ')');
-        console.log('Logical Apps before filter:', filteredLogicalAppItems.length);
-
         filteredLogicalAppItems = filteredLogicalAppItems.filter(item => {
           // A Logical App is related to the account's system if:
           // 1. The account's system is in the Logical App's underlyingSystemIds
@@ -2203,14 +2040,9 @@ const AccessLens = ({
 
           const idMatch = selectedAccountSystemId && underlyingSystemIds.includes(selectedAccountSystemId);
           const nameMatch = selectedAccountSystemName && underlyingSystemNames.includes(selectedAccountSystemName);
-          const match = idMatch || nameMatch;
-
-          console.log(`  Logical App "${item.node.displayName}": underlyingIds=[${underlyingSystemIds.join(',')}], underlyingNames=[${underlyingSystemNames.join(',')}] -> idMatch=${idMatch}, nameMatch=${nameMatch}, MATCH=${match}`);
-
-          return match;
+          return idMatch || nameMatch;
         });
 
-        console.log('Logical Apps after filter:', filteredLogicalAppItems.length);
         logicalAppsFiltered = true;
       }
       // When entitlements are filtered (by other criteria), show Logical Apps whose resources are in the filtered entitlements
@@ -2226,16 +2058,11 @@ const AccessLens = ({
           }
         });
 
-        console.log('=== Logical Apps Cross-Filter Debug ===');
-        console.log('Entitlements system IDs:', Array.from(logicalAppSystemIds));
-
         filteredLogicalAppItems = filteredLogicalAppItems.filter(item => {
           const logicalAppId = String(item.node.id);
-          const match = logicalAppSystemIds.has(logicalAppId);
-          return match;
+          return logicalAppSystemIds.has(logicalAppId);
         });
 
-        console.log('Logical Apps after cross-filter:', filteredLogicalAppItems.length);
         logicalAppsFiltered = true;
       }
 
@@ -2263,9 +2090,6 @@ const AccessLens = ({
       if (selectedAccountId && (focusNode?.type === NodeTypes.ENTITLEMENT || focusNode?.type === NodeTypes.SYSTEM)) {
         const selectedAccountIdStr = String(selectedAccountId);
 
-        console.log('=== Identities Account Filter Debug ===');
-        console.log('Selected Account ID:', selectedAccountId);
-
         // Find the selected account to get its identity
         const accountsLane = lanes.find(l => l.laneType === LaneTypes.ACCOUNTS);
         const selectedAccountItem = accountsLane?.items?.find(
@@ -2289,20 +2113,12 @@ const AccessLens = ({
             identityIdsSet.add(String(accountIdentityId));
           }
 
-          console.log('Account belongs to identity IDs:', Array.from(identityIdsSet));
-          console.log('Total identities before filter:', filteredIdentityItems.length);
-
           if (identityIdsSet.size > 0) {
             filteredIdentityItems = filteredIdentityItems.filter(item => {
               const identityId = String(item.node.id);
-              const match = identityIdsSet.has(identityId);
-
-              console.log(`  Identity "${item.node.displayName}" (${identityId}): MATCH=${match}`);
-
-              return match;
+              return identityIdsSet.has(identityId);
             });
 
-            console.log('Identities after account filter:', filteredIdentityItems.length);
             identitiesFiltered = true;
           }
         }
@@ -2310,24 +2126,15 @@ const AccessLens = ({
       // Apply compliance status filter to identities in entitlement-centric view
       // Each identity has a complianceStatus from their relationship with the central entitlement
       else if (filters.complianceStatuses && filters.complianceStatuses.length > 0 && focusNode?.type === NodeTypes.ENTITLEMENT) {
-        console.log('=== Identities Compliance Filter Debug ===');
-        console.log('Filtering identities by compliance statuses:', filters.complianceStatuses);
-        console.log('Total identities before filter:', filteredIdentityItems.length);
-
         filteredIdentityItems = filteredIdentityItems.filter(item => {
           // Get compliance status from node metadata or rawData
           const complianceStatus = item.node.metadata?.complianceStatus ||
                                    item.rawData?.complianceStatus ||
                                    item.node.rawData?.complianceStatus;
 
-          const match = filters.complianceStatuses.includes(complianceStatus);
-
-          console.log(`  Identity "${item.node.displayName}": compliance="${complianceStatus}" -> MATCH=${match}`);
-
-          return match;
+          return filters.complianceStatuses.includes(complianceStatus);
         });
 
-        console.log('Identities after compliance filter:', filteredIdentityItems.length);
         identitiesFiltered = true;
       }
 
@@ -2351,7 +2158,6 @@ const AccessLens = ({
     if (focusNode?.type === NodeTypes.SYSTEM) {
       const requiredLanesForSystem = [LaneTypes.IDENTITIES, LaneTypes.ACCOUNTS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.LOGICAL_APPLICATIONS];
       if (requiredLanesForSystem.includes(lane.laneType)) {
-        console.log(`Keeping empty lane "${lane.laneType}" for System focus node (required lane)`);
         return true;
       }
     }
@@ -2360,7 +2166,6 @@ const AccessLens = ({
     if (focusNode?.type === NodeTypes.ENTITLEMENT) {
       const requiredLanesForEntitlement = [LaneTypes.IDENTITIES, LaneTypes.ACCOUNTS];
       if (requiredLanesForEntitlement.includes(lane.laneType)) {
-        console.log(`Keeping empty lane "${lane.laneType}" for Entitlement focus node (required lane)`);
         return true;
       }
     }
@@ -2462,7 +2267,6 @@ const AccessLens = ({
     const complianceStatus = selectedIdentity.node.metadata?.complianceStatus ||
                              selectedIdentity.rawData?.complianceStatus;
 
-    console.log('Selected Identity Compliance Status:', complianceStatus, '(from', selectedIdentityId ? 'identity selection' : 'account selection', ')');
     return {
       identityName: selectedIdentity.node.displayName,
       complianceStatus: complianceStatus

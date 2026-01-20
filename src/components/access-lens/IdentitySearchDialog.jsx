@@ -35,14 +35,11 @@ const IdentitySearchDialog = ({ isOpen, onClose, onSelectIdentity }) => {
 
   // Load initial identities when dialog opens
   useEffect(() => {
-    console.log('IdentitySearchDialog: useEffect triggered, isOpen =', isOpen);
     if (isOpen) {
-      console.log('IdentitySearchDialog: Dialog OPENING');
       // Prevent closing for the first 500ms to avoid accidental closes
       canCloseRef.current = false;
       const timer = setTimeout(() => {
         canCloseRef.current = true;
-        console.log('IdentitySearchDialog: canCloseRef now TRUE (500ms elapsed)');
       }, 500);
 
       loadIdentities(1, true);
@@ -52,7 +49,6 @@ const IdentitySearchDialog = ({ isOpen, onClose, onSelectIdentity }) => {
 
       return () => clearTimeout(timer);
     } else {
-      console.log('IdentitySearchDialog: Dialog CLOSING (isOpen=false)');
       // Reset state when closed
       setSearchQuery('');
       setIdentities([]);
@@ -212,7 +208,6 @@ const IdentitySearchDialog = ({ isOpen, onClose, onSelectIdentity }) => {
   // Handle confirm selection
   const handleConfirm = () => {
     if (selectedIdentity && selectedIdentity.UId) {
-      console.log('Selected identity UId (32-char GUID):', selectedIdentity.UId);
       onSelectIdentity(selectedIdentity);
       handleClose();
     }
@@ -220,11 +215,6 @@ const IdentitySearchDialog = ({ isOpen, onClose, onSelectIdentity }) => {
 
   // Handle close
   const handleClose = () => {
-    // Debug: trace the call stack to see what's triggering the close
-    console.log('IdentitySearchDialog: handleClose called');
-    console.log('IdentitySearchDialog: canCloseRef.current =', canCloseRef.current);
-    console.trace('IdentitySearchDialog: close trace');
-
     setSearchQuery('');
     setIdentities([]);
     setFilteredIdentities([]);

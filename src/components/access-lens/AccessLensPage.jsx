@@ -11,7 +11,7 @@ import { omadaApi } from '../../services/omadaApi';
 import Navbar from '../layout/Navbar';
 import AccessLens from './AccessLens';
 import IdentitySearchDialog from './IdentitySearchDialog';
-import { LaneSchema, LaneTypes } from './accessLensTypes';
+import { LaneSchema, LaneTypes, shouldLog } from './accessLensTypes';
 import './AccessLensPage.css';
 
 const AccessLensPage = () => {
@@ -35,10 +35,7 @@ const AccessLensPage = () => {
   const [systemReasonTypes, setSystemReasonTypes] = useState([]);
   const [systemComplianceStatuses, setSystemComplianceStatuses] = useState([]);
 
-  // Debug: Log when showSearchDialog changes
-  useEffect(() => {
-    console.log('AccessLensPage: showSearchDialog changed to', showSearchDialog);
-  }, [showSearchDialog]);
+  // Debug logging removed for performance
 
   // On mount: Check URL for identity or system parameter
   useEffect(() => {
@@ -50,17 +47,16 @@ const AccessLensPage = () => {
     if (systemParam) {
       // System ID provided in URL - load system-centric view
       // System name will be fetched from OData using the system ID
-      console.log('AccessLensPage: Loading system from URL param:', systemParam);
+      if (shouldLog('INIT')) console.log('[URL Init] System param detected:', systemParam);
       loadSystemData(systemParam);
     } else if (identityParam) {
+      if (shouldLog('INIT')) console.log('[URL Init] Identity param detected:', identityParam);
       // Identity UId provided in URL - create a temporary identity object and load data
-      console.log('AccessLensPage: Loading identity from URL param:', identityParam);
       const identityFromUrl = { UId: identityParam };
       setSelectedIdentity(identityFromUrl);
       // loadIdentityData will be called by the next effect
     } else {
       // No URL params - show search dialog for identity selection
-      console.log('AccessLensPage: No URL params, showing search dialog');
       setShowSearchDialog(true);
     }
 
@@ -87,8 +83,6 @@ const AccessLensPage = () => {
    */
   const fetchSystemDetails = useCallback(async (systemUId, bearerToken, impersonateUser) => {
     try {
-      console.log(`[System OData] Fetching details for system UId: ${systemUId}`);
-
       // OData query: /OData/DataObjects/System?$filter=UId eq {systemUId}
       // Note: UId is a UUID string, so it needs to be passed as a GUID
       const result = await omadaApi.odata.query(
@@ -100,25 +94,11 @@ const AccessLensPage = () => {
         }
       );
 
-      console.log(`[System OData] Result for ${systemUId}:`, result);
-
       if (result.status === 'success' && result.data?.length > 0) {
-        const systemData = result.data[0];
-        console.log(`[System OData] System ${systemUId} enriched data:`, {
-          name: systemData.DISPLAYNAME || systemData.Name,
-          type: systemData.SYSTEMTYPE?.DisplayName || systemData.SYSTEMTYPE?.Name,
-          description: systemData.DESCRIPTION,
-          owner: systemData.OWNERREF?.DisplayName,
-          classification: systemData.CLT_TAGS?.DisplayName,
-          fullData: systemData
-        });
-        return systemData;
-      } else {
-        console.warn(`[System OData] No data returned for system ${systemUId}`);
+        return result.data[0];
       }
       return null;
     } catch (err) {
-      console.error(`[System OData] Error fetching system ${systemUId}:`, err);
       return null;
     }
   }, []);
@@ -131,8 +111,6 @@ const AccessLensPage = () => {
    */
   const fetchIdentityDetails = useCallback(async (identityUId, bearerToken, impersonateUser) => {
     try {
-      console.log(`[Identity OData] Fetching details for identity UId: ${identityUId}`);
-
       // Use the same method as loadIdentityData - omadaApi.identity.searchIdentities
       const result = await omadaApi.identity.searchIdentities(
         null, // No search filter
@@ -144,23 +122,11 @@ const AccessLensPage = () => {
         }
       );
 
-      console.log(`[Identity OData] Result for ${identityUId}:`, result.status, 'data length:', result.data?.length);
-
       if (result.status === 'success' && result.data?.length > 0) {
-        const identityData = result.data[0];
-        console.log(`[Identity OData] Identity ${identityUId} enriched:`, {
-          UId: identityData.UId,
-          name: identityData.DISPLAYNAME,
-          email: identityData.EMAIL,
-          jobTitle: identityData.JOBTITLE,
-          employeeId: identityData.EMPLOYEEID || identityData.IDENTITYID
-        });
-        return identityData;
+        return result.data[0];
       }
-      console.warn(`[Identity OData] No data returned for identity ${identityUId}, result:`, result);
       return null;
     } catch (err) {
-      console.error(`[Identity OData] Error fetching identity ${identityUId}:`, err);
       return null;
     }
   }, []);
@@ -171,27 +137,20 @@ const AccessLensPage = () => {
    * @returns {Promise<Object>} Map of identityId -> identity details
    */
   const fetchAllIdentityDetails = useCallback(async (assignments, bearerToken, impersonateUser) => {
-    console.log('[Identity OData] === fetchAllIdentityDetails called ===');
-
     if (!assignments || assignments.length === 0) {
       return {};
     }
 
     // Extract unique identity IDs from assignments
     const identityIdsSet = new Set();
-    assignments.forEach((assignment, idx) => {
+    assignments.forEach((assignment) => {
       const identityId = assignment.identity?.id;
       if (identityId) {
         identityIdsSet.add(identityId);
-        if (idx < 3) {
-          console.log(`[Identity OData] Assignment ${idx}: identity.id="${identityId}", displayName="${assignment.identity?.displayName}"`);
-        }
       }
     });
 
     const identityIds = Array.from(identityIdsSet);
-    console.log(`[Identity OData] Fetching details for ${identityIds.length} unique identities`);
-    console.log(`[Identity OData] Identity IDs to fetch:`, identityIds.slice(0, 5));
 
     if (identityIds.length === 0) {
       return {};
@@ -204,7 +163,6 @@ const AccessLensPage = () => {
 
     for (let i = 0; i < identityIds.length; i += batchSize) {
       const batch = identityIds.slice(i, i + batchSize);
-      console.log(`[Identity OData] Fetching batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(identityIds.length/batchSize)} (${batch.length} identities)`);
 
       const batchPromises = batch.map(id =>
         fetchIdentityDetails(id, bearerToken, impersonateUser)
@@ -224,7 +182,6 @@ const AccessLensPage = () => {
       }
     }
 
-    console.log(`[Identity OData] Completed: Enriched ${Object.keys(detailsMap).length} identities`);
     return detailsMap;
   }, [fetchIdentityDetails]);
 
@@ -234,43 +191,30 @@ const AccessLensPage = () => {
    * @returns {Promise<Object>} Map of systemId -> system details
    */
   const fetchAllSystemDetails = useCallback(async (assignments, bearerToken, impersonateUser) => {
-    console.log('[System OData] === fetchAllSystemDetails called ===');
-    console.log('[System OData] Assignments count:', assignments?.length);
-
     if (!assignments || assignments.length === 0) {
-      console.warn('[System OData] No assignments provided, skipping system details fetch');
       return {};
     }
 
     // Extract unique system IDs from both account.system and resource.system
     const systemIdsSet = new Set();
 
-    assignments.forEach((assignment, i) => {
+    assignments.forEach((assignment) => {
       // From account's system
       const accountSystemId = assignment.account?.system?.id;
       if (accountSystemId) {
         systemIdsSet.add(accountSystemId);
-        if (i < 3) {
-          console.log(`[System OData] Found account system: ${assignment.account.system.name} (ID: ${accountSystemId})`);
-        }
       }
 
       // From resource's system (may be different, e.g., logical applications)
       const resourceSystemId = assignment.resource?.system?.id;
       if (resourceSystemId) {
         systemIdsSet.add(resourceSystemId);
-        if (i < 3) {
-          console.log(`[System OData] Found resource system: ${assignment.resource?.system?.name} (ID: ${resourceSystemId})`);
-        }
       }
     });
 
     const systemIds = Array.from(systemIdsSet);
-    console.log(`[System OData] === Fetching OData details for ${systemIds.length} unique systems ===`);
-    console.log('[System OData] System IDs:', systemIds);
 
     if (systemIds.length === 0) {
-      console.warn('[System OData] No system IDs found in assignments');
       return {};
     }
 
@@ -281,7 +225,6 @@ const AccessLensPage = () => {
 
     for (let i = 0; i < systemIds.length; i += batchSize) {
       const batch = systemIds.slice(i, i + batchSize);
-      console.log(`[System OData] Fetching batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(systemIds.length/batchSize)} (${batch.length} systems)`);
 
       const batchPromises = batch.map(id =>
         fetchSystemDetails(id, bearerToken, impersonateUser)
@@ -300,8 +243,6 @@ const AccessLensPage = () => {
       }
     }
 
-    console.log(`[System OData] === Completed: Fetched details for ${Object.keys(detailsMap).length} systems ===`);
-    console.log('[System OData] Systems with details:', Object.keys(detailsMap));
     return detailsMap;
   }, [fetchSystemDetails]);
 
@@ -316,9 +257,6 @@ const AccessLensPage = () => {
     try {
       const bearerToken = getBearerToken();
       const impersonateUser = user?.email;
-
-      // First, fetch full identity details from OData if we only have basic info
-      console.log('=== Loading identity data for UId:', identity.UId, '===');
 
       // Fetch full identity details via OData
       // Note: DESCRIPTION is not available on Identity entity type
@@ -335,10 +273,7 @@ const AccessLensPage = () => {
 
       if (identityResult.status === 'success' && identityResult.data?.length > 0) {
         const fullIdentity = identityResult.data[0];
-        console.log('Loaded full identity details:', fullIdentity);
         setSelectedIdentity(fullIdentity);
-      } else {
-        console.warn('Could not load full identity details, using provided identity');
       }
 
       // Update status for assignments fetch
@@ -362,41 +297,44 @@ const AccessLensPage = () => {
 
       if (assignmentsResult.status === 'success') {
         const assignmentCount = assignmentsResult.data?.length || 0;
-        setCalculatedAssignments(assignmentsResult.data);
-        console.log('Loaded calculated assignments:', assignmentCount, 'items');
-        if (assignmentsResult.data?.length > 0) {
-          console.log('First assignment sample:', assignmentsResult.data[0]);
+
+        // Debug logging for identity assignments
+        if (shouldLog('INIT')) {
+          console.log('[Identity Load] Total assignments:', assignmentCount);
+          if (assignmentsResult.data && assignmentsResult.data.length > 0) {
+            const withResource = assignmentsResult.data.filter(a => a.resource).length;
+            const withResourceId = assignmentsResult.data.filter(a => a.resource?.id).length;
+            console.log('[Identity Load] Assignments with resource:', withResource, '| with resource.id:', withResourceId);
+            console.log('[Identity Load] First assignment resource:', assignmentsResult.data[0].resource ? {
+              id: assignmentsResult.data[0].resource.id,
+              name: assignmentsResult.data[0].resource.name,
+              type: assignmentsResult.data[0].resource.resourceType?.name
+            } : 'NULL');
+          }
         }
+
+        setCalculatedAssignments(assignmentsResult.data);
 
         // Update status for system details fetch
         setLoadingStatus(`Enriching system metadata for ${assignmentCount} assignments...`);
 
         // Fetch system details for all unique systems in the assignments
-        console.log('[System OData] Starting system details fetch...');
         const systemDetails = await fetchAllSystemDetails(
           assignmentsResult.data,
           bearerToken,
           impersonateUser
         );
-        const systemCount = Object.keys(systemDetails).length;
-        console.log('[System OData] Setting systemDetailsMap with', systemCount, 'systems');
         setSystemDetailsMap(systemDetails);
 
         // Update status for final processing
         setLoadingStatus('Building access relationship graph...');
-      } else {
-        console.warn('Failed to load assignments:', assignmentsResult);
       }
 
       if (contextsResult.status === 'success') {
         setIdentityContexts(contextsResult.data);
-        console.log('Loaded identity contexts:', contextsResult.data?.length, 'items');
-      } else {
-        console.warn('Failed to load contexts:', contextsResult);
       }
 
     } catch (err) {
-      console.error('Error loading identity data:', err);
       setLoadError(err.message || 'Failed to load identity data');
     } finally {
       setIsLoadingData(false);
@@ -407,6 +345,7 @@ const AccessLensPage = () => {
   // Load data when system ID is provided (from heatmap navigation or URL)
   // System details (name, type, etc.) are fetched from OData using the system UUID
   const loadSystemData = useCallback(async (systemId) => {
+    if (shouldLog('SYSTEMS')) console.log('[loadSystemData] CALLED with systemId:', systemId);
     if (!systemId) return;
 
     setIsLoadingData(true);
@@ -416,8 +355,6 @@ const AccessLensPage = () => {
     try {
       const bearerToken = getBearerToken();
       const impersonateUser = user?.email;
-
-      console.log('=== Loading system data for ID:', systemId, '===');
 
       // Fetch system details from OData using system UUID
       let systemDetails = null;
@@ -433,12 +370,9 @@ const AccessLensPage = () => {
 
         if (systemResult.status === 'success' && systemResult.data?.length > 0) {
           systemDetails = systemResult.data[0];
-          console.log('Loaded system details from OData:', systemDetails);
-        } else {
-          console.warn('No system found with UId:', systemId);
         }
       } catch (err) {
-        console.warn('Could not load system details from OData:', err);
+        // Could not load system details from OData - continue with basic info
       }
 
       // Create a system node for the focus - all details come from OData
@@ -448,9 +382,6 @@ const AccessLensPage = () => {
         || systemDetails?.Name
         || systemDetails?.name
         || 'Unknown System';
-
-      console.log('[System Node] Creating system node with displayName:', systemDisplayName);
-      console.log('[System Node] Available fields in systemDetails:', systemDetails ? Object.keys(systemDetails) : 'null');
 
       const systemNode = {
         id: systemId,
@@ -470,38 +401,40 @@ const AccessLensPage = () => {
       setLoadingStatus('Calculating access assignments for system...');
 
       // Fetch assignments for this system
-      console.log('');
-      console.log('='.repeat(70));
-      console.log('[System API] Fetching calculatedAssignments for systemId:', systemId);
-      console.log('='.repeat(70));
+      if (shouldLog('SYSTEMS')) {
+        console.log('[System API] Fetching calculatedAssignments for systemId:', systemId);
+      }
 
       const assignmentsResult = await omadaApi.assignment.getCalculatedAssignmentsDetailed(
         null, // No identity filter - we're filtering by system instead
         bearerToken,
         impersonateUser,
         { systemId: systemId },
-        {} // No pagination - fetch all assignments for the system
+        { page: 1, rows: 5000 } // Large page size to fetch all assignments
       );
 
-      console.log('[System API] Response status:', assignmentsResult.status);
-      console.log('[System API] Total from API:', assignmentsResult.total);
-      console.log('[System API] Data array length:', assignmentsResult.data?.length);
-
-      if (assignmentsResult.status === 'success') {
-        console.log('');
-        console.log('[System API] SUCCESS - Loaded', assignmentsResult.data?.length, 'assignments');
-
-        // Debug: Show sample of what the API returned
-        if (assignmentsResult.data?.length > 0) {
+      // Debug logging for system API response
+      if (shouldLog('SYSTEMS')) {
+        console.log('[System API] Response:', assignmentsResult.status, '- Total:', assignmentsResult.total);
+        if (assignmentsResult.data && assignmentsResult.data.length > 0) {
+          const withResource = assignmentsResult.data.filter(a => a.resource).length;
+          const withResourceId = assignmentsResult.data.filter(a => a.resource?.id).length;
+          const withResourceName = assignmentsResult.data.filter(a => a.resource?.name).length;
+          console.log('[System API] Assignments breakdown:');
+          console.log('  - Total:', assignmentsResult.data.length);
+          console.log('  - With resource object:', withResource);
+          console.log('  - With resource.id:', withResourceId);
+          console.log('  - With resource.name:', withResourceName);
+          // Log first 3 assignments to compare structure
           console.log('[System API] First 3 assignments:');
           assignmentsResult.data.slice(0, 3).forEach((a, i) => {
-            console.log(`  ${i + 1}. Resource: "${a.resource?.name}" [type: "${a.resource?.resourceType?.name || 'NO TYPE'}"]`);
-            console.log(`     System: "${a.resource?.system?.name}" (id: ${a.resource?.system?.id})`);
-            console.log(`     Account: "${a.account?.accountName}" on "${a.account?.system?.name}"`);
+            console.log(`  [${i}] resource:`, a.resource ? { id: a.resource.id, name: a.resource.name, type: a.resource.resourceType?.name } : 'NULL');
+            console.log(`  [${i}] account:`, a.account ? { id: a.account.id, name: a.account.accountName, system: a.account.system?.name } : 'NULL');
           });
-        } else {
-          console.warn('[System API] WARNING: API returned success but no assignments data!');
         }
+      }
+
+      if (assignmentsResult.status === 'success') {
 
         setLoadingStatus('Building access relationship graph...');
 
@@ -517,85 +450,36 @@ const AccessLensPage = () => {
         const reasonTypes = extractUniqueReasonTypes(assignmentsResult.data);
         const complianceStatuses = extractUniqueComplianceStatuses(assignmentsResult.data);
 
-        console.log('');
-        console.log('='.repeat(70));
-        console.log('[Lane Building] Built system-centric lanes:', lanes.length);
-        console.log('='.repeat(70));
-        lanes.forEach(lane => {
-          console.log(`  - ${lane.laneType}: ${lane.items.length} items (totalCount: ${lane.totalCount})`);
-          if (lane.items.length > 0 && lane.items.length <= 3) {
-            lane.items.forEach((item, i) => {
-              console.log(`      ${i + 1}. "${item.node?.displayName}" [${item.node?.type}]`);
-            });
-          }
-        });
-
-        // Specific check for EffectiveEntitlements lane
-        const entitlementsLane = lanes.find(l => l.laneType === 'EffectiveEntitlements');
-        if (entitlementsLane) {
-          console.log('');
-          console.log('[Entitlements Lane] Found with', entitlementsLane.items.length, 'items');
-          if (entitlementsLane.items.length > 0) {
-            console.log('[Entitlements Lane] First 5 entitlements:');
-            entitlementsLane.items.slice(0, 5).forEach((item, i) => {
-              console.log(`  ${i + 1}. "${item.node?.displayName}" [type: "${item.node?.metadata?.type || 'NONE'}"]`);
-            });
-          } else {
-            console.warn('[Entitlements Lane] WARNING: Lane exists but has 0 items!');
-            console.warn('[Entitlements Lane] This could mean all resources were filtered by exclusion rules.');
-          }
-        } else {
-          console.error('[Entitlements Lane] ERROR: EffectiveEntitlements lane was NOT built!');
+        if (shouldLog('LANES')) {
+          console.log('[Lane Building] Built', lanes.length, 'system-centric lanes');
+          lanes.forEach(lane => {
+            console.log(`  - ${lane.laneType}: ${lane.items.length} items`);
+          });
         }
 
-        // =====================================================================
         // IDENTITY ENRICHMENT - Fetch OData details for identities in the lane
-        // =====================================================================
-        console.log('');
-        console.log('='.repeat(60));
-        console.log('[Identity Enrichment] Starting identity enrichment process');
-        console.log('='.repeat(60));
-
         setLoadingStatus('Enriching identity details...');
 
         // Find the Identities lane to enrich
         const identitiesLane = lanes.find(l => l.laneType === 'Identities');
-        if (!identitiesLane) {
-          console.warn('[Identity Enrichment] No Identities lane found in lanes');
-        } else {
-          console.log(`[Identity Enrichment] Found Identities lane with ${identitiesLane.items.length} items`);
-        }
 
         let identityDetailsMap = {};
         try {
-          console.log('[Identity Enrichment] Calling fetchAllIdentityDetails...');
           identityDetailsMap = await fetchAllIdentityDetails(assignmentsResult.data, bearerToken, impersonateUser);
-          console.log('[Identity Enrichment] fetchAllIdentityDetails completed successfully');
-          console.log('[Identity Enrichment] Retrieved details for', Object.keys(identityDetailsMap).length, 'identities');
+          if (shouldLog('INIT')) {
+            console.log('[Identity Enrichment] Retrieved details for', Object.keys(identityDetailsMap).length, 'identities');
+          }
         } catch (enrichError) {
-          console.error('[Identity Enrichment] ERROR fetching identity details:', enrichError);
-          console.error('[Identity Enrichment] Error stack:', enrichError.stack);
+          console.error('[Identity Enrichment] ERROR:', enrichError.message);
         }
 
         // Apply identity enrichment to the Identities lane
         const mapKeys = Object.keys(identityDetailsMap);
-        console.log('[Identity Enrichment] Map size:', mapKeys.length);
-        if (mapKeys.length > 0) {
-          console.log('[Identity Enrichment] Sample map keys:', mapKeys.slice(0, 5));
-          console.log('[Identity Enrichment] Sample map value:', identityDetailsMap[mapKeys[0]]);
-        }
 
         if (mapKeys.length > 0 && identitiesLane) {
-          console.log('[Identity Enrichment] Applying enrichment to Identities lane...');
-
           lanes = lanes.map(lane => {
             if (lane.laneType === 'Identities') {
-              console.log('[Identity Enrichment] Processing Identities lane with', lane.items.length, 'items');
-
-              let enrichedCount = 0;
-              let notFoundCount = 0;
-
-              const enrichedItems = lane.items.map((item, idx) => {
+              const enrichedItems = lane.items.map((item) => {
                 const identityId = String(item.node.id);
                 let odataDetails = identityDetailsMap[identityId];
 
@@ -606,15 +490,7 @@ const AccessLensPage = () => {
                   );
                 }
 
-                if (idx < 3) {
-                  console.log(`[Identity Enrichment] Item ${idx}: ID="${identityId}", Found=${!!odataDetails}`);
-                }
-
                 if (odataDetails) {
-                  enrichedCount++;
-                  if (idx < 3) {
-                    console.log(`[Identity Enrichment] Enriching "${item.node.displayName}" with EMAIL="${odataDetails.EMAIL}", JOBTITLE="${odataDetails.JOBTITLE}"`);
-                  }
                   // Enrich the node with OData details
                   return {
                     ...item,
@@ -639,13 +515,9 @@ const AccessLensPage = () => {
                       ...odataDetails
                     }
                   };
-                } else {
-                  notFoundCount++;
                 }
                 return item;
               });
-
-              console.log(`[Identity Enrichment] Enrichment complete: ${enrichedCount} enriched, ${notFoundCount} not found`);
 
               return {
                 ...lane,
@@ -655,12 +527,7 @@ const AccessLensPage = () => {
             }
             return lane;
           });
-
-          console.log('[Identity Enrichment] Identities lane enrichment applied');
-        } else {
-          console.warn('[Identity Enrichment] Skipping enrichment - no data or no identities lane');
         }
-        console.log('='.repeat(60));
 
         setSystemLanes(lanes);
         setSystemReasonTypes(reasonTypes);
@@ -712,7 +579,6 @@ const AccessLensPage = () => {
 
     // Only handle OData sources for now
     if (apiSource.type !== 'OData') {
-      console.log('Non-OData source, returning item data as-is:', apiSource.type);
       return { data: item.node?.rawData || item.rawData || item.node, inspectorConfig };
     }
 
@@ -722,19 +588,14 @@ const AccessLensPage = () => {
     const filterValue = item.node?.displayName || item.node?.name || item.node?.Name;
 
     if (!filterValue) {
-      console.warn('No filter value available for item:', item);
       return null;
     }
-
-    console.log(`=== Fetching ${endpoint} details ===`);
-    console.log(`Filter: ${filterField} eq '${filterValue}'`);
 
     try {
       const bearerToken = getBearerToken();
       const impersonateUser = user?.email;
 
       // Build the OData query
-      // Format: /OData/DataObjects/{endpoint}?$filter={filterField} eq '{value}'
       const result = await omadaApi.odata.query(
         endpoint,
         bearerToken,
@@ -745,19 +606,16 @@ const AccessLensPage = () => {
       );
 
       if (result.status === 'success' && result.data?.length > 0) {
-        console.log(`Loaded ${endpoint} details:`, result.data[0]);
         return {
           data: result.data[0],
           inspectorConfig,
           objectType: laneConfig.dataType,
           laneType
         };
-      } else {
-        console.warn(`No ${endpoint} found with ${filterField} = '${filterValue}'`);
-        return null;
       }
+      return null;
     } catch (err) {
-      console.error(`Error fetching ${endpoint} details:`, err);
+      console.error(`Error fetching ${endpoint} details:`, err.message);
       return null;
     }
   }, [getBearerToken, user]);
@@ -770,10 +628,9 @@ const AccessLensPage = () => {
    * @returns {Promise<object>} The pivot result with focusNode and lanes
    */
   const handlePivotToNode = useCallback(async (node, filters = {}) => {
-    console.log('=== handlePivotToNode called ===');
-    console.log('Node:', node);
-    console.log('Node type:', node?.type);
-    console.log('Filters:', filters);
+    if (shouldLog('PIVOT')) {
+      console.log('[Pivot] handlePivotToNode called:', node?.type, node?.displayName, node?.id);
+    }
 
     if (!node) return null;
 
@@ -788,8 +645,6 @@ const AccessLensPage = () => {
       switch (node.type) {
         case 'Identity': {
           // Pivoting to an Identity - fetch their calculated assignments
-          console.log('Pivoting to Identity:', node.displayName);
-
           // Get the identity UId from the node
           const identityUId = node.id || node.rawData?.UId || node.metadata?.UId;
           if (!identityUId) {
@@ -817,9 +672,21 @@ const AccessLensPage = () => {
           let reasonTypes = [];
 
           if (assignmentsResult.status === 'success') {
+            // Debug logging for identity-centric assignments
+            if (shouldLog('PIVOT')) {
+              console.log('[Identity API] Response - Total:', assignmentsResult.total);
+              if (assignmentsResult.data && assignmentsResult.data.length > 0) {
+                const withResource = assignmentsResult.data.filter(a => a.resource).length;
+                console.log('[Identity API] Assignments with resource:', withResource, 'of', assignmentsResult.data.length);
+                console.log('[Identity API] First assignment resource:', assignmentsResult.data[0].resource ? {
+                  id: assignmentsResult.data[0].resource.id,
+                  name: assignmentsResult.data[0].resource.name,
+                  type: assignmentsResult.data[0].resource.resourceType?.name
+                } : 'NULL');
+              }
+            }
             lanes = buildLanesFromAssignments(assignmentsResult.data, {});
             reasonTypes = extractUniqueReasonTypes(assignmentsResult.data);
-            console.log('Built lanes from identity assignments:', lanes.length);
           }
 
           // Build contexts lane if available
@@ -839,21 +706,17 @@ const AccessLensPage = () => {
         }
 
         case 'System': {
+          if (shouldLog('PIVOT')) console.log('[System Pivot] ENTERED System case');
           // Pivoting to a System - fetch assignments for that system
-          console.log('=== Pivoting to System ===');
-          console.log('Node:', node.displayName);
-
           // Get the system ID from the node - could be in different places
           const systemId = node.id || node.rawData?.Id || node.rawData?.id || node.rawData?.UId || node.metadata?.id;
           const systemName = node.displayName || node.rawData?.Name || node.rawData?.name || node.rawData?.DISPLAYNAME;
+          if (shouldLog('PIVOT')) console.log('[System Pivot] systemId:', systemId, 'systemName:', systemName);
 
           if (!systemId) {
-            console.error('No system ID found in node:', node);
+            console.error('No system ID found in node');
             return null;
           }
-
-          console.log('System ID:', systemId);
-          console.log('System Name:', systemName);
 
           // Fetch system details from OData to enrich the focus node (same as direct load)
           let systemDetails = null;
@@ -866,10 +729,9 @@ const AccessLensPage = () => {
             );
             if (systemODataResult.status === 'success' && systemODataResult.data?.length > 0) {
               systemDetails = systemODataResult.data[0];
-              console.log('Loaded system details from OData:', Object.keys(systemDetails));
             }
           } catch (err) {
-            console.warn('Could not load system details from OData:', err);
+            // Silently continue - we'll use node data as fallback
           }
 
           // Create enriched system node (same structure as direct load)
@@ -887,28 +749,35 @@ const AccessLensPage = () => {
             badges: node.badges || []
           };
 
-          console.log('Enriched system node:', enrichedSystemNode.displayName);
-
-          // Fetch assignments - NO PAGINATION to get all results (same as direct load)
-          console.log('Fetching ALL assignments for systemId:', systemId);
+          // Fetch assignments with large page size to get all results
+          if (shouldLog('PIVOT')) console.log('[System Pivot] Fetching assignments for systemId:', systemId);
           const assignmentsResult = await omadaApi.assignment.getCalculatedAssignmentsDetailed(
             null, // No identity filter - we're filtering by system instead
             bearerToken,
             impersonateUser,
             { systemId: systemId }, // Filter by system ID
-            {} // NO PAGINATION - fetch all assignments (same as direct load)
+            { page: 1, rows: 5000 } // Large page size to fetch all assignments
           );
+
+          // Debug logging for system pivot assignments
+          if (shouldLog('PIVOT')) {
+            console.log('[System Pivot] Response - Total:', assignmentsResult.total, 'Status:', assignmentsResult.status);
+            if (assignmentsResult.data && assignmentsResult.data.length > 0) {
+              const withResource = assignmentsResult.data.filter(a => a.resource).length;
+              console.log('[System Pivot] Assignments with resource:', withResource, 'of', assignmentsResult.data.length);
+              console.log('[System Pivot] First assignment resource:', assignmentsResult.data[0].resource ? {
+                id: assignmentsResult.data[0].resource.id,
+                name: assignmentsResult.data[0].resource.name,
+                type: assignmentsResult.data[0].resource.resourceType?.name
+              } : 'NULL');
+            }
+          }
 
           let lanes = [];
           let reasonTypes = [];
           let complianceStatuses = [];
 
           if (assignmentsResult.status === 'success') {
-            console.log('System assignments loaded:', assignmentsResult.data?.length, 'items (no pagination limit)');
-            if (assignmentsResult.data?.length > 0) {
-              console.log('First system assignment sample:', assignmentsResult.data[0]);
-            }
-
             // Build lanes for system-centric view:
             // - Identities (who has access to this system)
             // - Accounts (accounts on this system)
@@ -924,12 +793,9 @@ const AccessLensPage = () => {
             const { extractUniqueComplianceStatuses } = await import('./accessLensDataService');
             complianceStatuses = extractUniqueComplianceStatuses(assignmentsResult.data);
 
-            console.log('Built lanes for system-centric view:');
-            lanes.forEach(lane => {
-              console.log(`  - ${lane.laneType}: ${lane.items.length} items`);
-            });
-          } else {
-            console.warn('Failed to load system assignments:', assignmentsResult);
+            if (shouldLog('LANES')) {
+              console.log('[Pivot] Built', lanes.length, 'system-centric lanes');
+            }
           }
 
           return {
@@ -942,20 +808,14 @@ const AccessLensPage = () => {
 
         case 'LogicalApplication': {
           // Pivoting to a Logical Application - similar to System but for apps without direct accounts
-          console.log('=== Pivoting to Logical Application ===');
-          console.log('Node:', node.displayName);
-
           // Get the logical app ID from the node
           const logicalAppId = node.id || node.rawData?.Id || node.rawData?.id || node.rawData?.UId || node.metadata?.id;
           const logicalAppName = node.displayName || node.rawData?.Name || node.rawData?.name || node.rawData?.DISPLAYNAME;
 
           if (!logicalAppId) {
-            console.error('No logical application ID found in node:', node);
+            console.error('No logical application ID found in node');
             return null;
           }
-
-          console.log('Logical App ID:', logicalAppId);
-          console.log('Logical App Name:', logicalAppName);
 
           // Fetch system details from OData to enrich the focus node
           let systemDetails = null;
@@ -968,10 +828,9 @@ const AccessLensPage = () => {
             );
             if (systemODataResult.status === 'success' && systemODataResult.data?.length > 0) {
               systemDetails = systemODataResult.data[0];
-              console.log('Loaded logical app details from OData:', Object.keys(systemDetails));
             }
           } catch (err) {
-            console.warn('Could not load logical app details from OData:', err);
+            // Silently continue - we'll use node data as fallback
           }
 
           // Create enriched logical app node
@@ -992,17 +851,14 @@ const AccessLensPage = () => {
             badges: node.badges || []
           };
 
-          console.log('Enriched logical app node:', enrichedLogicalAppNode.displayName);
-
           // Fetch assignments filtered by this logical app as the resource system
           // This gets all assignments where the resource is on this logical application
-          console.log('Fetching assignments for logical app systemId:', logicalAppId);
           const assignmentsResult = await omadaApi.assignment.getCalculatedAssignmentsDetailed(
             null, // No identity filter
             bearerToken,
             impersonateUser,
             { systemId: logicalAppId }, // Filter by this logical app as the system
-            {} // No pagination - fetch all
+            { page: 1, rows: 5000 } // Large page size to fetch all assignments
           );
 
           let lanes = [];
@@ -1010,8 +866,6 @@ const AccessLensPage = () => {
           let complianceStatuses = [];
 
           if (assignmentsResult.status === 'success') {
-            console.log('Logical app assignments loaded:', assignmentsResult.data?.length, 'items');
-
             // Build lanes for logical-app-centric view
             lanes = buildLanesFromAssignments(assignmentsResult.data, {}, {
               includeIdentities: true,
@@ -1023,12 +877,9 @@ const AccessLensPage = () => {
             const { extractUniqueComplianceStatuses } = await import('./accessLensDataService');
             complianceStatuses = extractUniqueComplianceStatuses(assignmentsResult.data);
 
-            console.log('Built lanes for logical-app-centric view:');
-            lanes.forEach(lane => {
-              console.log(`  - ${lane.laneType}: ${lane.items.length} items`);
-            });
-          } else {
-            console.warn('Failed to load logical app assignments:', assignmentsResult);
+            if (shouldLog('LANES')) {
+              console.log('[Pivot] Built', lanes.length, 'logical-app-centric lanes');
+            }
           }
 
           return {
@@ -1041,8 +892,6 @@ const AccessLensPage = () => {
 
         case 'Account': {
           // Pivoting to an Account - show related identity, system, and entitlements
-          console.log('Pivoting to Account:', node.displayName);
-
           // For now, return the node with empty lanes
           // TODO: Implement account-centric view
           return {
@@ -1054,29 +903,6 @@ const AccessLensPage = () => {
 
         case 'Entitlement': {
           // Pivoting to an Entitlement - show who has it, through which accounts, on which system
-          console.log('=== ENTITLEMENT PIVOT START ===');
-          console.log('Pivoting to Entitlement:', node.displayName);
-          console.log('Full node object:', JSON.stringify(node, null, 2));
-
-          // Get the entitlement/resource ID, name, and system ID from the node
-          // Debug: Log all possible ID sources to find the correct resource UUID
-          console.log('=== Extracting resource identifiers ===');
-          console.log('node:', node);
-          console.log('node.id:', node.id, '- type:', typeof node.id);
-          console.log('node.rawData?.id:', node.rawData?.id);
-          console.log('node.metadata?.id:', node.metadata?.id);
-          console.log('node.rawData?.resource?.id:', node.rawData?.resource?.id);
-
-          // The resource ID should be a UUID like "9968085c-aa3b-4238-a334-0330a0188bc4"
-          // Check each possible source
-          const possibleIds = {
-            'node.id': node.id,
-            'node.rawData?.id': node.rawData?.id,
-            'node.rawData?.resource?.id': node.rawData?.resource?.id,
-            'node.metadata?.id': node.metadata?.id
-          };
-          console.log('Possible resource IDs:', possibleIds);
-
           // Use the first valid UUID we find
           const resourceId = node.id || node.rawData?.id || node.rawData?.resource?.id || node.metadata?.id;
           const resourceName = node.displayName || node.rawData?.name || node.metadata?.name;
@@ -1084,27 +910,14 @@ const AccessLensPage = () => {
 
           // Validate that we have the resource ID (should be a UUID)
           if (!resourceId) {
-            console.error('No resource ID found in node. Full node object:', JSON.stringify(node, null, 2));
+            console.error('No resource ID found in node');
             return { focusNode: node, lanes: [], reasonTypes: [] };
           }
 
-          // Warn if resourceId doesn't look like a UUID
-          const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-          if (!uuidPattern.test(resourceId)) {
-            console.warn('resourceId does not appear to be a UUID:', resourceId);
-            console.warn('This may cause the API call to fail. Expected format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx');
-          }
-
-          console.log('Entitlement resourceId:', resourceId);
-          console.log('Entitlement resourceName:', resourceName);
-          console.log('Entitlement systemId:', systemId);
-
           // Extract complianceStatus from filters if provided
           const complianceStatus = filters.complianceStatus || null;
-          console.log('Entitlement complianceStatus filter:', complianceStatus);
 
           // Use the dedicated API to fetch identities having this resource
-          console.log('Calling getIdentitiesHavingResource API...');
           let assignmentsResult;
           try {
             assignmentsResult = await omadaApi.assignment.getIdentitiesHavingResource(
@@ -1116,9 +929,8 @@ const AccessLensPage = () => {
               systemId,
               complianceStatus  // Pass the compliance filter to the API
             );
-            console.log('API call completed. Result:', assignmentsResult);
           } catch (apiError) {
-            console.error('API call failed with error:', apiError);
+            console.error('Entitlement pivot API error:', apiError.message);
             return { focusNode: node, lanes: [], reasonTypes: [] };
           }
 
@@ -1127,52 +939,25 @@ const AccessLensPage = () => {
           let complianceStatuses = [];
 
           if (assignmentsResult.status === 'success' && assignmentsResult.data) {
-            console.log('Identities having resource loaded:', assignmentsResult.data.length, 'items');
-
             if (assignmentsResult.data.length > 0) {
-              console.log('First assignment sample:', JSON.stringify(assignmentsResult.data[0], null, 2));
-
               // Extract unique identity UUIDs for OData enrichment (use UUID, not identityId code)
               const uniqueIdentityUIds = [...new Set(
                 assignmentsResult.data
                   .map(a => a.identity?.id)  // Use UUID (id) not identityId code
                   .filter(Boolean)
               )];
-              console.log('Unique identity UUIDs for OData enrichment:', uniqueIdentityUIds);
-
-              // Also log the identity codes for debugging
-              const identityIdCodes = [...new Set(
-                assignmentsResult.data
-                  .map(a => a.identity?.identityId)
-                  .filter(Boolean)
-              )];
-              console.log('Identity ID codes (for reference):', identityIdCodes);
 
               // Fetch additional identity details via OData (email, title, etc.)
-              // Batch requests to avoid URL length limits (max ~50 UUIDs per request)
               let identityDetailsMap = {};
-              // Fetch identity details one at a time to avoid URL length/batch issues
               // Limit to first 50 identities to avoid too many requests
               const MAX_IDENTITIES_TO_ENRICH = 50;
               const identitiesToFetch = uniqueIdentityUIds.slice(0, MAX_IDENTITIES_TO_ENRICH);
-              console.log(`uniqueIdentityUIds.length: ${uniqueIdentityUIds.length}, fetching first ${identitiesToFetch.length}`);
 
               if (identitiesToFetch.length > 0) {
-                console.log('Entering OData enrichment block...');
                 try {
-                  console.log(`Fetching identity details via OData (${identitiesToFetch.length} identities, one at a time)...`);
-
                   // Process one at a time
-                  let successCount = 0;
-                  let errorCount = 0;
-
                   for (let i = 0; i < identitiesToFetch.length; i++) {
                     const uid = identitiesToFetch[i];
-
-                    // Log progress every 10 identities
-                    if (i % 10 === 0) {
-                      console.log(`OData identity fetch progress: ${i}/${identitiesToFetch.length}`);
-                    }
 
                     try {
                       const odataResult = await omadaApi.odata.query(
@@ -1188,9 +973,6 @@ const AccessLensPage = () => {
 
                       if (odataResult.status === 'success' && odataResult.data?.length > 0) {
                         const ident = odataResult.data[0];
-                        if (i === 0) {
-                          console.log('First OData identity sample:', ident);
-                        }
                         identityDetailsMap[ident.UId] = {
                           email: ident.EMAIL,
                           title: ident.JOBTITLE,
@@ -1199,28 +981,12 @@ const AccessLensPage = () => {
                           lastName: ident.LASTNAME,
                           displayName: ident.DISPLAYNAME
                         };
-                        successCount++;
-                      } else {
-                        errorCount++;
-                        if (errorCount <= 3) {
-                          console.warn(`OData identity fetch failed for ${uid}:`, odataResult);
-                        }
                       }
                     } catch (singleError) {
-                      errorCount++;
-                      if (errorCount <= 3) {
-                        console.warn(`OData identity fetch error for ${uid}:`, singleError.message);
-                      }
+                      // Continue - not critical
                     }
                   }
-
-                  console.log(`Identity enrichment complete: ${successCount} success, ${errorCount} errors`);
-                  console.log('Identity details map total keys:', Object.keys(identityDetailsMap).length);
-                  if (Object.keys(identityDetailsMap).length > 0) {
-                    console.log('Sample identity from map:', Object.values(identityDetailsMap)[0]);
-                  }
                 } catch (odataError) {
-                  console.warn('Failed to fetch identity details via OData:', odataError);
                   // Continue without enrichment - not critical
                 }
               }
@@ -1247,32 +1013,21 @@ const AccessLensPage = () => {
               const { buildLanesForEntitlement, extractUniqueReasonTypes, extractUniqueComplianceStatuses } =
                 await import('./accessLensDataService');
 
-              console.log('Building lanes for entitlement-centric view...');
               lanes = buildLanesForEntitlement(enrichedAssignments, {}, node);
               reasonTypes = extractUniqueReasonTypes(enrichedAssignments);
               complianceStatuses = extractUniqueComplianceStatuses(enrichedAssignments);
 
-              console.log('Built entitlement-centric lanes:', lanes.length);
-              lanes.forEach(lane => {
-                console.log(`  - ${lane.laneType}: ${lane.items.length} items`);
-              });
-            } else {
-              console.warn('API returned success but no assignments found for this resource');
+              if (shouldLog('LANES')) {
+                console.log('[Pivot] Built', lanes.length, 'entitlement-centric lanes');
+              }
             }
           } else {
-            console.error('API call failed or returned no data');
-            console.error('assignmentsResult.status:', assignmentsResult?.status);
-            console.error('assignmentsResult.error:', assignmentsResult?.error);
-            console.error('Full result:', assignmentsResult);
+            console.error('Entitlement pivot: API call failed');
           }
-
-          console.log('=== ENTITLEMENT PIVOT END ===');
-          console.log('Returning lanes:', lanes.length);
 
           // Fetch Resource details from OData to get owner information
           let resourceOwners = null;
           try {
-            console.log('Fetching Resource details via OData for owner info...');
             const resourceOdataResult = await omadaApi.odata.query(
               'Resource',
               bearerToken,
@@ -1287,7 +1042,6 @@ const AccessLensPage = () => {
 
             if (resourceOdataResult.status === 'success' && resourceOdataResult.data?.length > 0) {
               const resourceData = resourceOdataResult.data[0];
-              console.log('Resource OData details:', resourceData);
 
               // Extract owner information
               // OWNERREF and EXPLICITOWNER are typically arrays of identity references
@@ -1323,11 +1077,8 @@ const AccessLensPage = () => {
                 explicitOwners: explicitOwners,
                 allOwners: [...owners, ...explicitOwners]
               };
-
-              console.log('Parsed resource owners:', resourceOwners);
             }
           } catch (ownerError) {
-            console.warn('Failed to fetch Resource owner details via OData:', ownerError);
             // Continue without owner info - not critical
           }
 
@@ -1373,8 +1124,6 @@ const AccessLensPage = () => {
             ) || []
           };
 
-          console.log('Clean entitlement node (no relationship data):', cleanEntitlementNode);
-
           return {
             focusNode: cleanEntitlementNode,
             lanes,
@@ -1384,7 +1133,6 @@ const AccessLensPage = () => {
         }
 
         default: {
-          console.log('Unknown node type, returning node with empty lanes');
           return {
             focusNode: node,
             lanes: [],
@@ -1393,7 +1141,7 @@ const AccessLensPage = () => {
         }
       }
     } catch (err) {
-      console.error('Error in handlePivotToNode:', err);
+      console.error('Error in handlePivotToNode:', err.message);
       return null;
     }
   }, [getBearerToken, user]);
@@ -1491,10 +1239,7 @@ const AccessLensPage = () => {
       {/* Identity Search Dialog */}
       <IdentitySearchDialog
         isOpen={showSearchDialog}
-        onClose={() => {
-          console.log('AccessLensPage: onClose callback triggered');
-          setShowSearchDialog(false);
-        }}
+        onClose={() => setShowSearchDialog(false)}
         onSelectIdentity={handleIdentitySelect}
       />
     </div>

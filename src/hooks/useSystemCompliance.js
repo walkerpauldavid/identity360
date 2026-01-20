@@ -3,10 +3,56 @@
  *
  * Fetches all systems from OData and their calculated assignments to build
  * compliance statistics for the heatmap visualization.
+ *
+ * For local testing, set USE_LOCAL_HEATMAP_DATA to true to load from a local JSON file
+ * instead of making API calls. This significantly speeds up development.
  */
 
 import { useState, useEffect, useCallback } from 'react';
 import { omadaApi } from '../services/omadaApi';
+
+// ============================================================================
+// FEATURE FLAG: Local Heatmap Data
+// Set to true to load heatmap data from local JSON file (faster for testing)
+// Set to false to fetch data from GraphQL API (production behavior)
+//
+// FIRST TIME SETUP:
+// 1. Keep this as 'false' and load the heatmap page
+// 2. The data will auto-download as 'heatmapData.json'
+// 3. Move that file to public/data/heatmapData.json
+// 4. Then set this to 'true' for instant loading
+// ============================================================================
+const USE_LOCAL_HEATMAP_DATA = true;
+
+// Path to the local heatmap data file (relative to public folder)
+const LOCAL_HEATMAP_DATA_PATH = '/data/heatmapData.json';
+
+/**
+ * Export systems data as a downloadable JSON file
+ * Call this after fetching from API to save the data for local testing
+ * @param {Array} systems - Array of system objects with compliance data
+ */
+const exportHeatmapData = (systems) => {
+  const exportData = {
+    description: "Heatmap compliance data exported from Omada API. Copy this file to public/data/heatmapData.json",
+    generatedAt: new Date().toISOString(),
+    systems: systems
+  };
+
+  const jsonString = JSON.stringify(exportData, null, 2);
+  const blob = new Blob([jsonString], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'heatmapData.json';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+
+  console.log('[useSystemCompliance] Data exported! Move the downloaded file to public/data/heatmapData.json');
+};
 
 /**
  * Calculate compliance statistics from assignments
@@ -112,6 +158,35 @@ const countUniqueIdentities = (assignments) => {
 };
 
 /**
+ * Load heatmap data from local JSON file
+ * @returns {Promise<Array>} Array of system objects with compliance data
+ */
+const loadLocalHeatmapData = async () => {
+  try {
+    console.log('[useSystemCompliance] Loading data from local file:', LOCAL_HEATMAP_DATA_PATH);
+    const response = await fetch(LOCAL_HEATMAP_DATA_PATH);
+
+    if (!response.ok) {
+      throw new Error(`Failed to load local data: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+
+    if (!data.systems || !Array.isArray(data.systems)) {
+      throw new Error('Invalid data format: missing systems array');
+    }
+
+    console.log(`[useSystemCompliance] Loaded ${data.systems.length} systems from local file`);
+    console.log('[useSystemCompliance] Data generated at:', data.generatedAt || 'unknown');
+
+    return data.systems;
+  } catch (err) {
+    console.error('[useSystemCompliance] Error loading local data:', err);
+    throw err;
+  }
+};
+
+/**
  * Hook to fetch system compliance data for heatmap
  *
  * @param {string} bearerToken - OAuth bearer token
@@ -130,19 +205,50 @@ export const useSystemCompliance = (bearerToken, impersonateUser, options = {}) 
   const [progress, setProgress] = useState({ current: 0, total: 0, currentSystem: '' });
 
   const fetchComplianceData = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+
+    // ========================================================================
+    // LOCAL FILE DATA SOURCE (for faster local testing)
+    // ========================================================================
+    if (USE_LOCAL_HEATMAP_DATA) {
+      setProgress({ current: 0, total: 1, currentSystem: 'Loading from local file...' });
+
+      try {
+        const localSystems = await loadLocalHeatmapData();
+
+        // Sort by account count (larger systems first for heatmap sizing)
+        localSystems.sort((a, b) => b.accountCount - a.accountCount);
+
+        setSystems(localSystems);
+        setProgress({ current: 1, total: 1, currentSystem: 'Complete' });
+        console.log('[useSystemCompliance] Using LOCAL data source (USE_LOCAL_HEATMAP_DATA=true)');
+      } catch (err) {
+        setError(err.message || 'Failed to load local heatmap data');
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
+
+    // ========================================================================
+    // API DATA SOURCE (production behavior)
+    // ========================================================================
+    console.log('[useSystemCompliance] Using API data source (USE_LOCAL_HEATMAP_DATA=false)');
+
     // Validate bearerToken is a non-empty string
     if (!bearerToken || typeof bearerToken !== 'string') {
       console.log('[useSystemCompliance] No valid bearer token, skipping fetch. Got:', typeof bearerToken);
+      setIsLoading(false);
       return;
     }
 
     if (!impersonateUser) {
       console.log('[useSystemCompliance] No impersonateUser, skipping fetch');
+      setIsLoading(false);
       return;
     }
 
-    setIsLoading(true);
-    setError(null);
     setProgress({ current: 0, total: 0, currentSystem: 'Fetching systems...' });
 
     try {
@@ -267,6 +373,10 @@ export const useSystemCompliance = (bearerToken, impersonateUser, options = {}) 
       setSystems(systemsWithCompliance);
       console.log(`[useSystemCompliance] Completed. ${systemsWithCompliance.length} systems with compliance data.`);
 
+      // Auto-export the data when fetched from API (for saving to local file)
+      console.log('[useSystemCompliance] Exporting data for local caching...');
+      exportHeatmapData(systemsWithCompliance);
+
     } catch (err) {
       console.error('[useSystemCompliance] Error:', err);
       setError(err.message || 'Failed to fetch compliance data');
@@ -274,6 +384,15 @@ export const useSystemCompliance = (bearerToken, impersonateUser, options = {}) 
       setIsLoading(false);
     }
   }, [bearerToken, impersonateUser, maxSystems, assignmentsPerSystem]);
+
+  // Manual export function - call this to download the current data
+  const exportData = useCallback(() => {
+    if (systems.length > 0) {
+      exportHeatmapData(systems);
+    } else {
+      console.warn('[useSystemCompliance] No data to export');
+    }
+  }, [systems]);
 
   // Fetch on mount and when dependencies change
   useEffect(() => {
@@ -285,7 +404,8 @@ export const useSystemCompliance = (bearerToken, impersonateUser, options = {}) 
     isLoading,
     error,
     progress,
-    refetch: fetchComplianceData
+    refetch: fetchComplianceData,
+    exportData  // Call this to manually export/download the data as JSON
   };
 };
 

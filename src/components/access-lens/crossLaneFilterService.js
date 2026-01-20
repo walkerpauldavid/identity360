@@ -12,7 +12,8 @@ import {
   LaneTypes,
   NodeTypes,
   getRequiredLanes,
-  getCrossLaneFilterConfig
+  getCrossLaneFilterConfig,
+  shouldLog
 } from './accessLensTypes';
 import { getNestedValue, getItemValue } from './accessLensUtils';
 
@@ -445,7 +446,9 @@ export const applyCrossLaneFilters = (
         if (filteredItems.length !== beforeCount) {
           wasFiltered = true;
           filteredLaneTypes.add(lane.laneType);
-          console.log(`[CrossLaneFilter] ${filteringLaneType} -> ${lane.laneType}: ${beforeCount} -> ${filteredItems.length} items`);
+          if (shouldLog('FILTERS')) {
+            console.log(`[CrossLaneFilter] ${filteringLaneType} -> ${lane.laneType}: ${beforeCount} -> ${filteredItems.length} items`);
+          }
         }
       }
     }
