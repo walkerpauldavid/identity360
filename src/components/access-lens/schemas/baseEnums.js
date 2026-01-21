@@ -112,5 +112,10 @@ export const LaneDisplayRules = {
     columns: 2,
     width: 700,
     maxVisibleItems: 20
+  },
+  THREE_COLUMN: {
+    columns: 3,
+    width: 1050,
+    maxVisibleItems: 30
   }
 };

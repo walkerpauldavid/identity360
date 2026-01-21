@@ -332,7 +332,7 @@ export const LaneSchema = {
   },
   [LaneTypes.EFFECTIVE_ENTITLEMENTS]: {
     dataType: NodeTypes.ENTITLEMENT,
-    displayRule: 'MULTI_COLUMN',
+    displayRule: 'THREE_COLUMN',
     icon: '🔑',
     color: '#ebcb8b',
     label: 'Effective Entitlements',

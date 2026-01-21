@@ -13,6 +13,8 @@ import { useGetIdentityCount, useGetAccessRequestsTotal } from '../../hooks/useO
 import SortableTile from './SortableTile';
 import Tile from './Tile';
 import ComplianceHeatmap from './ComplianceHeatmap';
+import ComplianceStatusHeatmap from './ComplianceStatusHeatmap';
+import { useSystemCompliance } from '../../hooks/useSystemCompliance';
 import './Dashboard.css';
 
 const Dashboard = () => {
@@ -46,6 +48,42 @@ const Dashboard = () => {
 
   // Heatmap toggle state (default OFF)
   const [showHeatmap, setShowHeatmap] = useState(false);
+
+  // Individual heatmap minimize state
+  const [minimizedHeatmaps, setMinimizedHeatmaps] = useState({
+    statusDistribution: false,
+    systemCompliance: false
+  });
+
+  // Toggle individual heatmap minimize state
+  const toggleHeatmapMinimize = (heatmapId) => {
+    setMinimizedHeatmaps(prev => ({
+      ...prev,
+      [heatmapId]: !prev[heatmapId]
+    }));
+  };
+
+  // Minimize/expand all heatmaps
+  const toggleAllHeatmaps = () => {
+    const allMinimized = Object.values(minimizedHeatmaps).every(v => v);
+    setMinimizedHeatmaps({
+      statusDistribution: !allMinimized,
+      systemCompliance: !allMinimized
+    });
+  };
+
+  // Fetch system compliance data (shared between both heatmap views)
+  const {
+    systems: heatmapSystems,
+    isLoading: heatmapLoading,
+    error: heatmapError,
+    progress: heatmapProgress,
+    refetch: refetchHeatmap
+  } = useSystemCompliance(
+    showHeatmap ? bearerToken : null, // Only fetch when heatmap is shown
+    showHeatmap ? impersonateUser : null,
+    { maxSystems: 30, assignmentsPerSystem: 1000 }
+  );
 
   // Manage expanded state for tiles (collapsed by default)
   const [expandedTiles, setExpandedTiles] = useState({
@@ -398,7 +436,7 @@ const Dashboard = () => {
       <div className="heatmap-section">
         <div className="heatmap-toggle-container">
           <label className="heatmap-toggle">
-            <span className="toggle-label">System Compliance Heatmap</span>
+            <span className="toggle-label">Compliance Heatmaps</span>
             <div className="toggle-switch">
               <input
                 type="checkbox"
@@ -408,12 +446,86 @@ const Dashboard = () => {
               <span className="toggle-slider"></span>
             </div>
           </label>
+          {showHeatmap && (
+            <button
+              className="heatmap-collapse-all-btn"
+              onClick={toggleAllHeatmaps}
+              title={Object.values(minimizedHeatmaps).every(v => v) ? 'Expand All' : 'Collapse All'}
+            >
+              {Object.values(minimizedHeatmaps).every(v => v) ? (
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                  <path d="M3 6L8 11L13 6" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              ) : (
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                  <path d="M3 10L8 5L13 10" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              )}
+            </button>
+          )}
         </div>
         {showHeatmap && (
-          <ComplianceHeatmap
-            bearerToken={bearerToken}
-            impersonateUser={impersonateUser}
-          />
+          <>
+            {/* Status Distribution Heatmap - aggregated view by compliance status */}
+            <div className={`heatmap-wrapper ${minimizedHeatmaps.statusDistribution ? 'minimized' : ''}`}>
+              <div className="heatmap-minimize-bar">
+                <span className="heatmap-minimize-title">Compliance Status Distribution</span>
+                <button
+                  className="heatmap-minimize-btn"
+                  onClick={() => toggleHeatmapMinimize('statusDistribution')}
+                  title={minimizedHeatmaps.statusDistribution ? 'Expand' : 'Minimize'}
+                >
+                  {minimizedHeatmaps.statusDistribution ? (
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+                      <path d="M3 9L7 5L11 9" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  ) : (
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+                      <path d="M3 5L7 9L11 5" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  )}
+                </button>
+              </div>
+              {!minimizedHeatmaps.statusDistribution && (
+                <ComplianceStatusHeatmap
+                  systems={heatmapSystems}
+                  isLoading={heatmapLoading}
+                  error={heatmapError}
+                  onStatusClick={(status) => {
+                    console.log('Status clicked:', status);
+                  }}
+                />
+              )}
+            </div>
+
+            {/* System Compliance Heatmap - original view by system */}
+            <div className={`heatmap-wrapper ${minimizedHeatmaps.systemCompliance ? 'minimized' : ''}`}>
+              <div className="heatmap-minimize-bar">
+                <span className="heatmap-minimize-title">System Compliance Overview</span>
+                <button
+                  className="heatmap-minimize-btn"
+                  onClick={() => toggleHeatmapMinimize('systemCompliance')}
+                  title={minimizedHeatmaps.systemCompliance ? 'Expand' : 'Minimize'}
+                >
+                  {minimizedHeatmaps.systemCompliance ? (
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+                      <path d="M3 9L7 5L11 9" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  ) : (
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+                      <path d="M3 5L7 9L11 5" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  )}
+                </button>
+              </div>
+              {!minimizedHeatmaps.systemCompliance && (
+                <ComplianceHeatmap
+                  bearerToken={bearerToken}
+                  impersonateUser={impersonateUser}
+                />
+              )}
+            </div>
+          </>
         )}
       </div>
     </div>

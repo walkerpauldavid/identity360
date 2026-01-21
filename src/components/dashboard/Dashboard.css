@@ -172,3 +172,99 @@
 .toggle-switch input:focus + .toggle-slider {
   box-shadow: 0 0 1px #88c0d0;
 }
+
+/* Heatmap Collapse All Button */
+.heatmap-collapse-all-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  margin-left: 12px;
+  background: transparent;
+  border: 1px solid #3a3a4a;
+  border-radius: 4px;
+  color: #888;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.heatmap-collapse-all-btn:hover {
+  border-color: #88c0d0;
+  color: #88c0d0;
+  background: rgba(136, 192, 208, 0.1);
+}
+
+/* Heatmap Wrapper */
+.heatmap-wrapper {
+  position: relative;
+  margin-bottom: 16px;
+  border-radius: 12px;
+  overflow: visible;
+  transition: all 0.2s ease;
+}
+
+.heatmap-wrapper.minimized {
+  margin-bottom: 8px;
+}
+
+/* Heatmap Minimize Bar - shown when minimized */
+.heatmap-minimize-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: #1e1e1e;
+  border-radius: 12px;
+  border: 1px solid #333;
+}
+
+/* When expanded, position the bar as floating button */
+.heatmap-wrapper:not(.minimized) .heatmap-minimize-bar {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 10;
+  padding: 0;
+  background: rgba(30, 30, 30, 0.9);
+  border: 1px solid #444;
+  border-radius: 6px;
+  backdrop-filter: blur(4px);
+}
+
+.heatmap-minimize-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #888;
+}
+
+/* Hide title when expanded (just show the button) */
+.heatmap-wrapper:not(.minimized) .heatmap-minimize-title {
+  display: none;
+}
+
+.heatmap-minimize-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 8px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: #888;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.heatmap-minimize-btn:hover {
+  color: #88c0d0;
+  background: rgba(136, 192, 208, 0.15);
+}
+
+/* When minimized, give the button a border */
+.heatmap-wrapper.minimized .heatmap-minimize-btn {
+  border: 1px solid #444;
+}
+
+.heatmap-wrapper.minimized .heatmap-minimize-btn:hover {
+  border-color: #88c0d0;
+}

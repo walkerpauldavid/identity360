@@ -525,6 +525,14 @@
 .lane-maximize-btn {
   position: relative;
   z-index: 20 !important;
+  pointer-events: auto;
+}
+
+/* Ensure search input stays above drag handle overlay (z-index: 10) */
+.lane-search-inline {
+  position: relative;
+  z-index: 20 !important;
+  pointer-events: auto;
 }
 
 .draggable-lane .lane-card {
@@ -983,6 +991,8 @@
   user-select: none;
   transition: background 0.2s;
   border-left: 4px solid var(--lane-color, #4c566a);
+  /* Allow drag events to pass through to the overlay, but interactive children override this */
+  pointer-events: none;
 }
 
 .lane-header:hover {
@@ -1020,6 +1030,7 @@
   cursor: pointer;
   transition: all 0.2s;
   margin-left: auto;
+  pointer-events: auto;
 }
 
 .lane-toggle-btn:hover {
@@ -1100,6 +1111,8 @@
 }
 
 /* Lane search filter - inline in header */
+/* z-index: 20 to stay above drag-handle-overlay (z-index: 10) */
+/* pointer-events: auto to override header's pointer-events: none */
 .lane-search-inline {
   display: flex;
   align-items: center;
@@ -1108,7 +1121,8 @@
   flex: 1;
   max-width: 180px;
   position: relative;
-  z-index: 1;
+  z-index: 20;
+  pointer-events: auto;
 }
 
 .lane-search-input-inline {
@@ -1262,6 +1276,7 @@
   cursor: pointer;
   transition: all 0.2s;
   line-height: 1;
+  pointer-events: auto;
 }
 
 .lane-maximize-btn:hover {
@@ -1377,8 +1392,8 @@
 }
 
 .lane-item-row.selected {
-  background: rgba(136, 192, 208, 0.1);
-  border-color: #88c0d0;
+  background: rgba(136, 192, 208, 0.05);
+  border-color: transparent;
 }
 
 .lane-item-row.high-risk {
