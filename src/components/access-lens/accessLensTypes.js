@@ -882,6 +882,8 @@ export const FocusNodeSchema = {
  */
 export const LaneConfigSchema = {
   [NodeTypes.IDENTITY]: {
+    // Identity is the focus node, so no Identities lane is needed
+    excludedLanes: [LaneTypes.IDENTITIES],
     lanes: [
       {
         laneType: LaneTypes.SYSTEMS,
@@ -1206,6 +1208,8 @@ export const LaneConfigSchema = {
   },
 
   [NodeTypes.ENTITLEMENT]: {
+    // Entitlement is the focus node, so no Entitlements lane is needed
+    excludedLanes: [LaneTypes.EFFECTIVE_ENTITLEMENTS],
     lanes: [
       {
         laneType: LaneTypes.IDENTITIES,
@@ -1260,6 +1264,8 @@ export const LaneConfigSchema = {
   },
 
   [NodeTypes.SYSTEM]: {
+    // System is the focus node, so no Systems lane is needed
+    excludedLanes: [LaneTypes.SYSTEMS],
     lanes: [
       {
         laneType: LaneTypes.IDENTITIES,
@@ -1451,6 +1457,7 @@ export const LaneConfigSchema = {
    * - "What entitlements exist on this application?"
    */
   [NodeTypes.LOGICAL_APPLICATION]: {
+    excludedLanes: [LaneTypes.LOGICAL_APPLICATIONS],
     lanes: [
       {
         laneType: LaneTypes.IDENTITIES,
@@ -1546,31 +1553,190 @@ export const LaneConfigSchema = {
     ]
   },
 
+  /**
+   * Account as Focus Node
+   *
+   * When an Account is the central focus, show:
+   * - IDENTITIES: The identity that owns this account
+   * - SYSTEMS: The system this account belongs to
+   * - EFFECTIVE_ENTITLEMENTS: Entitlements/resources this account has access to
+   * - ASSIGNMENT_POLICIES: Policies that assigned entitlements to this account
+   * - LOGICAL_APPLICATIONS: Logical applications accessible via this account's entitlements
+   *
+   * EXCLUDED LANES (not shown when Account is focus node):
+   * - ACCOUNTS: The Account itself is the focus node, so no Accounts lane is needed
+   *
+   * API Filter: Uses calculatedAssignments with:
+   *   - multipleIdentityIds: identity UUID (owner of the account)
+   *   - accountName: {filterValue: "ACCOUNT_NAME", operator: EQUALS}
+   *
+   * This view helps answer:
+   * - "Who owns this account?"
+   * - "What system is this account on?"
+   * - "What entitlements does this account have?"
+   * - "How did this account get its entitlements?" (via policies)
+   * - "What business applications can this account access?"
+   */
   [NodeTypes.ACCOUNT]: {
+    // Lanes that should NOT be shown when Account is the focus node
+    excludedLanes: [LaneTypes.ACCOUNTS],
     lanes: [
       {
         laneType: LaneTypes.IDENTITIES,
         title: 'Owner',
+        description: 'The identity that owns this account',
         required: true,
         apiSource: { type: 'derived', from: 'focusNode', extract: 'identity' },
-        position: { x: -380, y: 0 },
-        crossLaneFilters: null  // Single owner, no filtering
-      },
-      {
-        laneType: LaneTypes.EFFECTIVE_ENTITLEMENTS,
-        title: 'Entitlements',
-        required: true,
-        apiSource: { type: 'GraphQL', query: 'getAccountEntitlements', idParam: 'accountId' },
-        position: { x: 380, y: 0 },
-        crossLaneFilters: null
+        position: { x: -850, y: -300 },
+        crossLaneFilters: {
+          filtersLanes: [LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.ASSIGNMENT_POLICIES],
+          filteredByLanes: [LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.ASSIGNMENT_POLICIES],
+          filterMappings: {
+            // When Identity is selected, filter Entitlements to show only those for this identity
+            [LaneTypes.EFFECTIVE_ENTITLEMENTS]: {
+              type: CrossLaneFilterType.ARRAY_CONTAINS,
+              sourceField: 'id',
+              targetField: 'metadata.identityIds'
+            },
+            // When Identity is selected, filter Assignment Policies via entitlements
+            [LaneTypes.ASSIGNMENT_POLICIES]: {
+              type: CrossLaneFilterType.CASCADED_THROUGH,
+              intermediateLane: LaneTypes.EFFECTIVE_ENTITLEMENTS,
+              sourceField: 'id',
+              intermediateTargetField: 'metadata.identityIds',
+              intermediateExtractField: 'id',
+              targetField: 'metadata.resourceIds'
+            }
+          }
+        }
       },
       {
         laneType: LaneTypes.SYSTEMS,
         title: 'System',
-        required: false,
+        description: 'The system this account belongs to',
+        required: true,
         apiSource: { type: 'derived', from: 'focusNode', extract: 'system' },
-        position: { x: 0, y: 250 },
-        crossLaneFilters: null
+        position: { x: 850, y: -300 },
+        crossLaneFilters: {
+          filtersLanes: [LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.LOGICAL_APPLICATIONS],
+          filteredByLanes: [LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.LOGICAL_APPLICATIONS],
+          filterMappings: {
+            // When System is selected, filter Entitlements by system
+            [LaneTypes.EFFECTIVE_ENTITLEMENTS]: {
+              type: CrossLaneFilterType.MULTI_FIELD_MATCH,
+              sourceFields: ['id', 'displayName'],
+              targetFields: ['metadata.systemId', 'metadata.system']
+            },
+            // When System is selected, filter Logical Applications to those implemented by this system
+            [LaneTypes.LOGICAL_APPLICATIONS]: {
+              type: CrossLaneFilterType.ARRAY_CONTAINS,
+              sourceField: 'id',
+              targetField: 'metadata.underlyingSystemIds'
+            }
+          }
+        }
+      },
+      {
+        laneType: LaneTypes.EFFECTIVE_ENTITLEMENTS,
+        title: 'Entitlements',
+        description: 'Entitlements/resources this account has access to',
+        required: true,
+        apiSource: { type: 'GraphQL', query: 'getAccountEntitlements', idParam: 'accountId' },
+        position: { x: 0, y: 350 },
+        crossLaneFilters: {
+          filtersLanes: [LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.IDENTITIES, LaneTypes.SYSTEMS],
+          filteredByLanes: [LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.IDENTITIES, LaneTypes.SYSTEMS],
+          filterMappings: {
+            // When Entitlement is selected, filter Assignment Policies to show only those that assign this entitlement
+            [LaneTypes.ASSIGNMENT_POLICIES]: {
+              type: CrossLaneFilterType.ARRAY_CONTAINS,
+              sourceField: 'id',
+              targetField: 'metadata.resourceIds'
+            },
+            // When Entitlement is selected, filter Logical Applications to show the one this entitlement belongs to
+            [LaneTypes.LOGICAL_APPLICATIONS]: {
+              type: CrossLaneFilterType.MULTI_FIELD_MATCH,
+              sourceFields: ['metadata.systemId', 'metadata.system'],
+              targetFields: ['id', 'displayName']
+            },
+            // When Entitlement is selected, filter Identities (should match the account owner)
+            [LaneTypes.IDENTITIES]: {
+              type: CrossLaneFilterType.ARRAY_CONTAINS,
+              sourceField: 'metadata.identityIds',
+              targetField: 'id'
+            },
+            // When Entitlement is selected, filter Systems to show the system this entitlement is on
+            [LaneTypes.SYSTEMS]: {
+              type: CrossLaneFilterType.MULTI_FIELD_MATCH,
+              sourceFields: ['metadata.systemId', 'metadata.system'],
+              targetFields: ['id', 'displayName']
+            }
+          }
+        }
+      },
+      {
+        laneType: LaneTypes.ASSIGNMENT_POLICIES,
+        title: 'Assignment Policies',
+        description: 'Policies that assigned entitlements to this account',
+        required: false,
+        apiSource: { type: 'derived', from: 'calculatedAssignments', extract: 'policies' },
+        position: { x: -850, y: 350 },
+        crossLaneFilters: {
+          filtersLanes: [LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.IDENTITIES],
+          filteredByLanes: [LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.IDENTITIES, LaneTypes.LOGICAL_APPLICATIONS],
+          filterMappings: {
+            // When Policy is selected, filter Entitlements to show only those assigned by this policy
+            [LaneTypes.EFFECTIVE_ENTITLEMENTS]: {
+              type: CrossLaneFilterType.ARRAY_CONTAINS,
+              sourceField: 'metadata.resourceIds',
+              targetField: 'id'
+            },
+            // When Policy is selected, filter Identities via entitlements
+            [LaneTypes.IDENTITIES]: {
+              type: CrossLaneFilterType.CASCADED_THROUGH,
+              intermediateLane: LaneTypes.EFFECTIVE_ENTITLEMENTS,
+              sourceField: 'metadata.resourceIds',
+              intermediateTargetField: 'id',
+              intermediateExtractField: 'metadata.identityIds',
+              targetField: 'id'
+            }
+          }
+        }
+      },
+      {
+        laneType: LaneTypes.LOGICAL_APPLICATIONS,
+        title: 'Logical Applications',
+        description: 'Business applications accessible via this account',
+        required: false,
+        apiSource: { type: 'derived', from: 'calculatedAssignments', extract: 'logicalApps' },
+        position: { x: 850, y: 350 },
+        crossLaneFilters: {
+          filtersLanes: [LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.SYSTEMS, LaneTypes.ASSIGNMENT_POLICIES],
+          filteredByLanes: [LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.SYSTEMS, LaneTypes.ASSIGNMENT_POLICIES],
+          filterMappings: {
+            // When Logical App is selected, filter Entitlements to those on this logical system
+            [LaneTypes.EFFECTIVE_ENTITLEMENTS]: {
+              type: CrossLaneFilterType.MULTI_FIELD_MATCH,
+              sourceFields: ['id', 'displayName'],
+              targetFields: ['metadata.systemId', 'metadata.system']
+            },
+            // When Logical App is selected, filter Systems to show underlying physical systems
+            [LaneTypes.SYSTEMS]: {
+              type: CrossLaneFilterType.ARRAY_CONTAINS,
+              sourceField: 'metadata.underlyingSystemIds',
+              targetField: 'id'
+            },
+            // When Logical App is selected, filter Assignment Policies via entitlements
+            [LaneTypes.ASSIGNMENT_POLICIES]: {
+              type: CrossLaneFilterType.CASCADED_THROUGH,
+              intermediateLane: LaneTypes.EFFECTIVE_ENTITLEMENTS,
+              sourceField: 'id',
+              intermediateTargetField: 'metadata.systemId',
+              intermediateExtractField: 'id',
+              targetField: 'metadata.resourceIds'
+            }
+          }
+        }
       }
     ]
   },
@@ -1589,6 +1755,7 @@ export const LaneConfigSchema = {
    * - "What resources are automatically assigned?"
    */
   [NodeTypes.ASSIGNMENT_POLICY]: {
+    excludedLanes: [LaneTypes.ASSIGNMENT_POLICIES],
     lanes: [
       {
         laneType: LaneTypes.CONTEXTS,

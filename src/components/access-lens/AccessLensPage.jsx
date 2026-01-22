@@ -900,13 +900,96 @@ const AccessLensPage = () => {
         }
 
         case 'Account': {
-          // Pivoting to an Account - show related identity, system, and entitlements
-          // For now, return the node with empty lanes
-          // TODO: Implement account-centric view
+          // Pivoting to an Account - show related identity, system, entitlements, policies, and logical apps
+          // Get the account name and identity UId from the node
+          const accountName = node.displayName || node.rawData?.accountName || node.rawData?.AccountName ||
+                              node.metadata?.accountName || node.rawData?.name || node.rawData?.Name;
+          const accountIdentityId = node.metadata?.identityId || node.rawData?.identity?.id ||
+                                    node.rawData?.identityId || node.rawData?.IdentityId;
+          const accountSystemId = node.metadata?.systemId || node.rawData?.system?.id ||
+                                  node.rawData?.systemId || node.rawData?.SystemId;
+          const accountSystemName = node.metadata?.system || node.rawData?.system?.name ||
+                                    node.rawData?.systemName || node.rawData?.SystemName;
+
+          if (shouldLog('PIVOT')) {
+            console.log('[Account Pivot] accountName:', accountName);
+            console.log('[Account Pivot] identityId:', accountIdentityId);
+            console.log('[Account Pivot] systemId:', accountSystemId);
+          }
+
+          if (!accountName) {
+            console.error('No account name found in node');
+            return { focusNode: node, lanes: [], reasonTypes: [] };
+          }
+
+          // Fetch assignments filtered by identity AND accountName (exact match)
+          // The identity filter ensures we only get assignments for the account's owner
+          // The accountName filter ensures we only get assignments for this specific account
+          const assignmentsResult = await omadaApi.assignment.getCalculatedAssignmentsDetailed(
+            accountIdentityId || null,  // Use identity UId if available
+            bearerToken,
+            impersonateUser,
+            {
+              accountName: accountName,
+              accountNameExact: true,  // Use EQUALS operator for exact match
+              includeDisabled: includeDisabledAssignments
+            },
+            { page: 1, rows: 5000 }  // Large page size to get all assignments
+          );
+
+          if (shouldLog('PIVOT')) {
+            console.log('[Account Pivot] Response - Total:', assignmentsResult.total, 'Status:', assignmentsResult.status);
+            if (assignmentsResult.data && assignmentsResult.data.length > 0) {
+              const withResource = assignmentsResult.data.filter(a => a.resource).length;
+              console.log('[Account Pivot] Assignments with resource:', withResource, 'of', assignmentsResult.data.length);
+            }
+          }
+
+          let lanes = [];
+          let reasonTypes = [];
+          let complianceStatuses = [];
+
+          if (assignmentsResult.status === 'success' && assignmentsResult.data) {
+            // Build lanes for account-centric view:
+            // - Identities (owner of this account)
+            // - Systems (system this account is on)
+            // - Entitlements (resources this account has access to)
+            // - Assignment Policies (policies that assigned entitlements)
+            // - Logical Applications (business apps accessible via this account)
+            lanes = buildLanesFromAssignments(assignmentsResult.data, {}, {
+              includeIdentities: true,
+              focusAccountName: accountName  // Pass account name for context
+            });
+            reasonTypes = extractUniqueReasonTypes(assignmentsResult.data);
+
+            // Extract compliance statuses for filtering
+            const { extractUniqueComplianceStatuses } = await import('./accessLensDataService');
+            complianceStatuses = extractUniqueComplianceStatuses(assignmentsResult.data);
+
+            if (shouldLog('LANES')) {
+              console.log('[Account Pivot] Built', lanes.length, 'account-centric lanes');
+            }
+          }
+
+          // Enrich the focus node with system info if not already present
+          const enrichedAccountNode = {
+            ...node,
+            id: node.id || node.rawData?.id,
+            type: 'Account',
+            displayName: accountName,
+            metadata: {
+              ...node.metadata,
+              identityId: accountIdentityId,
+              systemId: accountSystemId,
+              system: accountSystemName
+            }
+          };
+
           return {
-            focusNode: node,
-            lanes: [],
-            reasonTypes: []
+            focusNode: enrichedAccountNode,
+            lanes,
+            reasonTypes,
+            complianceStatuses
           };
         }
 

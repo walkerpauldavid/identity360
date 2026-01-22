@@ -318,6 +318,7 @@ export const GraphQLQueries = {
    * @param {string} filters.resourceTypeName - Filter by resource type name
    * @param {string} filters.complianceStatus - Filter by compliance status
    * @param {string} filters.accountName - Filter by account name
+   * @param {boolean} filters.accountNameExact - Use EQUALS operator for exact match (default: false uses CONTAINS)
    * @param {string} filters.systemName - Filter by system name
    * @param {boolean} filters.includeDisabled - Include disabled assignments (default: true)
    * @param {Object} pagination - Pagination options
@@ -342,10 +343,12 @@ export const GraphQLQueries = {
       filterParts.push(`systemId: "${filters.systemId}"`);
     } else if (identityIds) {
       // Filter by identity ID(s)
-      const identityIdsStr = Array.isArray(identityIds)
-        ? `["${identityIds.join('","')}"]`
-        : `["${identityIds}"]`;
-      filterParts.push(`multipleIdentityIds: ${identityIdsStr}`);
+      // For single ID, use plain string; for multiple, use array format
+      if (Array.isArray(identityIds)) {
+        filterParts.push(`multipleIdentityIds: ["${identityIds.join('","')}"]`);
+      } else {
+        filterParts.push(`multipleIdentityIds: "${identityIds}"`);
+      }
     }
 
     // Additional filters
@@ -356,7 +359,9 @@ export const GraphQLQueries = {
       filterParts.push(`complianceStatus: {filterValue: "${filters.complianceStatus}", operator: CONTAINS}`);
     }
     if (filters.accountName) {
-      filterParts.push(`accountName: {filterValue: "${filters.accountName}", operator: CONTAINS}`);
+      // Use EQUALS for exact match when accountNameExact is true, otherwise CONTAINS
+      const accountNameOperator = filters.accountNameExact ? 'EQUALS' : 'CONTAINS';
+      filterParts.push(`accountName: {filterValue: "${filters.accountName}", operator: ${accountNameOperator}}`);
     }
     if (filters.systemName) {
       filterParts.push(`systemName: {filterValue: "${filters.systemName}", operator: CONTAINS}`);

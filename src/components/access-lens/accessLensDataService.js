@@ -711,7 +711,11 @@ export function buildLanesFromAssignments(assignments, filters = {}, options = {
   }
 
   // Build Accounts lane (unique accounts from assignments)
-  lanes.push(buildAccountsLane(assignments, filters));
+  // Skip for Account-centric view since the Account is the focus node
+  const isAccountCentric = !!options.focusAccountName;
+  if (!isAccountCentric) {
+    lanes.push(buildAccountsLane(assignments, filters));
+  }
 
   // Build Entitlements/Resources lane
   if (shouldLog('LANES')) {
@@ -735,8 +739,8 @@ export function buildLanesFromAssignments(assignments, filters = {}, options = {
   lanes.push(buildEntitlementsLane(assignments, filters));
 
   // Build Assignment Policies lane (policies extracted from assignment reasons)
-  // Only show in Identity-centric view, not system-centric view
-  if (!options.includeIdentities) {
+  // Show in Identity-centric view and Account-centric view
+  if (!options.includeIdentities || isAccountCentric) {
     const assignmentPoliciesLane = buildAssignmentPoliciesLane(assignments, filters);
     // Only add if there are policies
     if (assignmentPoliciesLane.items.length > 0) {
@@ -745,8 +749,8 @@ export function buildLanesFromAssignments(assignments, filters = {}, options = {
   }
 
   // Build Violations lane (violations extracted from assignments)
-  // Only show in Identity-centric view, not system-centric view
-  if (!options.includeIdentities) {
+  // Show in Identity-centric view and Account-centric view
+  if (!options.includeIdentities || isAccountCentric) {
     const violationsLane = buildViolationsLane(assignments, filters);
     // Only add if there are violations
     if (violationsLane.items.length > 0) {
@@ -754,15 +758,16 @@ export function buildLanesFromAssignments(assignments, filters = {}, options = {
     }
   }
 
-  // Build Identities lane (for system-centric view)
+  // Build Identities lane (for system-centric and account-centric views)
   if (options.includeIdentities) {
     lanes.push(buildIdentitiesLane(assignments, filters));
   }
 
-  // Build Logical Applications lane for system-centric view
-  // Shows logical apps implemented by the focus system
-  // Always include the lane (even if empty) so it appears in the UI as a required lane
+  // Build Logical Applications lane
+  // For system-centric view: shows logical apps implemented by the focus system
+  // For account-centric view: shows logical apps accessible via the account's entitlements
   if (options.includeIdentities && options.focusSystemId) {
+    // System-centric view
     const logicalAppsLane = buildLogicalAppsForSystemLane(
       assignments,
       filters,
@@ -771,7 +776,16 @@ export function buildLanesFromAssignments(assignments, filters = {}, options = {
     );
     lanes.push(logicalAppsLane);
     if (shouldLog('LANES')) {
-      console.log(`[buildLanesFromAssignments] Logical Apps lane: ${logicalAppsLane.items.length} items`);
+      console.log(`[buildLanesFromAssignments] Logical Apps lane (system): ${logicalAppsLane.items.length} items`);
+    }
+  } else if (isAccountCentric) {
+    // Account-centric view: build logical apps from entitlements' systems
+    const logicalAppsLane = buildLogicalApplicationsLane(assignments, filters, systemDetailsMap);
+    if (logicalAppsLane.items.length > 0) {
+      lanes.push(logicalAppsLane);
+    }
+    if (shouldLog('LANES')) {
+      console.log(`[buildLanesFromAssignments] Logical Apps lane (account): ${logicalAppsLane.items.length} items`);
     }
   }
 
