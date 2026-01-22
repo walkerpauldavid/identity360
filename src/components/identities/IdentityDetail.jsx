@@ -454,7 +454,7 @@ const IdentityDetail = ({ identity, onClose, onMinimize }) => {
                 {!loadingAssignments && !assignmentsError && accessRightsView === 'graph' && (
                   <div className="access-lens-container">
                     <div className="access-lens-header">
-                      <span className="access-lens-label">Access Lens - Interactive Access Graph</span>
+                      <span className="access-lens-label">Identity360 - Interactive Access Graph</span>
                       <button
                         className="fullscreen-btn"
                         onClick={() => setIsAccessLensFullscreen(true)}

@@ -12,6 +12,7 @@ import {
   LaneTypes,
   NodeTypes,
   LaneSchema,
+  LaneConfigSchema,
   CompassOrientation,
   getLaneDisplayConfig,
   getLanesForNodeType,
@@ -19,7 +20,8 @@ import {
   getCrossLaneFilterConfig,
   shouldLog
 } from './accessLensTypes';
-import accessLensDataService, { buildContextsLane, buildLanesFromAssignments, extractUniqueReasonTypes, extractUniqueComplianceStatuses } from './accessLensDataService';
+import accessLensDataService, { buildContextsLane, buildLanesFromAssignments, extractUniqueReasonTypes, extractUniqueComplianceStatuses, extractViolationCount } from './accessLensDataService';
+import { usePreferences } from '../../contexts/PreferencesContext';
 import {
   applyCrossLaneFilters,
   filterVisibleLanes,
@@ -102,14 +104,14 @@ const FULCRUM_DIMENSIONS = {
  * Positions are designed to avoid overlap with fulcrum and other lanes
  */
 const COMPASS_POSITIONS = {
-  [CompassOrientation.N]:  { x: 0, y: -450 },      // North - top center
-  [CompassOrientation.NE]: { x: 520, y: -420 },    // North-East - top right (Accounts)
+  [CompassOrientation.N]:  { x: 0, y: -380 },      // North - top center (Violations)
+  [CompassOrientation.NE]: { x: 750, y: -380 },    // North-East - top right (Accounts) - pushed right to avoid N overlap
   [CompassOrientation.E]:  { x: 780, y: 80 },      // East - right center (Logical Apps - pushed further right)
   [CompassOrientation.SE]: { x: 520, y: 520 },     // South-East - bottom right (Systems - pushed down)
   [CompassOrientation.S]:  { x: 0, y: 580 },       // South - bottom center
   [CompassOrientation.SW]: { x: -520, y: 520 },    // South-West - bottom left
   [CompassOrientation.W]:  { x: -680, y: 80 },     // West - left center
-  [CompassOrientation.NW]: { x: -680, y: -380 }    // North-West - top left (Entitlements)
+  [CompassOrientation.NW]: { x: -750, y: -380 }    // North-West - top left (Entitlements) - pushed left to avoid N overlap
 };
 
 /**
@@ -283,8 +285,18 @@ const overlapsWithExisting = (pos, existingPositions) => {
 };
 
 /**
+ * Get the priority for a lane type from its schema
+ * Lower number = higher priority (processed first, gets preferred position)
+ */
+const getLanePriority = (laneType) => {
+  const schema = LaneSchema[laneType];
+  return schema?.defaultPosition?.priority ?? 99;
+};
+
+/**
  * Calculate dynamic lane positions based on the number of visible lanes with data.
  * Uses predefined slots to ensure no overlap between lanes or with the fulcrum.
+ * Processes lanes by priority (lower priority number = processed first).
  * @param {Array} lanesWithData - Array of lane objects that have items
  * @returns {Object} Position map { laneType: { x, y } }
  */
@@ -294,10 +306,18 @@ const calculateDynamicLanePositions = (lanesWithData) => {
 
   if (laneCount === 0) return positions;
 
+  // Sort lanes by priority (lower number = higher priority = processed first)
+  // This ensures high-priority lanes like Violations get their preferred position
+  const sortedLanes = [...lanesWithData].sort((a, b) => {
+    const priorityA = getLanePriority(a.laneType);
+    const priorityB = getLanePriority(b.laneType);
+    return priorityA - priorityB;
+  });
+
   // Use predefined slots to guarantee no overlap
   const usedSlots = [];
 
-  lanesWithData.forEach((lane, index) => {
+  sortedLanes.forEach((lane, index) => {
     // First try to use the default position for this lane type
     const defaultPos = DEFAULT_LANE_POSITIONS[lane.laneType];
 
@@ -605,8 +625,14 @@ const AccessLens = ({
   initialReasonTypes = null,
   initialComplianceStatuses = null
 }) => {
+  // User preferences for Identity360 display behavior
+  const { preferences } = usePreferences();
+  const lanesCollapsedOnLoad = preferences.identity360LanesCollapsedOnLoad ?? true;
+  const collapseLanesOnFocusChange = preferences.identity360CollapseLanesOnFocusChange ?? true;
+
   // Refs
   const fulcrumRef = useRef(null);
+  const previousFocusNodeId = useRef(null);  // Track focus node changes
 
   // State
   const [focusNode, setFocusNode] = useState(null);
@@ -625,7 +651,7 @@ const AccessLens = ({
   // Lane positions state (for drag and drop)
   const [lanePositions, setLanePositions] = useState({});
   const [activeDragId, setActiveDragId] = useState(null);
-  const [lanesForceCollapsed, setLanesForceCollapsed] = useState(false); // Used to collapse all lanes on Reset Layout
+  const [lanesForceCollapsed, setLanesForceCollapsed] = useState(lanesCollapsedOnLoad); // Starts collapsed based on user preference
   const [lanesForceExpanded, setLanesForceExpanded] = useState(false); // Used to expand all lanes
 
   // Configure drag sensors for smoother experience
@@ -654,6 +680,7 @@ const AccessLens = ({
   const [selectedIdentityId, setSelectedIdentityId] = useState(null);  // For entitlement-centric view: filter accounts by identity
   const [selectedPolicyId, setSelectedPolicyId] = useState(null);  // For filtering entitlements by assignment policy
   const [selectedEntitlementId, setSelectedEntitlementId] = useState(null);  // For filtering identities/accounts by entitlement (System-centric view)
+  const [selectedViolationId, setSelectedViolationId] = useState(null);  // For filtering by violation
   const [pendingNodeType, setPendingNodeType] = useState(null);  // Track target node type during pivot for correct loading placeholders
 
   // Filter state
@@ -668,7 +695,8 @@ const AccessLens = ({
       LaneTypes.SYSTEMS,
       LaneTypes.LOGICAL_APPLICATIONS,  // Logical applications lane (systems with resources but no direct accounts)
       LaneTypes.CONTEXTS,
-      LaneTypes.IDENTITIES  // For system-centric view
+      LaneTypes.IDENTITIES,  // For system-centric view
+      LaneTypes.VIOLATIONS   // Violations lane (shows when identity has violations)
     ],
     reasonTypes: [],
     complianceStatuses: [],  // Selected compliance statuses for filtering
@@ -738,6 +766,24 @@ const AccessLens = ({
       };
     }
   }, [lanesLoading, isLoading, focusNode, lanes, filters.visibleLanes]);
+
+  // Collapse lanes when focus node changes (based on user preference)
+  useEffect(() => {
+    if (!focusNode?.id) return;
+
+    // Check if focus node has actually changed (not just initial load)
+    if (previousFocusNodeId.current !== null && previousFocusNodeId.current !== focusNode.id) {
+      // Focus node changed - collapse lanes if preference is enabled
+      if (collapseLanesOnFocusChange) {
+        setLanesForceCollapsed(true);
+        // Reset the flag after a brief delay so lanes can be expanded again by user
+        setTimeout(() => setLanesForceCollapsed(false), 100);
+      }
+    }
+
+    // Update the ref to track the current focus node
+    previousFocusNodeId.current = focusNode.id;
+  }, [focusNode?.id, collapseLanesOnFocusChange]);
 
   // Load focus data - sets the central focus node (identity)
   // Lanes are populated separately via calculatedAssignments and identityContexts props
@@ -935,6 +981,12 @@ const AccessLens = ({
     }
   }, [identityContexts, filters]);
 
+  // Calculate violation count from calculatedAssignments for the FocusCard indicator
+  const violationCount = useMemo(() => {
+    if (!calculatedAssignments || !Array.isArray(calculatedAssignments)) return 0;
+    return extractViolationCount(calculatedAssignments);
+  }, [calculatedAssignments]);
+
   // Track previous compliance filter to detect changes
   const prevComplianceFilterRef = useRef(null);
 
@@ -1053,52 +1105,31 @@ const AccessLens = ({
     // Set the selected item for visual feedback (used for highlighting)
     setSelectedItem(item);
 
-    // Track account/system/logical-app/identity/policy selection for cross-lane filtering
-    if (laneType === LaneTypes.ACCOUNTS) {
-      setSelectedAccountId(prev => prev === item.node.id ? null : item.node.id);
-      setSelectedSystemId(null);
-      setSelectedLogicalAppId(null);
-      setSelectedIdentityId(null);
-      setSelectedPolicyId(null);
-      setSelectedEntitlementId(null);
-    } else if (laneType === LaneTypes.SYSTEMS) {
-      setSelectedSystemId(prev => prev === item.node.id ? null : item.node.id);
-      setSelectedAccountId(null);
-      setSelectedLogicalAppId(null);
-      setSelectedIdentityId(null);
-      setSelectedPolicyId(null);
-      setSelectedEntitlementId(null);
-    } else if (laneType === LaneTypes.LOGICAL_APPLICATIONS) {
-      setSelectedLogicalAppId(prev => prev === item.node.id ? null : item.node.id);
-      setSelectedAccountId(null);
-      setSelectedSystemId(null);
-      setSelectedIdentityId(null);
-      setSelectedPolicyId(null);
-      setSelectedEntitlementId(null);
-    } else if (laneType === LaneTypes.IDENTITIES) {
-      // Entitlement-centric view: selecting an identity filters the Accounts lane
-      setSelectedIdentityId(prev => prev === item.node.id ? null : item.node.id);
-      setSelectedAccountId(null);
-      setSelectedSystemId(null);
-      setSelectedLogicalAppId(null);
-      setSelectedPolicyId(null);
-      setSelectedEntitlementId(null);
-    } else if (laneType === LaneTypes.ASSIGNMENT_POLICIES) {
-      // Identity-centric view: selecting a policy filters entitlements to show only those assigned by that policy
-      setSelectedPolicyId(prev => prev === item.node.id ? null : item.node.id);
-      setSelectedAccountId(null);
-      setSelectedSystemId(null);
-      setSelectedLogicalAppId(null);
-      setSelectedIdentityId(null);
-      setSelectedEntitlementId(null);
-    } else if (laneType === LaneTypes.EFFECTIVE_ENTITLEMENTS) {
-      // System-centric view: selecting an entitlement filters identities and accounts to show only those with this entitlement
-      setSelectedEntitlementId(prev => prev === item.node.id ? null : item.node.id);
-      setSelectedAccountId(null);
-      setSelectedSystemId(null);
-      setSelectedLogicalAppId(null);
-      setSelectedIdentityId(null);
-      setSelectedPolicyId(null);
+    // Track selection for cross-lane filtering
+    // When clicking an item in a lane, it becomes the new master filter
+    // All other lane selections are cleared so the clicked lane takes control
+
+    // Map lane types to their selection setters
+    const selectionSetters = {
+      [LaneTypes.ACCOUNTS]: { setter: setSelectedAccountId, current: selectedAccountId },
+      [LaneTypes.SYSTEMS]: { setter: setSelectedSystemId, current: selectedSystemId },
+      [LaneTypes.LOGICAL_APPLICATIONS]: { setter: setSelectedLogicalAppId, current: selectedLogicalAppId },
+      [LaneTypes.IDENTITIES]: { setter: setSelectedIdentityId, current: selectedIdentityId },
+      [LaneTypes.ASSIGNMENT_POLICIES]: { setter: setSelectedPolicyId, current: selectedPolicyId },
+      [LaneTypes.EFFECTIVE_ENTITLEMENTS]: { setter: setSelectedEntitlementId, current: selectedEntitlementId },
+      [LaneTypes.VIOLATIONS]: { setter: setSelectedViolationId, current: selectedViolationId }
+    };
+
+    // Clear ALL other lane selections first - the clicked lane becomes the master filter
+    Object.entries(selectionSetters).forEach(([lane, { setter }]) => {
+      if (lane !== laneType) {
+        setter(null);
+      }
+    });
+
+    // Set the selection for the clicked lane (toggle if clicking same item)
+    if (selectionSetters[laneType]) {
+      selectionSetters[laneType].setter(prev => prev === item.node.id ? null : item.node.id);
     }
 
     // Auto-show Object Inspector when an item is clicked
@@ -1182,7 +1213,7 @@ const AccessLens = ({
     }
 
     setExplanationLoading(false);
-  }, [showObjectInspector, inspectorCollapsed, onFetchObjectDetails]);
+  }, [showObjectInspector, inspectorCollapsed, onFetchObjectDetails, focusNode?.type, selectedAccountId, selectedSystemId, selectedLogicalAppId, selectedIdentityId, selectedPolicyId, selectedEntitlementId]);
 
   // Handle central node (Identity) click - show all attributes in Object Inspector
   const handleCentralNodeClick = useCallback(() => {
@@ -1494,6 +1525,30 @@ const AccessLens = ({
   // to only show items related to the filtered entitlements.
   // ============================================================================
 
+  // Check if any cross-lane filter (lane selection) is active
+  const hasActiveCrossLaneFilter = Boolean(
+    selectedAccountId ||
+    selectedSystemId ||
+    selectedLogicalAppId ||
+    selectedIdentityId ||
+    selectedPolicyId ||
+    selectedEntitlementId ||
+    selectedViolationId
+  );
+
+  // Handler to clear all lane selections (cross-lane filters)
+  const handleClearAllSelections = useCallback(() => {
+    setSelectedAccountId(null);
+    setSelectedSystemId(null);
+    setSelectedLogicalAppId(null);
+    setSelectedIdentityId(null);
+    setSelectedPolicyId(null);
+    setSelectedEntitlementId(null);
+    setSelectedViolationId(null);
+    setSelectedItem(null);
+    setExplanation(null);
+  }, []);
+
   const visibleLanes = useMemo(() => {
     // ============================================================================
     // SCHEMA-DRIVEN FILTERING PATH (when USE_SCHEMA_DRIVEN_FILTERING is enabled)
@@ -1508,7 +1563,8 @@ const AccessLens = ({
         systemId: selectedSystemId,
         logicalAppId: selectedLogicalAppId,
         policyId: selectedPolicyId,
-        entitlementId: selectedEntitlementId
+        entitlementId: selectedEntitlementId,
+        violationId: selectedViolationId
       };
 
       // Additional filters from toolbar
@@ -1807,6 +1863,18 @@ const AccessLens = ({
   const relatedSystemIds = new Set();
   const relatedSystemNames = new Set();
 
+  // Get the Logical Applications lane to look up underlying physical systems
+  const logicalAppsLane = lanes.find(l => l.laneType === LaneTypes.LOGICAL_APPLICATIONS);
+  const logicalAppsMap = new Map();
+  if (logicalAppsLane?.items) {
+    logicalAppsLane.items.forEach(item => {
+      logicalAppsMap.set(String(item.node.id), item.node);
+      if (item.node.displayName) {
+        logicalAppsMap.set(item.node.displayName, item.node);
+      }
+    });
+  }
+
   filteredEntitlementItems.forEach(item => {
     // Extract account info from rawData (the original assignment)
     const account = item.rawData?.account;
@@ -1826,6 +1894,24 @@ const AccessLens = ({
       // Store both original and string versions for consistent matching
       relatedSystemIds.add(systemId);
       relatedSystemIds.add(String(systemId));
+
+      // Check if this system is a logical application - if so, add its underlying physical systems
+      const logicalApp = logicalAppsMap.get(String(systemId)) || logicalAppsMap.get(systemName);
+      if (logicalApp?.metadata?.underlyingSystemIds) {
+        logicalApp.metadata.underlyingSystemIds.forEach(underlyingId => {
+          relatedSystemIds.add(underlyingId);
+          relatedSystemIds.add(String(underlyingId));
+        });
+      }
+      if (logicalApp?.metadata?.underlyingSystems) {
+        logicalApp.metadata.underlyingSystems.forEach(underlying => {
+          if (underlying.id) {
+            relatedSystemIds.add(underlying.id);
+            relatedSystemIds.add(String(underlying.id));
+          }
+          if (underlying.name) relatedSystemNames.add(underlying.name);
+        });
+      }
     }
     if (systemName) relatedSystemNames.add(systemName);
   });
@@ -2184,6 +2270,7 @@ const AccessLens = ({
     selectedIdentityId,
     selectedPolicyId,
     selectedEntitlementId,
+    selectedViolationId,
     focusNode
   ]);
 
@@ -2309,7 +2396,7 @@ const AccessLens = ({
         <div className="topbar-left">
           <h2 className="access-lens-title">
             <span className="title-icon">🔍</span>
-            Access Lens
+            Identity360
           </h2>
           <button className="expand-all-btn" onClick={handleExpandAll} title="Expand all lanes">
             ⊞ Expand All
@@ -2342,6 +2429,8 @@ const AccessLens = ({
         availableComplianceStatuses={availableComplianceStatuses}
         showObjectInspector={showObjectInspector}
         onToggleObjectInspector={() => setShowObjectInspector(!showObjectInspector)}
+        hasActiveCrossLaneFilter={hasActiveCrossLaneFilter}
+        onClearAllSelections={handleClearAllSelections}
       />
 
       {/* Main Content */}
@@ -2350,7 +2439,7 @@ const AccessLens = ({
         {isLoading && focusNode && (
           <div className="pivot-loading-overlay">
             <div className="pivot-loading-spinner"></div>
-            <h3 className="pivot-loading-title">Updating Access Lens</h3>
+            <h3 className="pivot-loading-title">Updating Identity360</h3>
             <p className="pivot-loading-status">{pivotLoadingStatus || 'Loading...'}</p>
           </div>
         )}
@@ -2455,6 +2544,7 @@ const AccessLens = ({
                 isLoading={isLoading || lanesLoading}
                 onNavigateBack={() => history.length > 1 && handleBreadcrumbNavigate(history[history.length - 2], history.length - 2)}
                 selectedIdentityCompliance={selectedIdentityComplianceStatus}
+                violationCount={violationCount}
               />
             </div>
           </DndContext>

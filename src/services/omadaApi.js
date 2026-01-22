@@ -842,7 +842,7 @@ export const assignmentApi = {
 
   /**
    * Get identities that have a specific resource (entitlement) assigned
-   * Used for entitlement-centric view in Access Lens
+   * Used for entitlement-centric view in Identity360
    * @param {string} resourceId - Resource UUID (required)
    * @param {string} resourceName - Resource name (optional, not used in query)
    * @param {string} bearerToken - OAuth bearer token
@@ -850,6 +850,7 @@ export const assignmentApi = {
    * @param {Object} pagination - Pagination options
    * @param {string} systemId - Optional system ID filter
    * @param {string} complianceStatus - Optional compliance status filter (e.g., 'Not Approved', 'Approved')
+   * @param {boolean} includeDisabled - Include disabled assignments (default: true)
    * @returns {Promise<Object>} Identities with this resource
    */
   getIdentitiesHavingResource: async (
@@ -859,7 +860,8 @@ export const assignmentApi = {
     impersonateUser,
     pagination = {},
     systemId = null,
-    complianceStatus = null
+    complianceStatus = null,
+    includeDisabled = true
   ) => {
     let requestId;
     let endpoint;
@@ -871,7 +873,8 @@ export const assignmentApi = {
         resourceName,
         systemId,
         pagination,
-        complianceStatus
+        complianceStatus,
+        includeDisabled
       );
       const requestHeaders = await getGraphQLHeaders(bearerToken, impersonateUser);
 

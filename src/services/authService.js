@@ -513,11 +513,23 @@ class AuthService {
 
   /**
    * Logout and clear authentication
+   *
+   * IMPORTANT: This redirects to Azure AD logout to fully end the session.
+   * To revert to local-only logout (no Azure AD redirect), comment out the
+   * window.location.href line and uncomment the "Local-only logout" section.
    */
   logout() {
     this.clearAuth();
-    // Optionally redirect to Azure AD logout
-    // window.location.href = `https://login.microsoftonline.com/${this.config.tenantId}/oauth2/v2.0/logout`;
+
+    // === AZURE AD FULL LOGOUT (current) ===
+    // Redirects to Azure AD to end the session, then returns to login page
+    const postLogoutRedirectUri = encodeURIComponent(`${window.location.origin}/login`);
+    window.location.href = `https://login.microsoftonline.com/${this.config.tenantId}/oauth2/v2.0/logout?post_logout_redirect_uri=${postLogoutRedirectUri}`;
+
+    // === LOCAL-ONLY LOGOUT (previous behavior) ===
+    // Uncomment below and comment out the Azure AD redirect above to revert
+    // This only clears local tokens but keeps Azure AD session active (auto re-login)
+    // return; // Just clear local auth, don't redirect to Azure AD
   }
 
   /**

@@ -14,7 +14,9 @@ const FilterBar = ({
   availableReasonTypes = [], // Dynamic reason types from API
   availableComplianceStatuses = [], // Compliance statuses from API
   showObjectInspector = true, // Whether to show Object Inspector on item click
-  onToggleObjectInspector // Callback to toggle Object Inspector visibility
+  onToggleObjectInspector, // Callback to toggle Object Inspector visibility
+  hasActiveCrossLaneFilter = false, // Whether any cross-lane filter (lane selection) is active
+  onClearAllSelections // Callback to clear all lane selections
 }) => {
   const {
     visibleLanes = Object.values(LaneTypes),
@@ -103,6 +105,22 @@ const FilterBar = ({
           🔍
         </button>
       </div>
+
+      {/* Clear All Selections Button - only show when cross-lane filtering is active */}
+      {hasActiveCrossLaneFilter && (
+        <>
+          <div className="filter-divider"></div>
+          <div className="filter-group">
+            <button
+              className="clear-selections-btn"
+              onClick={onClearAllSelections}
+              title="Clear all access card selections"
+            >
+              ✕ Clear Selections
+            </button>
+          </div>
+        </>
+      )}
 
       {/* Divider */}
       <div className="filter-divider"></div>

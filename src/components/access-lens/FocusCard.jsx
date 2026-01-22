@@ -65,14 +65,14 @@ const getDisplayValue = (value, type = null) => {
   return String(value);
 };
 
-const FocusCard = ({ node, onNavigateBack, isLoading = false, selectedIdentityCompliance = null }) => {
+const FocusCard = ({ node, onNavigateBack, isLoading = false, selectedIdentityCompliance = null, violationCount = 0 }) => {
   // Show loading placeholder when loading or no node
   if (isLoading || !node) {
     return (
       <div className="focus-card focus-card-loading">
         <div className="focus-loading-content">
           <div className="focus-loading-spinner"></div>
-          <span className="focus-loading-text">Populating Access Lens... please wait</span>
+          <span className="focus-loading-text">Populating Identity360... please wait</span>
         </div>
       </div>
     );
@@ -187,6 +187,32 @@ const FocusCard = ({ node, onNavigateBack, isLoading = false, selectedIdentityCo
           </span>
         )}
       </div>
+
+      {/* Violation Indicator - Warning triangle with count */}
+      {violationCount > 0 && node.type === NodeTypes.IDENTITY && (
+        <div className="focus-violations-indicator" title={`${violationCount} Violation${violationCount !== 1 ? 's' : ''}`}>
+          <span className="violation-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path
+                d="M12 2L1 21h22L12 2z"
+                fill="#f59e0b"
+                stroke="#d97706"
+                strokeWidth="1.5"
+              />
+              <text
+                x="12"
+                y="17"
+                textAnchor="middle"
+                fill="#fff"
+                fontSize="12"
+                fontWeight="bold"
+                fontFamily="Arial, sans-serif"
+              >!</text>
+            </svg>
+          </span>
+          <span className="violation-count">{violationCount} Violation{violationCount !== 1 ? 's' : ''}</span>
+        </div>
+      )}
 
       {/* Badges */}
       {node.badges && node.badges.length > 0 && (

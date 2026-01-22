@@ -198,6 +198,7 @@ const LaneCard = ({
     <div
       ref={cardRef}
       className={`lane-card ${isExpanded ? 'expanded' : 'collapsed'} ${isMaximized ? 'maximized' : ''} ${isFilterSource ? 'filter-source' : ''} ${laneIsFiltered ? 'filtered' : ''} ${isMultiColumn ? 'multi-column' : ''} columns-${displayConfig.columns}`}
+      data-lane-type={laneType}
       data-collapsed={isCollapsed}
       data-maximized={isMaximized}
       data-columns={displayConfig.columns}

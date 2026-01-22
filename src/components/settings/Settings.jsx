@@ -28,6 +28,18 @@ const Settings = () => {
   const [dashboardTileLayout, setDashboardTileLayout] = useState(preferences.dashboardTileLayout || 'horizontal');
   const [saveSuccess, setSaveSuccess] = useState(false);
 
+  // Debugging preferences state
+  const [debugEnablePolicyAnalysis, setDebugEnablePolicyAnalysis] = useState(preferences.debugEnablePolicyAnalysis ?? true);
+  const [debugEnableApiConsoleLogging, setDebugEnableApiConsoleLogging] = useState(preferences.debugEnableApiConsoleLogging ?? true);
+  const [debugEnableAccessLensLogging, setDebugEnableAccessLensLogging] = useState(preferences.debugEnableAccessLensLogging ?? false);
+  const [debugSaveSuccess, setDebugSaveSuccess] = useState(false);
+
+  // Identity360 preferences state
+  const [identity360LanesCollapsedOnLoad, setIdentity360LanesCollapsedOnLoad] = useState(preferences.identity360LanesCollapsedOnLoad ?? true);
+  const [identity360CollapseLanesOnFocusChange, setIdentity360CollapseLanesOnFocusChange] = useState(preferences.identity360CollapseLanesOnFocusChange ?? true);
+  const [identity360ShowDisabledAssignments, setIdentity360ShowDisabledAssignments] = useState(preferences.identity360ShowDisabledAssignments ?? true);
+  const [identity360SaveSuccess, setIdentity360SaveSuccess] = useState(false);
+
   useEffect(() => {
     loadCurrentToken();
   }, []);
@@ -148,6 +160,29 @@ const Settings = () => {
     setTimeout(() => setSaveSuccess(false), 2000);
   };
 
+  const handleSaveDebuggingPreferences = () => {
+    setPreference('debugEnablePolicyAnalysis', debugEnablePolicyAnalysis);
+    setPreference('debugEnableApiConsoleLogging', debugEnableApiConsoleLogging);
+    setPreference('debugEnableAccessLensLogging', debugEnableAccessLensLogging);
+
+    // Update the apiLogger's console logging setting immediately
+    if (window.__apiLoggerInstance) {
+      window.__apiLoggerInstance.setConsoleLogging(debugEnableApiConsoleLogging);
+    }
+
+    setDebugSaveSuccess(true);
+    setTimeout(() => setDebugSaveSuccess(false), 2000);
+  };
+
+  const handleSaveIdentity360Preferences = () => {
+    setPreference('identity360LanesCollapsedOnLoad', identity360LanesCollapsedOnLoad);
+    setPreference('identity360CollapseLanesOnFocusChange', identity360CollapseLanesOnFocusChange);
+    setPreference('identity360ShowDisabledAssignments', identity360ShowDisabledAssignments);
+
+    setIdentity360SaveSuccess(true);
+    setTimeout(() => setIdentity360SaveSuccess(false), 2000);
+  };
+
   const isOverridden = !!localStorage.getItem('bearer_token_override');
 
   // Available locales
@@ -231,6 +266,18 @@ const Settings = () => {
           onClick={() => setActiveTab('layout')}
         >
           📊 Dashboard Layout
+        </button>
+        <button
+          className={`tab-button ${activeTab === 'debugging' ? 'active' : ''}`}
+          onClick={() => setActiveTab('debugging')}
+        >
+          🐛 Debugging
+        </button>
+        <button
+          className={`tab-button ${activeTab === 'identity360' ? 'active' : ''}`}
+          onClick={() => setActiveTab('identity360')}
+        >
+          🔍 Identity360
         </button>
       </div>
 
@@ -534,6 +581,208 @@ const Settings = () => {
 
         {/* Dashboard Layout Tab */}
         {activeTab === 'layout' && <DashboardLayoutTab />}
+
+        {/* Debugging Tab */}
+        {activeTab === 'debugging' && (
+          <section className="settings-section">
+            <div className="section-header">
+              <h2>Debugging Options</h2>
+            </div>
+
+            <div className="preferences-form">
+              {/* Policy Analysis Debug Helper */}
+              <div className="form-group">
+                <label className="checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={debugEnablePolicyAnalysis}
+                    onChange={(e) => setDebugEnablePolicyAnalysis(e.target.checked)}
+                  />
+                  <span className="label-icon">🔍</span>
+                  Enable Policy Analysis Debug Helper
+                </label>
+                <p className="form-description">
+                  When enabled, exposes <code>window.policyAnalysis</code> in the browser console on the Identity360 page.
+                  This allows you to analyze which identities have entitlements assigned by multiple policies.
+                  <br /><br />
+                  <strong>Usage:</strong> Open browser console and type <code>window.policyAnalysis.help()</code>
+                </p>
+              </div>
+
+              {/* API Console Logging */}
+              <div className="form-group">
+                <label className="checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={debugEnableApiConsoleLogging}
+                    onChange={(e) => setDebugEnableApiConsoleLogging(e.target.checked)}
+                  />
+                  <span className="label-icon">📡</span>
+                  Log OData &amp; GraphQL API Calls to Console
+                </label>
+                <p className="form-description">
+                  When enabled, logs all OData and GraphQL API requests and responses to the browser console
+                  with colored badges showing request/response status.
+                  <br /><br />
+                  <strong>Note:</strong> Useful for debugging API issues but can clutter the console during normal use.
+                </p>
+              </div>
+
+              {/* Identity360 Verbose Logging */}
+              <div className="form-group">
+                <label className="checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={debugEnableAccessLensLogging}
+                    onChange={(e) => setDebugEnableAccessLensLogging(e.target.checked)}
+                  />
+                  <span className="label-icon">🔬</span>
+                  Enable Identity360 Verbose Logging
+                </label>
+                <p className="form-description">
+                  When enabled, outputs detailed logging for the Identity360 component including
+                  lane building, data transformations, and filtering operations.
+                  <br /><br />
+                  <strong>Warning:</strong> This generates a lot of console output and may impact performance.
+                </p>
+              </div>
+
+              {/* Current Debug Status */}
+              <div className="current-settings">
+                <h3>Current Debug Status</h3>
+                <div className="settings-grid">
+                  <div className="setting-item">
+                    <span className="setting-label">Policy Analysis:</span>
+                    <span className={`setting-value ${debugEnablePolicyAnalysis ? 'enabled' : 'disabled'}`}>
+                      {debugEnablePolicyAnalysis ? '✅ Enabled' : '❌ Disabled'}
+                    </span>
+                  </div>
+                  <div className="setting-item">
+                    <span className="setting-label">API Console Logging:</span>
+                    <span className={`setting-value ${debugEnableApiConsoleLogging ? 'enabled' : 'disabled'}`}>
+                      {debugEnableApiConsoleLogging ? '✅ Enabled' : '❌ Disabled'}
+                    </span>
+                  </div>
+                  <div className="setting-item">
+                    <span className="setting-label">Identity360 Logging:</span>
+                    <span className={`setting-value ${debugEnableAccessLensLogging ? 'enabled' : 'disabled'}`}>
+                      {debugEnableAccessLensLogging ? '✅ Enabled' : '❌ Disabled'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Save Button */}
+              <div className="form-actions">
+                <button
+                  onClick={handleSaveDebuggingPreferences}
+                  className={`btn btn-primary ${debugSaveSuccess ? 'success' : ''}`}
+                >
+                  {debugSaveSuccess ? '✓ Settings Saved!' : 'Save Debug Settings'}
+                </button>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* Identity360 Tab */}
+        {activeTab === 'identity360' && (
+          <section className="settings-section">
+            <div className="section-header">
+              <h2>Identity360 Display Settings</h2>
+            </div>
+
+            <div className="preferences-form">
+              <p className="section-description">
+                Configure how the Identity360 visualization displays access cards (lanes) when loading or changing the focus identity.
+              </p>
+
+              <div className="preference-group">
+                <h3>Access Card Display</h3>
+
+                <label className="preference-item checkbox-item">
+                  <input
+                    type="checkbox"
+                    checked={identity360LanesCollapsedOnLoad}
+                    onChange={(e) => setIdentity360LanesCollapsedOnLoad(e.target.checked)}
+                  />
+                  <div className="preference-text">
+                    <span className="preference-label">Start with access cards collapsed</span>
+                    <span className="preference-description">
+                      When Identity360 first loads, all access cards (lanes) will be minimized. You can expand individual cards as needed.
+                    </span>
+                  </div>
+                </label>
+
+                <label className="preference-item checkbox-item">
+                  <input
+                    type="checkbox"
+                    checked={identity360CollapseLanesOnFocusChange}
+                    onChange={(e) => setIdentity360CollapseLanesOnFocusChange(e.target.checked)}
+                  />
+                  <div className="preference-text">
+                    <span className="preference-label">Collapse access cards when changing identity</span>
+                    <span className="preference-description">
+                      When switching to a different focus identity (via search or pivot), automatically collapse all access cards.
+                    </span>
+                  </div>
+                </label>
+              </div>
+
+              <div className="preference-group">
+                <h3>Data Filtering</h3>
+
+                <label className="preference-item checkbox-item">
+                  <input
+                    type="checkbox"
+                    checked={identity360ShowDisabledAssignments}
+                    onChange={(e) => setIdentity360ShowDisabledAssignments(e.target.checked)}
+                  />
+                  <div className="preference-text">
+                    <span className="preference-label">Include disabled assignments</span>
+                    <span className="preference-description">
+                      Show disabled/inactive assignments in Identity360 results. When enabled, both active and disabled assignments are displayed.
+                    </span>
+                  </div>
+                </label>
+              </div>
+
+              {/* Current Settings Display */}
+              <div className="current-settings">
+                <h3>Current Settings</h3>
+                <div className="settings-summary">
+                  <div className="setting-item">
+                    <span className="setting-label">Cards collapsed on load:</span>
+                    <span className={`setting-value ${identity360LanesCollapsedOnLoad ? 'enabled' : 'disabled'}`}>
+                      {identity360LanesCollapsedOnLoad ? '✅ Yes' : '❌ No'}
+                    </span>
+                  </div>
+                  <div className="setting-item">
+                    <span className="setting-label">Collapse on identity change:</span>
+                    <span className={`setting-value ${identity360CollapseLanesOnFocusChange ? 'enabled' : 'disabled'}`}>
+                      {identity360CollapseLanesOnFocusChange ? '✅ Yes' : '❌ No'}
+                    </span>
+                  </div>
+                  <div className="setting-item">
+                    <span className="setting-label">Include disabled assignments:</span>
+                    <span className={`setting-value ${identity360ShowDisabledAssignments ? 'enabled' : 'disabled'}`}>
+                      {identity360ShowDisabledAssignments ? '✅ Yes' : '❌ No'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="form-actions">
+                <button
+                  onClick={handleSaveIdentity360Preferences}
+                  className={`btn btn-primary ${identity360SaveSuccess ? 'success' : ''}`}
+                >
+                  {identity360SaveSuccess ? '✓ Settings Saved!' : 'Save Identity360 Settings'}
+                </button>
+              </div>
+            </div>
+          </section>
+        )}
       </div>
     </div>
   );

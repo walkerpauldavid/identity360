@@ -46,7 +46,17 @@ const DEFAULT_PREFERENCES = {
   dashboardTiles: {
     order: ['identities', 'myTeam', 'accessRequests', 'approvals', 'reviews', 'other'],
     hidden: []
-  }
+  },
+
+  // Debugging preferences
+  debugEnablePolicyAnalysis: true, // Enable policy analysis debug helper (window.policyAnalysis)
+  debugEnableApiConsoleLogging: true, // Log OData and GraphQL API calls to browser console
+  debugEnableAccessLensLogging: false, // Enable verbose Identity360 component logging
+
+  // Identity360 display preferences
+  identity360LanesCollapsedOnLoad: true, // Start with lanes collapsed when Identity360 first loads
+  identity360CollapseLanesOnFocusChange: true, // Collapse lanes when changing the focus node (identity)
+  identity360ShowDisabledAssignments: true // Include disabled assignments in Identity360 queries (default: show them)
 };
 
 // Preferences Context

@@ -1,8 +1,8 @@
 /**
- * AccessLens Data Service
+ * Identity360 Data Service
  * Data contract interface for Omada OData and GraphQL APIs
  *
- * This service provides an abstraction layer between the AccessLens UI and
+ * This service provides an abstraction layer between the Identity360 UI and
  * the Omada backend. It can be configured to use mock data for development
  * or real API calls for production.
  */
@@ -654,7 +654,7 @@ export function buildContextsLane(contexts, filters = {}) {
 
 /**
  * Build all lanes from calculated assignments data
- * This is the main function to transform API response into Access Lens lanes
+ * This is the main function to transform API response into Identity360 lanes
  * @param {Array} assignments - Array of assignment data from API
  * @param {Object} filters - Active filters
  * @param {Object} options - Options for lane building
@@ -741,6 +741,16 @@ export function buildLanesFromAssignments(assignments, filters = {}, options = {
     // Only add if there are policies
     if (assignmentPoliciesLane.items.length > 0) {
       lanes.push(assignmentPoliciesLane);
+    }
+  }
+
+  // Build Violations lane (violations extracted from assignments)
+  // Only show in Identity-centric view, not system-centric view
+  if (!options.includeIdentities) {
+    const violationsLane = buildViolationsLane(assignments, filters);
+    // Only add if there are violations
+    if (violationsLane.items.length > 0) {
+      lanes.push(violationsLane);
     }
   }
 
@@ -1721,7 +1731,8 @@ function buildEntitlementsLane(assignments, filters) {
         identityIds: new Set(),
         accountIds: new Set(),
         complianceStatuses: new Set(),
-        reasons: []
+        reasons: [],
+        violations: []  // Track violations for this resource
       });
     }
 
@@ -1732,6 +1743,14 @@ function buildEntitlementsLane(assignments, filters) {
     if (assignment.account?.id) entry.accountIds.add(assignment.account.id);
     if (assignment.complianceStatus) entry.complianceStatuses.add(assignment.complianceStatus);
     if (assignment.reason) entry.reasons.push(assignment.reason);
+    // Track violations - each assignment may have violations
+    if (assignment.violations && Array.isArray(assignment.violations) && assignment.violations.length > 0) {
+      entry.violations.push(...assignment.violations.map(v => ({
+        ...v,
+        resourceId: resourceId,
+        resourceName: assignment.resource?.name
+      })));
+    }
   });
 
   if (shouldLog('ENTITLEMENTS') || shouldLog('EXCLUSION_RULES')) {
@@ -1778,7 +1797,10 @@ function buildEntitlementsLane(assignments, filters) {
         accountName: firstAssignment.account?.accountName,
         accountId: firstAssignment.account?.id,
         identityId: firstAssignment.identity?.id,
-        identityDisplayName: firstAssignment.identity?.displayName
+        identityDisplayName: firstAssignment.identity?.displayName,
+        // Violation tracking
+        hasViolations: entry.violations.length > 0,
+        violations: entry.violations
       },
       // Include full resource data for Object Inspector
       rawData: {
@@ -2878,6 +2900,154 @@ export function buildAssignmentPoliciesLane(assignments, filters = {}) {
 }
 
 /**
+ * Build Violations lane from calculated assignments
+ * Extracts violations from assignments and groups them by unique violation description
+ *
+ * @param {Array} assignments - Calculated assignments with violations array
+ * @param {Object} filters - Optional filters
+ * @returns {Object} Lane object with violation items
+ */
+export function buildViolationsLane(assignments, filters = {}) {
+  if (shouldLog('VIOLATIONS')) {
+    console.log('=== buildViolationsLane: Starting ===');
+    console.log('Total assignments received:', assignments?.length);
+  }
+
+  if (!assignments || !Array.isArray(assignments) || assignments.length === 0) {
+    return {
+      laneType: LaneTypes.VIOLATIONS,
+      totalCount: 0,
+      items: [],
+      allItemsData: [],
+      canLoadMore: false
+    };
+  }
+
+  // Map to track unique violations by description
+  // Key: violation description
+  // Value: { description, violationStatus, resourceIds: Set, resourceNames: Set }
+  const violationsMap = new Map();
+
+  assignments.forEach((assignment) => {
+    if (!assignment.violations || !Array.isArray(assignment.violations) || assignment.violations.length === 0) {
+      return;
+    }
+
+    const resourceId = assignment.resource?.id;
+    const resourceName = assignment.resource?.name;
+
+    assignment.violations.forEach((violation) => {
+      const key = violation.description || 'Unknown Violation';
+
+      if (!violationsMap.has(key)) {
+        violationsMap.set(key, {
+          description: violation.description,
+          violationStatus: violation.violationStatus,
+          resourceIds: new Set(),
+          resourceNames: new Set(),
+          accountIds: new Set(),
+          systemIds: new Set()
+        });
+      }
+
+      const entry = violationsMap.get(key);
+      if (resourceId) entry.resourceIds.add(resourceId);
+      if (resourceName) entry.resourceNames.add(resourceName);
+      if (assignment.account?.id) entry.accountIds.add(assignment.account.id);
+      if (assignment.resource?.system?.id) entry.systemIds.add(assignment.resource.system.id);
+    });
+  });
+
+  if (shouldLog('VIOLATIONS')) {
+    console.log('=== buildViolationsLane: Results ===');
+    console.log('Unique violations found:', violationsMap.size);
+  }
+
+  // Convert to lane items
+  const items = Array.from(violationsMap.values()).map((violation, index) => {
+    // Parse the violation description to extract the conflicting entitlement name
+    // Format: 'In violation with "EntitlementName". '
+    const conflictMatch = violation.description?.match(/In violation with "([^"]+)"/);
+    const conflictingEntitlement = conflictMatch ? conflictMatch[1] : null;
+
+    const violationNode = {
+      id: `violation-${index}-${violation.description?.replace(/\s+/g, '-').substring(0, 30).toLowerCase()}`,
+      type: NodeTypes.VIOLATION,
+      displayName: conflictingEntitlement
+        ? `Conflict: ${conflictingEntitlement}`
+        : violation.description?.substring(0, 50) || 'Violation',
+      status: violation.violationStatus || 'DECISION_PENDING_NOT_ALLOWED',
+      badges: [
+        violation.violationStatus?.replace(/_/g, ' ') || 'Pending',
+        `${violation.resourceIds.size} entitlement${violation.resourceIds.size !== 1 ? 's' : ''}`
+      ],
+      metadata: {
+        description: violation.description,
+        violationStatus: violation.violationStatus,
+        conflictingEntitlement: conflictingEntitlement,
+        resourceCount: violation.resourceIds.size,
+        // Cross-lane filtering: store resource IDs involved in this violation
+        resourceIds: Array.from(violation.resourceIds),
+        resourceNames: Array.from(violation.resourceNames),
+        accountIds: Array.from(violation.accountIds),
+        systemIds: Array.from(violation.systemIds)
+      },
+      rawData: {
+        description: violation.description,
+        violationStatus: violation.violationStatus,
+        conflictingEntitlement: conflictingEntitlement,
+        resourceIds: Array.from(violation.resourceIds),
+        resourceNames: Array.from(violation.resourceNames),
+        accountIds: Array.from(violation.accountIds),
+        systemIds: Array.from(violation.systemIds)
+      }
+    };
+
+    return {
+      node: violationNode,
+      reasons: [],
+      groupKey: 'violations',
+      groupLabel: 'Violations',
+      rawData: {
+        ...violation,
+        resourceIds: Array.from(violation.resourceIds),
+        resourceNames: Array.from(violation.resourceNames),
+        accountIds: Array.from(violation.accountIds),
+        systemIds: Array.from(violation.systemIds)
+      }
+    };
+  });
+
+  // Sort by number of resources involved (most first)
+  items.sort((a, b) => b.node.metadata.resourceCount - a.node.metadata.resourceCount);
+
+  return {
+    laneType: LaneTypes.VIOLATIONS,
+    totalCount: items.length,
+    items: items,
+    allItemsData: items,
+    canLoadMore: false
+  };
+}
+
+/**
+ * Extract total violation count from assignments (for FocusCard indicator)
+ * @param {Array} assignments - Calculated assignments
+ * @returns {number} Total number of violations
+ */
+export function extractViolationCount(assignments) {
+  if (!assignments || !Array.isArray(assignments)) return 0;
+
+  let count = 0;
+  assignments.forEach(assignment => {
+    if (assignment.violations && Array.isArray(assignment.violations)) {
+      count += assignment.violations.length;
+    }
+  });
+  return count;
+}
+
+/**
  * Export for use in AccessLens
  */
 export default {
@@ -2886,6 +3056,7 @@ export default {
   configureDataService,
   extractUniqueReasonTypes,
   extractUniqueComplianceStatuses,
+  extractViolationCount,
   transformIdentityToNode,
   transformRoleToNode,
   transformAccountToNode,
@@ -2898,6 +3069,7 @@ export default {
   buildLanesFromAssignments,
   buildLanesForEntitlement,
   buildAssignmentPoliciesLane,
+  buildViolationsLane,
   populateLanesForNodeType,
   // Extractor registry functions
   getExtractor,

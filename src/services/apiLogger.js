@@ -5,8 +5,23 @@
  * Uses window.__apiLogger to ensure singleton across module boundaries
  */
 
-// Debug configuration - set to true to enable verbose console logging
-const DEBUG_CONSOLE_LOGGING = true;
+// Get initial debug console logging setting from localStorage preferences
+const getInitialConsoleLoggingSetting = () => {
+  try {
+    const stored = localStorage.getItem('app_user_preferences');
+    if (stored) {
+      const prefs = JSON.parse(stored);
+      // Default to true if not set
+      return prefs.debugEnableApiConsoleLogging ?? true;
+    }
+  } catch (e) {
+    // Ignore errors, use default
+  }
+  return true; // Default to enabled
+};
+
+// Debug configuration - read from user preferences
+let DEBUG_CONSOLE_LOGGING = getInitialConsoleLoggingSetting();
 
 // Functions to exclude from console logging (still logged internally)
 const EXCLUDE_FROM_CONSOLE = [
@@ -18,7 +33,7 @@ class ApiLogger {
     this.logs = [];
     this.maxLogs = 30; // Keep last 30 log entries (reduced to prevent localStorage quota issues)
     this.backendUrl = 'http://localhost:3001/api/log';
-    this.sendToBackend = true; // Set to false to disable backend logging
+    this.sendToBackend = false; // Set to false to disable backend logging
     this.instanceId = Math.random().toString(36).substr(2, 9);
     this.excludedRequestIds = new Set(); // Track request IDs to exclude from console logging
     if (DEBUG_CONSOLE_LOGGING) {
@@ -345,6 +360,23 @@ class ApiLogger {
     if (DEBUG_CONSOLE_LOGGING) {
       console.log('API logs cleared');
     }
+  }
+
+  /**
+   * Set console logging enabled/disabled
+   * @param {boolean} enabled - Whether to enable console logging
+   */
+  setConsoleLogging(enabled) {
+    DEBUG_CONSOLE_LOGGING = enabled;
+    console.log(`[ApiLogger] Console logging ${enabled ? 'enabled' : 'disabled'}`);
+  }
+
+  /**
+   * Get current console logging state
+   * @returns {boolean} Whether console logging is enabled
+   */
+  isConsoleLoggingEnabled() {
+    return DEBUG_CONSOLE_LOGGING;
   }
 
   /**

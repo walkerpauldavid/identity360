@@ -1,6 +1,6 @@
 /**
  * IdentitySearchDialog Component
- * Modal dialog with an editable dropdown for selecting an identity to view in Access Lens
+ * Modal dialog with an editable dropdown for selecting an identity to view in Identity360
  *
  * IMPORTANT: Uses UId (32-character GUID) for identity selection, NOT Id or IdentityID
  * The UId is required for getIdentityContexts and getCalculatedAssignmentsDetailed APIs
@@ -287,7 +287,7 @@ const IdentitySearchDialog = ({ isOpen, onClose, onSelectIdentity }) => {
 
         {/* Dropdown Container */}
         <div className="dropdown-container">
-          <label className="dropdown-label">Choose an identity to view in Access Lens:</label>
+          <label className="dropdown-label">Choose an identity to view in Identity360:</label>
 
           {/* Editable Dropdown Input */}
           <div className="dropdown-input-wrapper">
@@ -427,7 +427,7 @@ const IdentitySearchDialog = ({ isOpen, onClose, onSelectIdentity }) => {
             onClick={handleConfirm}
             disabled={!selectedIdentity || !selectedIdentity.UId}
           >
-            View in Access Lens
+            View in Identity360
           </button>
         </div>
       </div>

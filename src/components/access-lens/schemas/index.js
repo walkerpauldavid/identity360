@@ -1,5 +1,5 @@
 /**
- * Access Lens Schema Index
+ * Identity360 Schema Index
  * Re-exports all schema definitions from organized modules
  *
  * This module serves as the entry point for schema imports.

@@ -1,9 +1,9 @@
 /**
- * Access Lens Utility Functions
+ * Identity360 Utility Functions
  * Shared utilities for field extraction, value normalization, and data manipulation
  *
  * This module provides the canonical implementations of common utilities used across
- * the Access Lens component suite. Use these functions instead of duplicating logic.
+ * the Identity360 component suite. Use these functions instead of duplicating logic.
  */
 
 // ============================================================================

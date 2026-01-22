@@ -1,5 +1,5 @@
 /**
- * Base Enum Definitions for Access Lens
+ * Base Enum Definitions for Identity360
  * Core type definitions that don't depend on any schemas
  */
 
@@ -13,7 +13,8 @@ export const NodeTypes = {
   ACCOUNT: 'Account',
   SYSTEM: 'System',
   LOGICAL_APPLICATION: 'LogicalApplication',  // System marked as logical (has resources but no direct accounts)
-  CONTEXT: 'Context'
+  CONTEXT: 'Context',
+  VIOLATION: 'Violation'  // Represents an access violation (e.g., SoD conflict)
 };
 
 // Edge/relationship types
@@ -59,7 +60,8 @@ export const LaneTypes = {
   SYSTEMS: 'Systems',
   LOGICAL_APPLICATIONS: 'LogicalApplications',
   IDENTITIES: 'Identities',
-  CONTEXTS: 'Contexts'
+  CONTEXTS: 'Contexts',
+  VIOLATIONS: 'Violations'  // Access violations (SoD conflicts, policy breaches, etc.)
 };
 
 // View modes

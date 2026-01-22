@@ -319,6 +319,7 @@ export const GraphQLQueries = {
    * @param {string} filters.complianceStatus - Filter by compliance status
    * @param {string} filters.accountName - Filter by account name
    * @param {string} filters.systemName - Filter by system name
+   * @param {boolean} filters.includeDisabled - Include disabled assignments (default: true)
    * @param {Object} pagination - Pagination options
    */
   getCalculatedAssignmentsDetailed: (identityIds = null, filters = {}, pagination = {}) => {
@@ -326,12 +327,14 @@ export const GraphQLQueries = {
     const paginationConfig = GRAPHQL_PAGINATION.CALCULATED_ASSIGNMENTS;
     const page = pagination.page ?? GRAPHQL_PAGINATION.DEFAULT_PAGE;
     const rows = pagination.rows ?? paginationConfig.DEFAULT_ROWS;
-    const { sortOrder = 'ASCENDING' } = filters;
+    const { sortOrder = 'ASCENDING', includeDisabled = true } = filters;
 
     const filterParts = [];
 
-    // Always filter to active (non-disabled) assignments
-    filterParts.push('disabled: false');
+    // Filter disabled assignments only if explicitly requested to exclude them
+    if (!includeDisabled) {
+      filterParts.push('disabled: false');
+    }
 
     // Primary filter: either systemId or identityIds
     if (filters.systemId) {
@@ -459,15 +462,16 @@ export const GraphQLQueries = {
 
   /**
    * Get identities that have a specific resource (entitlement) assigned
-   * Used for entitlement-centric view in Access Lens
+   * Used for entitlement-centric view in Identity360
    * @param {string} resourceId - Resource UUID (required)
    * @param {string} resourceName - Resource name (optional, not used in query)
    * @param {string} systemId - System ID (optional, not used in query)
    * @param {Object} pagination - Pagination options
    * @param {string} complianceStatus - Optional compliance status filter (e.g., 'Not Approved', 'Approved')
+   * @param {boolean} includeDisabled - Include disabled assignments (default: true)
    * @returns {Object} GraphQL query object
    */
-  getIdentitiesHavingResource: (resourceId = null, resourceName = null, systemId = null, pagination = {}, complianceStatus = null) => {
+  getIdentitiesHavingResource: (resourceId = null, resourceName = null, systemId = null, pagination = {}, complianceStatus = null, includeDisabled = true) => {
     // Use configurable pagination constants with defaults
     const paginationConfig = GRAPHQL_PAGINATION.IDENTITIES_HAVING_RESOURCE;
     const page = pagination.page ?? GRAPHQL_PAGINATION.DEFAULT_PAGE;
@@ -480,9 +484,13 @@ export const GraphQLQueries = {
 
     // Build the filter parts
     const filterParts = [
-      `resourceIds: "${resourceId}"`,
-      'disabled: false'
+      `resourceIds: "${resourceId}"`
     ];
+
+    // Filter disabled assignments only if explicitly requested to exclude them
+    if (!includeDisabled) {
+      filterParts.push('disabled: false');
+    }
 
     // Add complianceStatus filter if provided
     if (complianceStatus) {

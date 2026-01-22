@@ -433,10 +433,10 @@ const ComplianceHeatmap = ({ bearerToken, impersonateUser }) => {
   }, [systems.length]);
 
   const handleTileClick = (system) => {
-    // Navigate to Access Lens with system as the focus node
+    // Navigate to Identity360 with system as the focus node
     const systemId = system.id;
     const systemName = encodeURIComponent(system.name || 'System');
-    navigate(`/access-lens?system=${systemId}&systemName=${systemName}`);
+    navigate(`/identity360?system=${systemId}&systemName=${systemName}`);
   };
 
   // Loading state
@@ -612,7 +612,7 @@ const ComplianceHeatmap = ({ bearerToken, impersonateUser }) => {
         )}
       </div>
 
-      {/* System detail panel removed - now navigates to Access Lens on tile click */}
+      {/* System detail panel removed - now navigates to Identity360 on tile click */}
     </div>
   );
 };

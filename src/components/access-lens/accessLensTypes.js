@@ -1,5 +1,5 @@
 /**
- * AccessLens Type Definitions
+ * Identity360 Type Definitions
  * Types for the IGA access graph exploration widget
  *
  * This module re-exports base enums from ./schemas/baseEnums.js and defines
@@ -71,7 +71,23 @@ export const DebugConfig = {
 };
 
 // Helper function to check if logging is enabled for a module
+// Also checks user preference from localStorage
 export const shouldLog = (module) => {
+  // First check if Identity360 logging is enabled in user preferences
+  try {
+    const stored = localStorage.getItem('app_user_preferences');
+    if (stored) {
+      const prefs = JSON.parse(stored);
+      // If user has disabled Identity360 logging, return false
+      if (prefs.debugEnableAccessLensLogging === false) {
+        return false;
+      }
+    }
+  } catch (e) {
+    // Ignore errors, fall through to default behavior
+  }
+
+  // Then check the module-specific debug config
   return DebugConfig.ALL || DebugConfig[module] || false;
 };
 
@@ -381,8 +397,8 @@ export const LaneSchema = {
     collapsible: true,
     exclusionList: [],
     defaultPosition: {
-      compass: CompassOrientation.N,  // North (top center)
-      priority: 1
+      compass: CompassOrientation.NW,  // North-West (shares with Effective Entitlements, but rarely shown)
+      priority: 2  // Lower priority than Effective Entitlements
     },
     apiSource: {
       type: 'OData',
@@ -390,6 +406,36 @@ export const LaneSchema = {
       filterField: 'Name',  // Field to use in OData $filter
       idField: 'Id',
       selectFields: 'Id,Name,DisplayName,Description,ResourceType,SystemRef,Status,RiskScore'
+    }
+  },
+  [LaneTypes.VIOLATIONS]: {
+    dataType: NodeTypes.VIOLATION,
+    displayRule: 'SINGLE_COLUMN',
+    icon: '⚠️',
+    color: '#f59e0b',  // Warning yellow/amber color
+    label: 'Violations',
+    description: 'Policy violations for this identity',
+    sortable: true,
+    collapsible: true,
+    exclusionList: [],
+    defaultPosition: {
+      compass: CompassOrientation.N,  // North (above center) - violations are important, show at top
+      priority: 0  // Highest priority - violations always get the N position
+    },
+    apiSource: {
+      type: 'derived',
+      from: 'calculatedAssignments',
+      extract: 'violations'
+    },
+    // Inspector configuration for violations
+    inspectorConfig: {
+      showAttributes: [
+        { field: 'description', label: 'Description', type: 'text' },
+        { field: 'status', label: 'Status', type: 'text' },
+        { field: 'severity', label: 'Severity', type: 'text' },
+        { field: 'resourceIds', label: 'Affected Resources', type: 'array' }
+      ],
+      hideAttributes: ['id', 'Id']
     }
   }
 };
@@ -776,6 +822,32 @@ export const FocusNodeSchema = {
       idField: 'UId',
       intIdField: 'Id'
     }
+  },
+
+  [NodeTypes.VIOLATION]: {
+    title: 'Violation',
+    icon: '⚠️',
+    color: '#f59e0b',  // Warning yellow/amber color
+    primaryField: 'description|Description|name|Name',
+    attributes: [
+      { field: 'description|Description', label: 'Description', type: 'text', required: true },
+      { field: 'status|Status', label: 'Status', type: 'badge', required: false },
+      { field: 'severity|Severity', label: 'Severity', type: 'badge', required: false },
+      { field: 'policyName|PolicyName', label: 'Policy', type: 'text', required: false },
+      { field: 'resourceIds', label: 'Affected Resources', type: 'array', required: false }
+    ],
+    fieldMappings: {
+      id: ['id', 'Id', 'ID'],
+      description: ['description', 'Description', 'DESCRIPTION', 'name', 'Name'],
+      displayName: ['description', 'Description', 'name', 'Name'],
+      status: ['status', 'Status', 'STATUS'],
+      severity: ['severity', 'Severity', 'SEVERITY']
+    },
+    apiSource: {
+      type: 'derived',  // Violations are derived from calculatedAssignments
+      from: 'calculatedAssignments',
+      extract: 'violations'
+    }
   }
 };
 
@@ -796,9 +868,17 @@ export const FocusNodeSchema = {
  * - position: Default x,y position relative to center
  * - required: If true, lane is always visible even when empty (after filtering)
  * - crossLaneFilters: Defines how this lane interacts with other lanes when selected
- *   - filtersLanes: Array of lane types this lane can filter
- *   - filteredByLanes: Array of lane types that can filter this lane
+ *   - filtersLanes: Array of lane types this lane can filter (downstream targets)
+ *   - filteredByLanes: Array of lane types that can filter this lane (upstream sources)
  *   - filterMappings: Object defining field mappings for each relationship
+ *
+ * HIERARCHICAL SELECTION BEHAVIOR:
+ * When clicking an item in a lane, selections for lanes in `filteredByLanes` are PRESERVED.
+ * This enables "drill-down" UX where users can:
+ *   1. Click a Policy to filter Entitlements (Policy is upstream filter source)
+ *   2. Click an Entitlement to inspect it (Policy filter persists, entitlement shows in inspector)
+ * The upstream filter context is maintained while drilling into filtered results.
+ * Only selections for lanes NOT in `filteredByLanes` are cleared on click.
  */
 export const LaneConfigSchema = {
   [NodeTypes.IDENTITY]: {
@@ -811,7 +891,7 @@ export const LaneConfigSchema = {
         position: { x: -380, y: -220 },
         crossLaneFilters: {
           filtersLanes: [LaneTypes.ACCOUNTS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.LOGICAL_APPLICATIONS],
-          filteredByLanes: [LaneTypes.ACCOUNTS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.ASSIGNMENT_POLICIES],
+          filteredByLanes: [LaneTypes.ACCOUNTS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.VIOLATIONS],
           filterMappings: {
             // When System is selected, filter Accounts by system
             [LaneTypes.ACCOUNTS]: {
@@ -840,10 +920,10 @@ export const LaneConfigSchema = {
         title: 'Accounts',
         required: false,
         apiSource: { type: 'derived', from: 'calculatedAssignments', extract: 'accounts' },
-        position: { x: 380, y: -220 },
+        position: { x: 750, y: -380 },  // North-East - matches COMPASS_POSITIONS[NE]
         crossLaneFilters: {
           filtersLanes: [LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.SYSTEMS, LaneTypes.LOGICAL_APPLICATIONS],
-          filteredByLanes: [LaneTypes.SYSTEMS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.ASSIGNMENT_POLICIES],
+          filteredByLanes: [LaneTypes.SYSTEMS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.VIOLATIONS],
           filterMappings: {
             // When Account is selected, filter Entitlements by account
             // Uses ARRAY_CONTAINS because deduplicated entitlements store arrays of accountIds
@@ -878,9 +958,29 @@ export const LaneConfigSchema = {
         apiSource: { type: 'GraphQL', query: 'getCalculatedAssignmentsDetailed', idParam: 'identityUId' },
         position: { x: -380, y: 80 },
         crossLaneFilters: {
-          filtersLanes: [],  // Entitlements don't filter other lanes in Identity view
-          filteredByLanes: [LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.ASSIGNMENT_POLICIES],
-          filterMappings: {}
+          // When an entitlement is selected, filter related lanes to show only relevant items
+          filtersLanes: [LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.SYSTEMS, LaneTypes.ACCOUNTS],
+          filteredByLanes: [LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.VIOLATIONS],
+          filterMappings: {
+            // When Entitlement is selected, filter Logical Applications to show only the one this entitlement belongs to
+            [LaneTypes.LOGICAL_APPLICATIONS]: {
+              type: CrossLaneFilterType.MULTI_FIELD_MATCH,
+              sourceFields: ['metadata.systemId', 'metadata.system'],
+              targetFields: ['id', 'displayName']
+            },
+            // When Entitlement is selected, filter Systems to show only the one this entitlement belongs to
+            [LaneTypes.SYSTEMS]: {
+              type: CrossLaneFilterType.MULTI_FIELD_MATCH,
+              sourceFields: ['metadata.systemId', 'metadata.system'],
+              targetFields: ['id', 'displayName']
+            },
+            // When Entitlement is selected, filter Accounts to show only those with this entitlement
+            [LaneTypes.ACCOUNTS]: {
+              type: CrossLaneFilterType.ARRAY_CONTAINS,
+              sourceField: 'metadata.accountIds',
+              targetField: 'id'
+            }
+          }
         }
       },
       {
@@ -899,7 +999,7 @@ export const LaneConfigSchema = {
         position: { x: 600, y: 80 },
         crossLaneFilters: {
           filtersLanes: [LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.SYSTEMS, LaneTypes.ACCOUNTS],
-          filteredByLanes: [LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS, LaneTypes.ASSIGNMENT_POLICIES],
+          filteredByLanes: [LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.VIOLATIONS],
           filterMappings: {
             // When Logical App is selected, filter Entitlements to those on this logical system
             [LaneTypes.EFFECTIVE_ENTITLEMENTS]: {
@@ -940,7 +1040,7 @@ export const LaneConfigSchema = {
         position: { x: -600, y: 80 },
         crossLaneFilters: {
           filtersLanes: [LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS, LaneTypes.LOGICAL_APPLICATIONS],
-          filteredByLanes: [],  // Policies are not filtered by other lanes
+          filteredByLanes: [LaneTypes.VIOLATIONS],  // Policies are filtered when a violation is selected
           filterMappings: {
             // When Policy is selected, filter Entitlements to show only those assigned by this policy
             [LaneTypes.EFFECTIVE_ENTITLEMENTS]: {
@@ -980,6 +1080,59 @@ export const LaneConfigSchema = {
               intermediateTargetField: 'id',        // Match against entitlement's ID
               intermediateExtractFields: ['metadata.systemId', 'metadata.system'],  // Get systemId OR system name
               targetFields: ['id', 'displayName']   // Match against logical app's ID or displayName
+            }
+          }
+        }
+      },
+      {
+        laneType: LaneTypes.VIOLATIONS,
+        title: 'Violations',
+        required: false,  // Only shows when violations exist
+        apiSource: { type: 'derived', from: 'calculatedAssignments', extract: 'violations' },
+        position: { x: 0, y: -380 },  // Position above center (North) - matches COMPASS_POSITIONS
+        crossLaneFilters: {
+          // Violations filter other lanes to show only related items
+          filtersLanes: [LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.ASSIGNMENT_POLICIES],
+          filteredByLanes: [],  // Violations are not filtered by other lanes
+          filterMappings: {
+            // When Violation is selected, filter Entitlements to show only those involved in the violation
+            [LaneTypes.EFFECTIVE_ENTITLEMENTS]: {
+              type: CrossLaneFilterType.ARRAY_CONTAINS,
+              sourceField: 'resourceIds',  // Array of resource IDs involved in this violation
+              targetField: 'id'            // Match against entitlement's resource ID
+            },
+            // When Violation is selected, filter Accounts via cascaded filter through Entitlements
+            [LaneTypes.ACCOUNTS]: {
+              type: CrossLaneFilterType.CASCADED_THROUGH,
+              intermediateLane: LaneTypes.EFFECTIVE_ENTITLEMENTS,
+              sourceField: 'resourceIds',
+              intermediateTargetField: 'id',
+              intermediateExtractField: 'metadata.accountIds',
+              targetField: 'id'
+            },
+            // When Violation is selected, filter Systems via cascaded filter through Entitlements
+            [LaneTypes.SYSTEMS]: {
+              type: CrossLaneFilterType.CASCADED_THROUGH,
+              intermediateLane: LaneTypes.EFFECTIVE_ENTITLEMENTS,
+              sourceField: 'resourceIds',
+              intermediateTargetField: 'id',
+              intermediateExtractFields: ['metadata.systemId', 'metadata.system'],
+              targetFields: ['id', 'displayName']
+            },
+            // When Violation is selected, filter Logical Applications via cascaded filter through Entitlements
+            [LaneTypes.LOGICAL_APPLICATIONS]: {
+              type: CrossLaneFilterType.CASCADED_THROUGH,
+              intermediateLane: LaneTypes.EFFECTIVE_ENTITLEMENTS,
+              sourceField: 'resourceIds',
+              intermediateTargetField: 'id',
+              intermediateExtractFields: ['metadata.systemId', 'metadata.system'],
+              targetFields: ['id', 'displayName']
+            },
+            // When Violation is selected, filter Assignment Policies to show only those that assigned the violating entitlements
+            [LaneTypes.ASSIGNMENT_POLICIES]: {
+              type: CrossLaneFilterType.ARRAY_CONTAINS,
+              sourceField: 'resourceIds',
+              targetField: 'resourceIds'  // Policy's resourceIds array should contain the violation's resourceIds
             }
           }
         }

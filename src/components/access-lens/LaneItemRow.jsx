@@ -43,6 +43,11 @@ const LaneItemRow = ({
   // Check if this is an Entitlement type node (for compliance status display)
   const isEntitlementNode = node.type === 'Entitlement' || node.type === 'Resource';
   const complianceStatus = node.metadata?.complianceStatus || rawData?.complianceStatus || null;
+  // Check if this entitlement has violations
+  const hasViolations = node.metadata?.hasViolations || rawData?.hasViolations || (node.metadata?.violations?.length > 0) || (rawData?.violations?.length > 0);
+
+  // Check if this is a Violation type node
+  const isViolationNode = node.type === 'Violation';
 
   // Check if this is an Account type node (for entitlement count display)
   const isAccountNode = node.type === 'Account';
@@ -105,7 +110,7 @@ const LaneItemRow = ({
 
   return (
     <div
-      className={`lane-item-row ${isSelected ? 'selected' : ''} ${isActiveFilter ? 'active-filter' : ''} ${viewMode === 'risk' && node.riskScore >= 50 ? 'high-risk' : ''} ${isLogicalSystem ? 'logical-system' : ''}`}
+      className={`lane-item-row ${isSelected ? 'selected' : ''} ${isActiveFilter ? 'active-filter' : ''} ${viewMode === 'risk' && node.riskScore >= 50 ? 'high-risk' : ''} ${isLogicalSystem ? 'logical-system' : ''} ${hasViolations ? 'has-violations' : ''} ${isViolationNode ? 'violation-node' : ''}`}
       onClick={handleClick}
       style={{ cursor: 'pointer' }}
       title={hoverDescription || node.displayName}
@@ -137,8 +142,18 @@ const LaneItemRow = ({
               {node.riskScore}
             </span>
           )}
-          {/* Compliance status for entitlements */}
-          {isEntitlementNode && complianceStatus && (
+          {/* Violation indicator for entitlements - shows "Violation!" badge when violations exist */}
+          {isEntitlementNode && hasViolations && (
+            <span className="lane-item-violation-badge" title="Has Violations">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ marginRight: '3px', verticalAlign: 'middle' }}>
+                <path d="M12 2L1 21h22L12 2z" fill="#f59e0b" stroke="#d97706" strokeWidth="1.5"/>
+                <text x="12" y="17" textAnchor="middle" fill="#fff" fontSize="11" fontWeight="bold" fontFamily="Arial">!</text>
+              </svg>
+              Violation!
+            </span>
+          )}
+          {/* Compliance status for entitlements - only show when NO violations */}
+          {isEntitlementNode && complianceStatus && !hasViolations && (
             <span
               className={`lane-item-compliance ${complianceStatus === 'Approved' ? 'approved' : complianceStatus === 'Not Approved' ? 'not-approved' : 'pending'}`}
             >
@@ -273,6 +288,7 @@ const arePropsEqual = (prevProps, nextProps) => {
   const nextNode = nextProps.item?.node;
   if (prevNode?.displayName !== nextNode?.displayName) return false;
   if (prevNode?.status !== nextNode?.status) return false;
+  if (prevNode?.metadata?.hasViolations !== nextNode?.metadata?.hasViolations) return false;
 
   // Props are effectively equal
   return true;

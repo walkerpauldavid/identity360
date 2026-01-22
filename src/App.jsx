@@ -153,9 +153,9 @@ function App() {
         }
       />
 
-      {/* Access Lens Route */}
+      {/* Identity360 Route */}
       <Route
-        path="/access-lens"
+        path="/identity360"
         element={
           isAuthenticated ? (
             <AccessLensPage />
@@ -163,6 +163,12 @@ function App() {
             <Navigate to="/login" replace />
           )
         }
+      />
+
+      {/* Legacy /access-lens route redirect to /identity360 */}
+      <Route
+        path="/access-lens"
+        element={<Navigate to="/identity360" replace />}
       />
 
       {/* Admin Route */}

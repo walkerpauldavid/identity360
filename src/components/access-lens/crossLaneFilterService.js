@@ -1,7 +1,7 @@
 /**
  * Cross-Lane Filter Service
  *
- * Provides schema-driven cross-lane filtering for Access Lens.
+ * Provides schema-driven cross-lane filtering for Identity360.
  * This service reads filter configurations from LaneConfigSchema and applies
  * filters based on lane selections, replacing hardcoded filtering logic.
  */
@@ -349,7 +349,8 @@ export const applyCrossLaneFilters = (
     [selections.systemId, LaneTypes.SYSTEMS],
     [selections.logicalAppId, LaneTypes.LOGICAL_APPLICATIONS],
     [selections.policyId, LaneTypes.ASSIGNMENT_POLICIES],
-    [selections.entitlementId, LaneTypes.EFFECTIVE_ENTITLEMENTS]
+    [selections.entitlementId, LaneTypes.EFFECTIVE_ENTITLEMENTS],
+    [selections.violationId, LaneTypes.VIOLATIONS]
   ];
 
   for (const [selectionId, laneType] of selectionLaneTypes) {
@@ -409,6 +410,14 @@ export const applyCrossLaneFilters = (
     const selectedItem = findItemById(entitlementsLane, selections.entitlementId, itemIdMaps.get(LaneTypes.EFFECTIVE_ENTITLEMENTS));
     if (selectedItem) {
       selectionMap[LaneTypes.EFFECTIVE_ENTITLEMENTS] = selectedItem.node;
+    }
+  }
+
+  if (selections.violationId) {
+    const violationsLane = laneMap.get(LaneTypes.VIOLATIONS);
+    const selectedItem = findItemById(violationsLane, selections.violationId, itemIdMaps.get(LaneTypes.VIOLATIONS));
+    if (selectedItem) {
+      selectionMap[LaneTypes.VIOLATIONS] = selectedItem.node;
     }
   }
 
@@ -511,6 +520,7 @@ export const getFilterSourceLaneType = (selections) => {
   if (selections.logicalAppId) return LaneTypes.LOGICAL_APPLICATIONS;
   if (selections.policyId) return LaneTypes.ASSIGNMENT_POLICIES;
   if (selections.entitlementId) return LaneTypes.EFFECTIVE_ENTITLEMENTS;
+  if (selections.violationId) return LaneTypes.VIOLATIONS;
   return null;
 };
 
@@ -534,6 +544,7 @@ export const isLaneFiltered = (laneType, focusNodeType, selections) => {
       case LaneTypes.LOGICAL_APPLICATIONS: return !!selections.logicalAppId;
       case LaneTypes.ASSIGNMENT_POLICIES: return !!selections.policyId;
       case LaneTypes.EFFECTIVE_ENTITLEMENTS: return !!selections.entitlementId;
+      case LaneTypes.VIOLATIONS: return !!selections.violationId;
       default: return false;
     }
   });
@@ -554,6 +565,7 @@ export const isLaneFilterSource = (laneType, selections) => {
     case LaneTypes.LOGICAL_APPLICATIONS: return !!selections.logicalAppId;
     case LaneTypes.ASSIGNMENT_POLICIES: return !!selections.policyId;
     case LaneTypes.EFFECTIVE_ENTITLEMENTS: return !!selections.entitlementId;
+    case LaneTypes.VIOLATIONS: return !!selections.violationId;
     default: return false;
   }
 };

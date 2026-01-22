@@ -1,23 +1,32 @@
 /**
- * Access Lens Page
- * Standalone fullscreen page for the Access Lens component
+ * Identity360 Page
+ * Standalone fullscreen page for the Identity360 component
  * Prompts for identity selection when opened from toolbar
  */
 
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { usePreferences } from '../../contexts/PreferencesContext';
 import { omadaApi } from '../../services/omadaApi';
 import Navbar from '../layout/Navbar';
 import AccessLens from './AccessLens';
 import IdentitySearchDialog from './IdentitySearchDialog';
 import { LaneSchema, LaneTypes, shouldLog } from './accessLensTypes';
+import { usePolicyAnalysis } from '../../hooks/usePolicyAnalysis';
 import './AccessLensPage.css';
 
 const AccessLensPage = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { getBearerToken, user } = useAuth();
+  const { preferences } = usePreferences();
+
+  // Get user preference for including disabled assignments (default: true)
+  const includeDisabledAssignments = preferences.identity360ShowDisabledAssignments ?? true;
+
+  // Initialize policy analysis debug helper (exposes window.policyAnalysis)
+  usePolicyAnalysis();
 
   // Note: No default identity - user must select one via search dialog or URL parameter
 
@@ -285,7 +294,7 @@ const AccessLensPage = () => {
           identity.UId,
           bearerToken,
           impersonateUser,
-          {},
+          { includeDisabled: includeDisabledAssignments },
           { page: 1, rows: 100 }
         ),
         omadaApi.identity.getIdentityContexts(
@@ -409,7 +418,7 @@ const AccessLensPage = () => {
         null, // No identity filter - we're filtering by system instead
         bearerToken,
         impersonateUser,
-        { systemId: systemId },
+        { systemId: systemId, includeDisabled: includeDisabledAssignments },
         { page: 1, rows: 5000 } // Large page size to fetch all assignments
       );
 
@@ -658,7 +667,7 @@ const AccessLensPage = () => {
               identityUId,
               bearerToken,
               impersonateUser,
-              {},
+              { includeDisabled: includeDisabledAssignments },
               { page: 1, rows: 100 }
             ),
             omadaApi.identity.getIdentityContexts(
@@ -755,7 +764,7 @@ const AccessLensPage = () => {
             null, // No identity filter - we're filtering by system instead
             bearerToken,
             impersonateUser,
-            { systemId: systemId }, // Filter by system ID
+            { systemId: systemId, includeDisabled: includeDisabledAssignments }, // Filter by system ID
             { page: 1, rows: 5000 } // Large page size to fetch all assignments
           );
 
@@ -857,7 +866,7 @@ const AccessLensPage = () => {
             null, // No identity filter
             bearerToken,
             impersonateUser,
-            { systemId: logicalAppId }, // Filter by this logical app as the system
+            { systemId: logicalAppId, includeDisabled: includeDisabledAssignments }, // Filter by this logical app as the system
             { page: 1, rows: 5000 } // Large page size to fetch all assignments
           );
 
@@ -927,7 +936,8 @@ const AccessLensPage = () => {
               impersonateUser,
               { page: 1, rows: 100 },
               systemId,
-              complianceStatus  // Pass the compliance filter to the API
+              complianceStatus,  // Pass the compliance filter to the API
+              includeDisabledAssignments  // Include disabled assignments based on user preference
             );
           } catch (apiError) {
             console.error('Entitlement pivot API error:', apiError.message);
@@ -1149,7 +1159,7 @@ const AccessLensPage = () => {
   return (
     <div className="access-lens-page">
       {/* Omada Top Banner */}
-      <Navbar title="Access Lens" />
+      <Navbar title="Identity360" />
 
       <div className="access-lens-page-content">
         {/* System-centric view (from heatmap navigation) */}
@@ -1158,7 +1168,7 @@ const AccessLensPage = () => {
             {isLoadingData ? (
               <div className="data-loading-overlay">
                 <div className="data-loading-spinner"></div>
-                <h3 className="loading-title">Populating Access Lens</h3>
+                <h3 className="loading-title">Populating Identity360</h3>
                 <p className="loading-status">{loadingStatus || 'Initializing...'}</p>
                 <div className="loading-details">
                   <span>Analyzing system access across identities, accounts, and entitlements</span>
@@ -1192,7 +1202,7 @@ const AccessLensPage = () => {
             {isLoadingData ? (
               <div className="data-loading-overlay">
                 <div className="data-loading-spinner"></div>
-                <h3 className="loading-title">Populating Access Lens</h3>
+                <h3 className="loading-title">Populating Identity360</h3>
                 <p className="loading-status">{loadingStatus || 'Initializing...'}</p>
                 <div className="loading-details">
                   <span>Analyzing identity access across systems, accounts, and entitlements</span>

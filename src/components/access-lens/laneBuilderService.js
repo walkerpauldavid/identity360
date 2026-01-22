@@ -1,7 +1,7 @@
 /**
  * Lane Builder Service
  *
- * Provides schema-driven lane building for Access Lens.
+ * Provides schema-driven lane building for Identity360.
  * Consolidates multiple lane builder functions into a single generic service
  * that uses configuration to extract and transform data.
  */
@@ -427,6 +427,123 @@ export const buildSystemsLane = (assignments, options = {}) => {
   return buildLane(LaneTypes.SYSTEMS, assignments, 'system', options);
 };
 
+/**
+ * Build Violations lane from assignments
+ * Extracts unique violations from assignment data and creates lane items
+ */
+const buildViolationsLaneFromAssignments = (assignments, options = {}) => {
+  if (!assignments || !Array.isArray(assignments) || assignments.length === 0) {
+    return {
+      laneType: LaneTypes.VIOLATIONS,
+      totalCount: 0,
+      items: [],
+      allItemsData: [],
+      canLoadMore: false
+    };
+  }
+
+  // Map to track unique violations by description
+  const violationsMap = new Map();
+
+  assignments.forEach((assignment) => {
+    if (!assignment.violations || !Array.isArray(assignment.violations) || assignment.violations.length === 0) {
+      return;
+    }
+
+    const resourceId = assignment.resource?.id;
+    const resourceName = assignment.resource?.name;
+
+    assignment.violations.forEach((violation) => {
+      const key = violation.description || 'Unknown Violation';
+
+      if (!violationsMap.has(key)) {
+        violationsMap.set(key, {
+          description: violation.description,
+          violationStatus: violation.violationStatus,
+          resourceIds: new Set(),
+          resourceNames: new Set(),
+          accountIds: new Set(),
+          systemIds: new Set()
+        });
+      }
+
+      const entry = violationsMap.get(key);
+      if (resourceId) entry.resourceIds.add(resourceId);
+      if (resourceName) entry.resourceNames.add(resourceName);
+      if (assignment.account?.id) entry.accountIds.add(assignment.account.id);
+      if (assignment.resource?.system?.id) entry.systemIds.add(assignment.resource.system.id);
+    });
+  });
+
+  if (shouldLog('VIOLATIONS')) {
+    console.log('[LaneBuilder] Violations found:', violationsMap.size);
+  }
+
+  // Convert to lane items
+  const items = Array.from(violationsMap.values()).map((violation, index) => {
+    // Parse the violation description to extract the conflicting entitlement name
+    const conflictMatch = violation.description?.match(/In violation with "([^"]+)"/);
+    const conflictingEntitlement = conflictMatch ? conflictMatch[1] : null;
+
+    const violationNode = {
+      id: `violation-${index}-${violation.description?.replace(/\s+/g, '-').substring(0, 30).toLowerCase()}`,
+      type: NodeTypes.VIOLATION,
+      displayName: conflictingEntitlement
+        ? `Conflict: ${conflictingEntitlement}`
+        : violation.description?.substring(0, 50) || 'Violation',
+      status: violation.violationStatus || 'DECISION_PENDING_NOT_ALLOWED',
+      badges: [
+        violation.violationStatus?.replace(/_/g, ' ') || 'Pending',
+        `${violation.resourceIds.size} entitlement${violation.resourceIds.size !== 1 ? 's' : ''}`
+      ],
+      metadata: {
+        description: violation.description,
+        violationStatus: violation.violationStatus,
+        conflictingEntitlement: conflictingEntitlement,
+        resourceCount: violation.resourceIds.size,
+        resourceIds: Array.from(violation.resourceIds),
+        resourceNames: Array.from(violation.resourceNames),
+        accountIds: Array.from(violation.accountIds),
+        systemIds: Array.from(violation.systemIds)
+      },
+      rawData: {
+        description: violation.description,
+        violationStatus: violation.violationStatus,
+        conflictingEntitlement: conflictingEntitlement,
+        resourceIds: Array.from(violation.resourceIds),
+        resourceNames: Array.from(violation.resourceNames),
+        accountIds: Array.from(violation.accountIds),
+        systemIds: Array.from(violation.systemIds)
+      }
+    };
+
+    return {
+      node: violationNode,
+      reasons: [],
+      groupKey: 'violations',
+      groupLabel: 'Violations',
+      rawData: {
+        ...violation,
+        resourceIds: Array.from(violation.resourceIds),
+        resourceNames: Array.from(violation.resourceNames),
+        accountIds: Array.from(violation.accountIds),
+        systemIds: Array.from(violation.systemIds)
+      }
+    };
+  });
+
+  // Sort by number of resources involved (most first)
+  items.sort((a, b) => b.node.metadata.resourceCount - a.node.metadata.resourceCount);
+
+  return {
+    laneType: LaneTypes.VIOLATIONS,
+    totalCount: items.length,
+    items: items,
+    allItemsData: items,
+    canLoadMore: false
+  };
+};
+
 // ============================================================================
 // LANE BUILDER ORCHESTRATOR
 // ============================================================================
@@ -472,6 +589,11 @@ export const buildLanesForFocusNode = (focusNodeType, assignments, options = {})
         break;
       case 'systems':
         lane = buildSystemsLane(assignments, options);
+        break;
+      case 'violations':
+        // Violations are built by the specialized function in accessLensDataService
+        // We need to dynamically import it to avoid circular dependency
+        lane = buildViolationsLaneFromAssignments(assignments, options);
         break;
       default:
         console.warn(`Unknown extract type: ${extractType}`);

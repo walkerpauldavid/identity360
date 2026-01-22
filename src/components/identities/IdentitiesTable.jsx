@@ -11,7 +11,7 @@ import { omadaApi } from '../../services/omadaApi';
 import IdentityDetail from './IdentityDetail';
 import './IdentitiesList.css';
 
-// Access Lens icon SVG component - matches the toolbar icon
+// Identity360 icon SVG component - matches the toolbar icon
 const AccessLensIcon = () => (
   <svg
     width="16"
@@ -91,13 +91,13 @@ const IdentitiesTable = ({ identities, categoryColor }) => {
   const { getBearerToken, user } = useAuth();
   const { preferences, setPreference } = usePreferences();
 
-  // Handler to open Access Lens for an identity
+  // Handler to open Identity360 for an identity
   const handleOpenAccessLens = (e, identity) => {
     e.stopPropagation(); // Prevent row click from triggering
     const identityUId = identity.UId;
     if (identityUId) {
-      // Navigate to Access Lens page with identity UId as query parameter
-      navigate(`/access-lens?identity=${identityUId}`);
+      // Navigate to Identity360 page with identity UId as query parameter
+      navigate(`/identity360?identity=${identityUId}`);
     }
   };
 
@@ -526,7 +526,7 @@ const IdentitiesTable = ({ identities, categoryColor }) => {
         <thead>
           <tr>
             <th className="access-lens-column" style={{ width: '40px', textAlign: 'center' }}>
-              <div className="th-content" title="Open in Access Lens">
+              <div className="th-content" title="Open in Identity360">
                 <AccessLensIcon />
               </div>
             </th>
@@ -869,9 +869,9 @@ const IdentitiesTable = ({ identities, categoryColor }) => {
                   className="access-lens-cell"
                   style={{ textAlign: 'center', cursor: 'pointer' }}
                   onClick={(e) => handleOpenAccessLens(e, identity)}
-                  title={`Open Access Lens for ${extractFieldValue(identity.DISPLAYNAME) || extractFieldValue(identity.FIRSTNAME) + ' ' + extractFieldValue(identity.LASTNAME)}`}
+                  title={`Open Identity360 for ${extractFieldValue(identity.DISPLAYNAME) || extractFieldValue(identity.FIRSTNAME) + ' ' + extractFieldValue(identity.LASTNAME)}`}
                 >
-                  <button className="access-lens-btn" aria-label="Open in Access Lens">
+                  <button className="access-lens-btn" aria-label="Open in Identity360">
                     <AccessLensIcon />
                   </button>
                 </td>
