@@ -920,7 +920,7 @@ export const LaneConfigSchema = {
               sourceField: 'id',                              // System's ID
               intermediateTargetField: 'metadata.systemId',   // Match against entitlement's systemId
               intermediateExtractField: 'id',                 // Extract entitlement IDs from filtered entitlements
-              targetField: 'resourceIds'                      // Match against policy's resourceIds array
+              targetField: 'metadata.resourceIds'                      // Match against policy's resourceIds array
             }
           }
         }
@@ -966,7 +966,7 @@ export const LaneConfigSchema = {
               sourceField: 'id',                          // Account's ID
               intermediateTargetField: 'metadata.accountIds',  // Match against entitlement's accountIds array
               intermediateExtractField: 'id',             // Extract entitlement IDs from filtered entitlements
-              targetField: 'resourceIds'                  // Match against policy's resourceIds array
+              targetField: 'metadata.resourceIds'                  // Match against policy's resourceIds array
             }
           }
         }
@@ -1004,7 +1004,7 @@ export const LaneConfigSchema = {
             [LaneTypes.ASSIGNMENT_POLICIES]: {
               type: CrossLaneFilterType.ARRAY_CONTAINS,
               sourceField: 'id',           // Entitlement's ID
-              targetField: 'resourceIds'   // Policy's resourceIds array should contain the entitlement ID
+              targetField: 'metadata.resourceIds'   // Policy's resourceIds array should contain the entitlement ID
             }
           }
         }
@@ -1055,7 +1055,7 @@ export const LaneConfigSchema = {
               sourceField: 'id',                              // Logical App's ID
               intermediateTargetField: 'metadata.systemId',   // Match against entitlement's systemId
               intermediateExtractField: 'id',                 // Extract entitlement IDs from filtered entitlements
-              targetField: 'resourceIds'                      // Match against policy's resourceIds array
+              targetField: 'metadata.resourceIds'                      // Match against policy's resourceIds array
             }
           }
         }
@@ -1081,7 +1081,7 @@ export const LaneConfigSchema = {
             // When Policy is selected, filter Entitlements to show only those assigned by this policy
             [LaneTypes.EFFECTIVE_ENTITLEMENTS]: {
               type: CrossLaneFilterType.ARRAY_CONTAINS,
-              sourceField: 'resourceIds',  // Array of resource IDs this policy assigns
+              sourceField: 'metadata.resourceIds',  // Array of resource IDs this policy assigns
               targetField: 'id'            // Match against entitlement's resource ID
             },
             // When Policy is selected, filter Accounts to show only those relevant to the policy's entitlements
@@ -1090,7 +1090,7 @@ export const LaneConfigSchema = {
               type: CrossLaneFilterType.CASCADED_THROUGH,
               // First, filter the intermediate lane (Entitlements)
               intermediateLane: LaneTypes.EFFECTIVE_ENTITLEMENTS,
-              sourceField: 'resourceIds',           // Policy's array of resource IDs
+              sourceField: 'metadata.resourceIds',           // Policy's array of resource IDs
               intermediateTargetField: 'id',        // Match against entitlement's ID
               // Then, extract values from filtered entitlements to filter Accounts
               // Uses accountIds (array) because deduplicated entitlements aggregate all accounts
@@ -1102,7 +1102,7 @@ export const LaneConfigSchema = {
             [LaneTypes.SYSTEMS]: {
               type: CrossLaneFilterType.CASCADED_THROUGH,
               intermediateLane: LaneTypes.EFFECTIVE_ENTITLEMENTS,
-              sourceField: 'resourceIds',           // Policy's array of resource IDs
+              sourceField: 'metadata.resourceIds',           // Policy's array of resource IDs
               intermediateTargetField: 'id',        // Match against entitlement's ID
               intermediateExtractFields: ['metadata.systemId', 'metadata.system'],  // Get systemId OR system name
               targetFields: ['id', 'displayName']   // Match against system's ID or displayName
@@ -1112,7 +1112,7 @@ export const LaneConfigSchema = {
             [LaneTypes.LOGICAL_APPLICATIONS]: {
               type: CrossLaneFilterType.CASCADED_THROUGH,
               intermediateLane: LaneTypes.EFFECTIVE_ENTITLEMENTS,
-              sourceField: 'resourceIds',           // Policy's array of resource IDs
+              sourceField: 'metadata.resourceIds',           // Policy's array of resource IDs
               intermediateTargetField: 'id',        // Match against entitlement's ID
               intermediateExtractFields: ['metadata.systemId', 'metadata.system'],  // Get systemId OR system name
               targetFields: ['id', 'displayName']   // Match against logical app's ID or displayName
@@ -1134,14 +1134,14 @@ export const LaneConfigSchema = {
             // When Violation is selected, filter Entitlements to show only those involved in the violation
             [LaneTypes.EFFECTIVE_ENTITLEMENTS]: {
               type: CrossLaneFilterType.ARRAY_CONTAINS,
-              sourceField: 'resourceIds',  // Array of resource IDs involved in this violation
+              sourceField: 'metadata.resourceIds',  // Array of resource IDs involved in this violation
               targetField: 'id'            // Match against entitlement's resource ID
             },
             // When Violation is selected, filter Accounts via cascaded filter through Entitlements
             [LaneTypes.ACCOUNTS]: {
               type: CrossLaneFilterType.CASCADED_THROUGH,
               intermediateLane: LaneTypes.EFFECTIVE_ENTITLEMENTS,
-              sourceField: 'resourceIds',
+              sourceField: 'metadata.resourceIds',
               intermediateTargetField: 'id',
               intermediateExtractField: 'metadata.accountIds',
               targetField: 'id'
@@ -1150,7 +1150,7 @@ export const LaneConfigSchema = {
             [LaneTypes.SYSTEMS]: {
               type: CrossLaneFilterType.CASCADED_THROUGH,
               intermediateLane: LaneTypes.EFFECTIVE_ENTITLEMENTS,
-              sourceField: 'resourceIds',
+              sourceField: 'metadata.resourceIds',
               intermediateTargetField: 'id',
               intermediateExtractFields: ['metadata.systemId', 'metadata.system'],
               targetFields: ['id', 'displayName']
@@ -1159,7 +1159,7 @@ export const LaneConfigSchema = {
             [LaneTypes.LOGICAL_APPLICATIONS]: {
               type: CrossLaneFilterType.CASCADED_THROUGH,
               intermediateLane: LaneTypes.EFFECTIVE_ENTITLEMENTS,
-              sourceField: 'resourceIds',
+              sourceField: 'metadata.resourceIds',
               intermediateTargetField: 'id',
               intermediateExtractFields: ['metadata.systemId', 'metadata.system'],
               targetFields: ['id', 'displayName']
@@ -1167,8 +1167,8 @@ export const LaneConfigSchema = {
             // When Violation is selected, filter Assignment Policies to show only those that assigned the violating entitlements
             [LaneTypes.ASSIGNMENT_POLICIES]: {
               type: CrossLaneFilterType.ARRAY_CONTAINS,
-              sourceField: 'resourceIds',
-              targetField: 'resourceIds'  // Policy's resourceIds array should contain the violation's resourceIds
+              sourceField: 'metadata.resourceIds',
+              targetField: 'metadata.resourceIds'  // Policy's resourceIds array should contain the violation's resourceIds
             }
           }
         }
@@ -1292,7 +1292,7 @@ export const LaneConfigSchema = {
               sourceField: 'id',
               intermediateTargetField: 'metadata.identityIds',
               intermediateExtractField: 'id',
-              targetField: 'resourceIds'
+              targetField: 'metadata.resourceIds'
             }
           }
         }
@@ -1328,7 +1328,7 @@ export const LaneConfigSchema = {
               sourceField: 'id',
               intermediateTargetField: 'metadata.accountIds',
               intermediateExtractField: 'id',
-              targetField: 'resourceIds'
+              targetField: 'metadata.resourceIds'
             }
           }
         }
@@ -1362,7 +1362,7 @@ export const LaneConfigSchema = {
             [LaneTypes.ASSIGNMENT_POLICIES]: {
               type: CrossLaneFilterType.ARRAY_CONTAINS,
               sourceField: 'id',           // Entitlement's ID
-              targetField: 'resourceIds'   // Policy's resourceIds array should contain the entitlement ID
+              targetField: 'metadata.resourceIds'   // Policy's resourceIds array should contain the entitlement ID
             }
           }
         }
@@ -1391,7 +1391,7 @@ export const LaneConfigSchema = {
               sourceField: 'id',
               intermediateTargetField: 'metadata.systemId',
               intermediateExtractField: 'id',
-              targetField: 'resourceIds'
+              targetField: 'metadata.resourceIds'
             }
           }
         }
@@ -1410,14 +1410,14 @@ export const LaneConfigSchema = {
             // When Policy is selected, filter Entitlements to show only those assigned by this policy
             [LaneTypes.EFFECTIVE_ENTITLEMENTS]: {
               type: CrossLaneFilterType.ARRAY_CONTAINS,
-              sourceField: 'resourceIds',
+              sourceField: 'metadata.resourceIds',
               targetField: 'id'
             },
             // When Policy is selected, filter Identities to show only those who received entitlements via this policy
             [LaneTypes.IDENTITIES]: {
               type: CrossLaneFilterType.CASCADED_THROUGH,
               intermediateLane: LaneTypes.EFFECTIVE_ENTITLEMENTS,
-              sourceField: 'resourceIds',
+              sourceField: 'metadata.resourceIds',
               intermediateTargetField: 'id',
               intermediateExtractField: 'metadata.identityIds',
               targetField: 'id'
@@ -1426,7 +1426,7 @@ export const LaneConfigSchema = {
             [LaneTypes.ACCOUNTS]: {
               type: CrossLaneFilterType.CASCADED_THROUGH,
               intermediateLane: LaneTypes.EFFECTIVE_ENTITLEMENTS,
-              sourceField: 'resourceIds',
+              sourceField: 'metadata.resourceIds',
               intermediateTargetField: 'id',
               intermediateExtractField: 'metadata.accountIds',
               targetField: 'id'
