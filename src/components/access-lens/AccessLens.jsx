@@ -633,6 +633,7 @@ const AccessLens = ({
   // Refs
   const fulcrumRef = useRef(null);
   const previousFocusNodeId = useRef(null);  // Track focus node changes
+  const previousVisibleLanesRef = useRef([]);  // Store previous visibleLanes to preserve filtered state when lane becomes filter source
 
   // State
   const [focusNode, setFocusNode] = useState(null);
@@ -1120,7 +1121,7 @@ const AccessLens = ({
       [LaneTypes.VIOLATIONS]: { setter: setSelectedViolationId, current: selectedViolationId }
     };
 
-    // Clear ALL other lane selections first - the clicked lane becomes the master filter
+    // Clear ALL other lane selections - the clicked lane becomes the master filter
     Object.entries(selectionSetters).forEach(([lane, { setter }]) => {
       if (lane !== laneType) {
         setter(null);
@@ -1575,16 +1576,26 @@ const AccessLens = ({
       };
 
       // Step 1: Apply cross-lane filters using schema configuration
+      // Pass previousVisibleLanesRef.current to preserve filtered state when a lane becomes filter source
       let filteredLanes = applyCrossLaneFilters(
         lanes,
         focusNode.type,
         selections,
-        additionalFilters
+        additionalFilters,
+        previousVisibleLanesRef.current
       );
 
       // Step 2: Apply toolbar filters to Entitlements lane (these are independent of cross-lane filtering)
+      // IMPORTANT: When a lane is the "filter source" (user selected an item within it),
+      // do NOT re-filter that lane to avoid refreshing its contents
       filteredLanes = filteredLanes.map(lane => {
         if (lane.laneType !== LaneTypes.EFFECTIVE_ENTITLEMENTS) return lane;
+
+        // If this lane is the filter source (has a selection),
+        // preserve the lane contents to avoid visual refresh
+        if (isLaneFilterSource(lane.laneType, selections)) {
+          return lane;
+        }
 
         let filteredItems = [...lane.items];
         let isFiltered = lane.isFiltered || false;
@@ -1642,6 +1653,10 @@ const AccessLens = ({
         focusNode.type,
         filters.visibleLanes
       );
+
+      // Store the current filtered state for next render
+      // This allows us to preserve the filtered items when a lane becomes filter source
+      previousVisibleLanesRef.current = result;
 
       return result;
     }
@@ -2499,32 +2514,40 @@ const AccessLens = ({
                                   lane.laneType === LaneTypes.LOGICAL_APPLICATIONS ? selectedLogicalAppId !== null :
                                   lane.laneType === LaneTypes.IDENTITIES ? selectedIdentityId !== null :
                                   lane.laneType === LaneTypes.ASSIGNMENT_POLICIES ? selectedPolicyId !== null :
+                                  lane.laneType === LaneTypes.EFFECTIVE_ENTITLEMENTS ? selectedEntitlementId !== null :
+                                  lane.laneType === LaneTypes.VIOLATIONS ? selectedViolationId !== null :
                                   lane.isFiltered}
                   activeFilterId={lane.laneType === LaneTypes.ACCOUNTS ? selectedAccountId :
                                   lane.laneType === LaneTypes.SYSTEMS ? selectedSystemId :
                                   lane.laneType === LaneTypes.LOGICAL_APPLICATIONS ? selectedLogicalAppId :
                                   lane.laneType === LaneTypes.IDENTITIES ? selectedIdentityId :
-                                  lane.laneType === LaneTypes.ASSIGNMENT_POLICIES ? selectedPolicyId : null}
+                                  lane.laneType === LaneTypes.ASSIGNMENT_POLICIES ? selectedPolicyId :
+                                  lane.laneType === LaneTypes.EFFECTIVE_ENTITLEMENTS ? selectedEntitlementId :
+                                  lane.laneType === LaneTypes.VIOLATIONS ? selectedViolationId : null}
                   forceCollapsed={lanesForceCollapsed}
                   forceExpanded={lanesForceExpanded}
                   isFilterSource={
-                    // A lane is the "filter source" (shows "Filtering") if user clicked an item in it to filter other lanes
+                    // A lane is the "filter source" (shows "Filtering") if user clicked an item in it
+                    // Having a selection makes this lane the master filter
                     (lane.laneType === LaneTypes.ACCOUNTS && selectedAccountId !== null) ||
                     (lane.laneType === LaneTypes.SYSTEMS && selectedSystemId !== null) ||
                     (lane.laneType === LaneTypes.LOGICAL_APPLICATIONS && selectedLogicalAppId !== null) ||
                     (lane.laneType === LaneTypes.IDENTITIES && selectedIdentityId !== null) ||
-                    (lane.laneType === LaneTypes.ASSIGNMENT_POLICIES && selectedPolicyId !== null)
+                    (lane.laneType === LaneTypes.ASSIGNMENT_POLICIES && selectedPolicyId !== null) ||
+                    (lane.laneType === LaneTypes.EFFECTIVE_ENTITLEMENTS && selectedEntitlementId !== null) ||
+                    (lane.laneType === LaneTypes.VIOLATIONS && selectedViolationId !== null)
                   }
                   isFiltered={
-                    // A lane is "filtered" (shows "Filtered") if it's being filtered BY another lane or toolbar
-                    // Effective Entitlements: filtered by toolbar filters OR by clicking account/system/logical-app/policy
-                    // Accounts/Systems: filtered by cross-lane filtering when entitlements are filtered
+                    // A lane is "filtered" (shows "Filtered") if it's being filtered BY another lane
+                    // AND it does NOT have its own selection (selection = master filter takes precedence)
                     lane.isFiltered && !(
                       (lane.laneType === LaneTypes.ACCOUNTS && selectedAccountId !== null) ||
                       (lane.laneType === LaneTypes.SYSTEMS && selectedSystemId !== null) ||
                       (lane.laneType === LaneTypes.LOGICAL_APPLICATIONS && selectedLogicalAppId !== null) ||
                       (lane.laneType === LaneTypes.IDENTITIES && selectedIdentityId !== null) ||
-                      (lane.laneType === LaneTypes.ASSIGNMENT_POLICIES && selectedPolicyId !== null)
+                      (lane.laneType === LaneTypes.ASSIGNMENT_POLICIES && selectedPolicyId !== null) ||
+                      (lane.laneType === LaneTypes.EFFECTIVE_ENTITLEMENTS && selectedEntitlementId !== null) ||
+                      (lane.laneType === LaneTypes.VIOLATIONS && selectedViolationId !== null)
                     )
                   }
                 />

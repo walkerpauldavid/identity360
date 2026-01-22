@@ -890,7 +890,7 @@ export const LaneConfigSchema = {
         apiSource: { type: 'derived', from: 'calculatedAssignments', extract: 'systems' },
         position: { x: -380, y: -220 },
         crossLaneFilters: {
-          filtersLanes: [LaneTypes.ACCOUNTS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.LOGICAL_APPLICATIONS],
+          filtersLanes: [LaneTypes.ACCOUNTS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.ASSIGNMENT_POLICIES],
           filteredByLanes: [LaneTypes.ACCOUNTS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.VIOLATIONS],
           filterMappings: {
             // When System is selected, filter Accounts by system
@@ -911,6 +911,16 @@ export const LaneConfigSchema = {
               type: CrossLaneFilterType.ARRAY_CONTAINS,
               sourceField: 'id',
               targetField: 'metadata.underlyingSystemIds'
+            },
+            // When System is selected, filter Assignment Policies to show only those that assign entitlements on this system
+            // This is a cascaded filter: System -> Entitlements (by systemId) -> Policies (by resourceIds)
+            [LaneTypes.ASSIGNMENT_POLICIES]: {
+              type: CrossLaneFilterType.CASCADED_THROUGH,
+              intermediateLane: LaneTypes.EFFECTIVE_ENTITLEMENTS,
+              sourceField: 'id',                              // System's ID
+              intermediateTargetField: 'metadata.systemId',   // Match against entitlement's systemId
+              intermediateExtractField: 'id',                 // Extract entitlement IDs from filtered entitlements
+              targetField: 'resourceIds'                      // Match against policy's resourceIds array
             }
           }
         }
@@ -922,7 +932,7 @@ export const LaneConfigSchema = {
         apiSource: { type: 'derived', from: 'calculatedAssignments', extract: 'accounts' },
         position: { x: 750, y: -380 },  // North-East - matches COMPASS_POSITIONS[NE]
         crossLaneFilters: {
-          filtersLanes: [LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.SYSTEMS, LaneTypes.LOGICAL_APPLICATIONS],
+          filtersLanes: [LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.SYSTEMS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.ASSIGNMENT_POLICIES],
           filteredByLanes: [LaneTypes.SYSTEMS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.VIOLATIONS],
           filterMappings: {
             // When Account is selected, filter Entitlements by account
@@ -947,6 +957,16 @@ export const LaneConfigSchema = {
               intermediateTargetField: 'metadata.accountIds',  // Match against entitlement's accountIds array
               intermediateExtractFields: ['metadata.systemId', 'metadata.system'],  // Get systemId OR system name from each filtered entitlement
               targetFields: ['id', 'displayName']         // Match against logical app's ID or displayName
+            },
+            // When Account is selected, filter Assignment Policies to show only those that assign entitlements accessible via this account
+            // This is a cascaded filter: Account -> Entitlements (by accountIds) -> Policies (by resourceIds)
+            [LaneTypes.ASSIGNMENT_POLICIES]: {
+              type: CrossLaneFilterType.CASCADED_THROUGH,
+              intermediateLane: LaneTypes.EFFECTIVE_ENTITLEMENTS,
+              sourceField: 'id',                          // Account's ID
+              intermediateTargetField: 'metadata.accountIds',  // Match against entitlement's accountIds array
+              intermediateExtractField: 'id',             // Extract entitlement IDs from filtered entitlements
+              targetField: 'resourceIds'                  // Match against policy's resourceIds array
             }
           }
         }
@@ -959,7 +979,7 @@ export const LaneConfigSchema = {
         position: { x: -380, y: 80 },
         crossLaneFilters: {
           // When an entitlement is selected, filter related lanes to show only relevant items
-          filtersLanes: [LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.SYSTEMS, LaneTypes.ACCOUNTS],
+          filtersLanes: [LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.SYSTEMS, LaneTypes.ACCOUNTS, LaneTypes.ASSIGNMENT_POLICIES],
           filteredByLanes: [LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.VIOLATIONS],
           filterMappings: {
             // When Entitlement is selected, filter Logical Applications to show only the one this entitlement belongs to
@@ -979,6 +999,12 @@ export const LaneConfigSchema = {
               type: CrossLaneFilterType.ARRAY_CONTAINS,
               sourceField: 'metadata.accountIds',
               targetField: 'id'
+            },
+            // When Entitlement is selected, filter Assignment Policies to show only those that assign this entitlement
+            [LaneTypes.ASSIGNMENT_POLICIES]: {
+              type: CrossLaneFilterType.ARRAY_CONTAINS,
+              sourceField: 'id',           // Entitlement's ID
+              targetField: 'resourceIds'   // Policy's resourceIds array should contain the entitlement ID
             }
           }
         }
@@ -998,7 +1024,7 @@ export const LaneConfigSchema = {
         apiSource: { type: 'derived', from: 'calculatedAssignments', extract: 'logicalApps' },
         position: { x: 600, y: 80 },
         crossLaneFilters: {
-          filtersLanes: [LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.SYSTEMS, LaneTypes.ACCOUNTS],
+          filtersLanes: [LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.SYSTEMS, LaneTypes.ACCOUNTS, LaneTypes.ASSIGNMENT_POLICIES],
           filteredByLanes: [LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.VIOLATIONS],
           filterMappings: {
             // When Logical App is selected, filter Entitlements to those on this logical system
@@ -1020,6 +1046,16 @@ export const LaneConfigSchema = {
               type: CrossLaneFilterType.ARRAY_CONTAINS,
               sourceField: 'metadata.underlyingSystemIds',
               targetField: 'metadata.systemId'
+            },
+            // When Logical App is selected, filter Assignment Policies to show only those that assign entitlements on this logical app
+            // This is a cascaded filter: Logical App -> Entitlements (by systemId) -> Policies (by resourceIds)
+            [LaneTypes.ASSIGNMENT_POLICIES]: {
+              type: CrossLaneFilterType.CASCADED_THROUGH,
+              intermediateLane: LaneTypes.EFFECTIVE_ENTITLEMENTS,
+              sourceField: 'id',                              // Logical App's ID
+              intermediateTargetField: 'metadata.systemId',   // Match against entitlement's systemId
+              intermediateExtractField: 'id',                 // Extract entitlement IDs from filtered entitlements
+              targetField: 'resourceIds'                      // Match against policy's resourceIds array
             }
           }
         }
@@ -1040,7 +1076,7 @@ export const LaneConfigSchema = {
         position: { x: -600, y: 80 },
         crossLaneFilters: {
           filtersLanes: [LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS, LaneTypes.LOGICAL_APPLICATIONS],
-          filteredByLanes: [LaneTypes.VIOLATIONS],  // Policies are filtered when a violation is selected
+          filteredByLanes: [LaneTypes.VIOLATIONS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS],  // Policies are filtered when a violation, logical app, entitlement, account, or system is selected
           filterMappings: {
             // When Policy is selected, filter Entitlements to show only those assigned by this policy
             [LaneTypes.EFFECTIVE_ENTITLEMENTS]: {

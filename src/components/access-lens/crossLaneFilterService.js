@@ -38,6 +38,14 @@ const applyFieldMatch = (item, sourceValue, targetField) => {
 const applyArrayContains = (item, sourceValue, targetField, sourceSet = null) => {
   const targetValue = getItemValue(item, targetField);
 
+  // Both source AND target are arrays - check for intersection
+  if (Array.isArray(sourceValue) && Array.isArray(targetValue)) {
+    // Use pre-computed sourceSet if available, otherwise create it
+    const srcSet = sourceSet || new Set(sourceValue.map(sv => String(sv)));
+    // Check if any element in target array is in source array
+    return targetValue.some(tv => tv != null && srcSet.has(String(tv)));
+  }
+
   // Source is array, target is single value - use pre-computed Set if available
   if (Array.isArray(sourceValue)) {
     const targetStr = targetValue != null ? String(targetValue) : '';
@@ -169,13 +177,72 @@ const applyCascadedFilter = (targetItems, selectedNode, filterMapping, allLanes)
     return [];
   }
 
+  // Step 2b: Resolve logical application IDs to underlying physical system IDs
+  // When filtering Systems lane with systemId fields, some extracted IDs may be
+  // logical application IDs. We need to resolve these to their underlying physical systems.
+  const isFilteringSystemLane = matchTargetFields.some(f => f === 'id' || f === 'displayName');
+  const isExtractingSystemFields = extractFields.some(f => f.includes('systemId') || f.includes('system'));
+
+  if (isFilteringSystemLane && isExtractingSystemFields) {
+    // Find the Logical Applications lane
+    const logicalAppsLane = allLanes.find(l => l.laneType === LaneTypes.LOGICAL_APPLICATIONS);
+    if (logicalAppsLane?.items) {
+      // Build a map of logical app IDs/names to their underlying system IDs
+      const logicalAppsMap = new Map();
+      for (const item of logicalAppsLane.items) {
+        if (item.node?.id) {
+          logicalAppsMap.set(String(item.node.id), item.node);
+        }
+        if (item.node?.displayName) {
+          logicalAppsMap.set(item.node.displayName, item.node);
+        }
+      }
+
+      // For each extracted value, check if it's a logical app and add underlying systems
+      const additionalSystemIds = new Set();
+      for (const extractedValue of extractedValuesSet) {
+        const logicalApp = logicalAppsMap.get(extractedValue);
+        if (logicalApp?.metadata?.underlyingSystemIds) {
+          for (const underlyingId of logicalApp.metadata.underlyingSystemIds) {
+            if (underlyingId != null) {
+              additionalSystemIds.add(String(underlyingId));
+            }
+          }
+        }
+        if (logicalApp?.metadata?.underlyingSystems) {
+          for (const underlyingSystem of logicalApp.metadata.underlyingSystems) {
+            if (underlyingSystem?.id) additionalSystemIds.add(String(underlyingSystem.id));
+            if (underlyingSystem?.name) additionalSystemIds.add(underlyingSystem.name);
+          }
+        }
+      }
+
+      // Add underlying system IDs to the extracted values set
+      for (const sysId of additionalSystemIds) {
+        extractedValuesSet.add(sysId);
+      }
+    }
+  }
+
   // Step 3: Filter target items using Set for O(1) lookup
   // Support multiple target fields - match if ANY target field matches ANY extracted value
+  // Also handles arrays - if target value is an array, check if ANY element matches
   const filteredTargetItems = targetItems.filter(item => {
     for (const tField of matchTargetFields) {
       const targetValue = getItemValue(item, tField);
-      if (targetValue != null && extractedValuesSet.has(String(targetValue))) {
-        return true;
+      if (targetValue == null) continue;
+
+      // Handle array target values (e.g., resourceIds array in policies)
+      if (Array.isArray(targetValue)) {
+        // Check if ANY element of the target array is in the extracted values
+        if (targetValue.some(tv => tv != null && extractedValuesSet.has(String(tv)))) {
+          return true;
+        }
+      } else {
+        // Single value - direct lookup
+        if (extractedValuesSet.has(String(targetValue))) {
+          return true;
+        }
       }
     }
     return false;
@@ -225,6 +292,7 @@ const applyFilterMapping = (items, selectedNode, filterMapping, allLanes = []) =
 
   // Pre-compute source field values for MULTI_FIELD_MATCH
   let sourceFieldValues = null;
+  let sourceFieldValuesSet = null;
   if (type === CrossLaneFilterType.MULTI_FIELD_MATCH && sourceFields) {
     sourceFieldValues = [];
     for (const sf of sourceFields) {
@@ -235,6 +303,52 @@ const applyFilterMapping = (items, selectedNode, filterMapping, allLanes = []) =
       }
     }
     if (sourceFieldValues.length === 0) return items; // No source values found
+
+    // Resolve logical app IDs to underlying physical system IDs when filtering Systems
+    // This handles the case where an entitlement's systemId points to a logical app
+    const isFilteringSystemFields = targetFields?.some(f => f === 'id' || f === 'displayName');
+    const isSourceSystemFields = sourceFields?.some(f => f.includes('systemId') || f.includes('system'));
+
+    if (isFilteringSystemFields && isSourceSystemFields && allLanes.length > 0) {
+      const logicalAppsLane = allLanes.find(l => l.laneType === LaneTypes.LOGICAL_APPLICATIONS);
+      if (logicalAppsLane?.items) {
+        // Build a map of logical app IDs/names to their underlying system IDs
+        const logicalAppsMap = new Map();
+        for (const item of logicalAppsLane.items) {
+          if (item.node?.id) {
+            logicalAppsMap.set(String(item.node.id), item.node);
+          }
+          if (item.node?.displayName) {
+            logicalAppsMap.set(item.node.displayName, item.node);
+          }
+        }
+
+        // For each source value, check if it's a logical app and add underlying systems
+        const additionalSystemIds = [];
+        for (const srcVal of sourceFieldValues) {
+          const logicalApp = logicalAppsMap.get(srcVal);
+          if (logicalApp?.metadata?.underlyingSystemIds) {
+            for (const underlyingId of logicalApp.metadata.underlyingSystemIds) {
+              if (underlyingId != null) {
+                additionalSystemIds.push(String(underlyingId));
+              }
+            }
+          }
+          if (logicalApp?.metadata?.underlyingSystems) {
+            for (const underlyingSystem of logicalApp.metadata.underlyingSystems) {
+              if (underlyingSystem?.id) additionalSystemIds.push(String(underlyingSystem.id));
+              if (underlyingSystem?.name) additionalSystemIds.push(underlyingSystem.name);
+            }
+          }
+        }
+
+        // Add underlying system IDs to source values
+        sourceFieldValues = [...sourceFieldValues, ...additionalSystemIds];
+      }
+    }
+
+    // Create Set for O(1) lookup
+    sourceFieldValuesSet = new Set(sourceFieldValues);
   }
 
   return items.filter(item => {
@@ -250,13 +364,11 @@ const applyFilterMapping = (items, selectedNode, filterMapping, allLanes = []) =
       }
 
       case CrossLaneFilterType.MULTI_FIELD_MATCH: {
-        // Use pre-computed source values
-        for (const sourceStr of sourceFieldValues) {
-          for (const tf of targetFields) {
-            const targetValue = getItemValue(item, tf);
-            if (targetValue != null && String(targetValue) === sourceStr) {
-              return true;
-            }
+        // Use pre-computed source values Set for O(1) lookup
+        for (const tf of targetFields) {
+          const targetValue = getItemValue(item, tf);
+          if (targetValue != null && sourceFieldValuesSet.has(String(targetValue))) {
+            return true;
           }
         }
         return false;
@@ -319,13 +431,15 @@ const findItemById = (lane, itemId, itemIdMap = null) => {
  * @param {Object} selections - Object containing current lane selections
  *   { accountId, systemId, identityId, logicalAppId }
  * @param {Object} additionalFilters - Additional filter criteria (reasonTypes, complianceStatuses, etc.)
+ * @param {Array} previousFilteredLanes - Previous visibleLanes state to preserve filtered items when lane becomes filter source
  * @returns {Array} Filtered lanes with updated items
  */
 export const applyCrossLaneFilters = (
   lanes,
   focusNodeType,
   selections = {},
-  additionalFilters = {}
+  additionalFilters = {},
+  previousFilteredLanes = []
 ) => {
   if (!lanes || !focusNodeType) return lanes;
 
@@ -428,6 +542,22 @@ export const applyCrossLaneFilters = (
   const filteredLanes = lanes.map(lane => {
     const laneConfig = config.lanes.find(l => l.laneType === lane.laneType);
     if (!laneConfig?.crossLaneFilters?.filteredByLanes) {
+      return lane;
+    }
+
+    // If this lane has a selection (is the master filter source),
+    // preserve its current items to avoid visual refresh/repopulation
+    // The clicked lane becomes the filter source, so don't filter it
+    // IMPORTANT: Use the PREVIOUS filtered state, not the raw lane data
+    if (selectionMap[lane.laneType]) {
+      // Find this lane in the previous filtered state
+      const previousLane = previousFilteredLanes.find(pl => pl.laneType === lane.laneType);
+      // If we have a previous filtered state for this lane, use it to preserve the filtered items
+      // This prevents the access card from repopulating when an item within it is selected
+      if (previousLane && previousLane.items) {
+        return previousLane;
+      }
+      // Fallback to raw lane if no previous state exists (first selection)
       return lane;
     }
 
