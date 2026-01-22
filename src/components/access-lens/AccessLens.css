@@ -1252,7 +1252,23 @@
 }
 
 /* Lane card filter states */
-.lane-card.filter-source {
+/* "filtered" state - lane is being filtered BY another lane (yellow styling) */
+.draggable-lane .lane-card.filtered {
+  border-color: #ebcb8b;
+}
+
+.draggable-lane .lane-card.filtered .lane-header {
+  background: rgba(235, 203, 139, 0.1);
+}
+
+.draggable-lane .lane-card.filtered .lane-filter-badge {
+  background: rgba(235, 203, 139, 0.2);
+  color: #ebcb8b;
+}
+
+/* "filter-source" state - this lane IS the master filter (blue styling) */
+/* MUST come after .filtered rules so filter-source takes precedence when both classes are present */
+.draggable-lane .lane-card.filter-source {
   border: 3px solid #81a1c1;
   box-shadow:
     0 0 20px rgba(129, 161, 193, 0.6),
@@ -1260,28 +1276,15 @@
     0 0 60px rgba(129, 161, 193, 0.2);
 }
 
-.lane-card.filter-source .lane-header {
+.draggable-lane .lane-card.filter-source .lane-header {
   background: rgba(94, 129, 172, 0.15);
   border-left-color: #5e81ac;
 }
 
-.lane-card.filter-source .lane-filter-badge {
+.draggable-lane .lane-card.filter-source .lane-filter-badge {
   background: #5e81ac;
   color: white;
   font-weight: 600;
-}
-
-.lane-card.filtered {
-  border-color: #ebcb8b;
-}
-
-.lane-card.filtered .lane-header {
-  background: rgba(235, 203, 139, 0.1);
-}
-
-.lane-card.filtered .lane-filter-badge {
-  background: rgba(235, 203, 139, 0.2);
-  color: #ebcb8b;
 }
 
 /* Violations Lane - Warning yellow styling with solid black background */
@@ -1308,6 +1311,15 @@
 
 .lane-card[data-lane-type="Violations"] .lane-icon {
   color: #f59e0b;
+}
+
+/* Violations lane as filter source - ensure blue glow overrides yellow */
+.draggable-lane .lane-card[data-lane-type="Violations"].filter-source {
+  border: 3px solid #81a1c1;
+  box-shadow:
+    0 0 20px rgba(129, 161, 193, 0.6),
+    0 0 40px rgba(129, 161, 193, 0.4),
+    0 0 60px rgba(129, 161, 193, 0.2);
 }
 
 .lane-content {

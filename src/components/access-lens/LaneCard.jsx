@@ -73,6 +73,18 @@ const LaneCard = ({
     }
   }, [forceExpanded]);
 
+  // Effect: Auto-expand lanes when filtering is active and lane has items
+  // This ensures lanes that become visible due to filter changes are shown expanded
+  useEffect(() => {
+    const hasActiveFilter = isFilterSource || isFiltered;
+    const hasItems = items && items.length > 0;
+
+    if (hasActiveFilter && hasItems && !isExpanded) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setIsExpanded(true);
+    }
+  }, [isFilterSource, isFiltered, items, isExpanded]);
+
   // Compute available resource types from current items
   const availableResourceTypes = useMemo(() => {
     if (!items) return new Set();
