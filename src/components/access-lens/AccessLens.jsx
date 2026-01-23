@@ -1683,12 +1683,31 @@ const AccessLens = ({
             if (accountSystemId) relatedSystemIds.add(String(accountSystemId));
             if (resourceSystemId) relatedSystemIds.add(String(resourceSystemId));
 
-            // Extract policy ID from reason (if assignment is from a policy)
-            const reasonType = item.rawData?.reason?.reasonType;
-            const causeObjectKey = item.rawData?.reason?.causeObjectKey;
-            if (reasonType === 'AssignmentPolicy' && causeObjectKey) {
-              relatedPolicyIds.add(String(causeObjectKey));
-            }
+            // Extract policy ID and name from reason (if assignment is from a policy)
+            // Policy nodes may have ID as causeObjectKey OR as generated from name
+            const extractPolicyInfo = (r) => {
+              if (r?.reasonType === 'Policy') {
+                if (r.causeObjectKey) {
+                  relatedPolicyIds.add(String(r.causeObjectKey));
+                }
+                // Also extract policy name from description for matching by name
+                // Description format is typically "Policy: PolicyName" or just "PolicyName"
+                if (r.description) {
+                  const policyName = r.description.replace(/^Policy:\s*/i, '').trim();
+                  if (policyName) {
+                    relatedPolicyIds.add(policyName); // Add name for matching
+                    // Also add the generated ID format that might be used
+                    relatedPolicyIds.add(`policy-${policyName.replace(/\s+/g, '-').toLowerCase()}`);
+                  }
+                }
+              }
+            };
+
+            // Check both the single reason field and reasons array
+            const reason = item.rawData?.reason;
+            extractPolicyInfo(reason);
+            const reasons = item.rawData?.reasons || item.reasons || [];
+            reasons.forEach(extractPolicyInfo);
 
             // Extract logical application ID if the resource's system is a logical app
             const logicalAppId = item.node?.metadata?.logicalApplicationId;
@@ -1736,9 +1755,16 @@ const AccessLens = ({
 
               case LaneTypes.ASSIGNMENT_POLICIES:
                 if (relatedPolicyIds.size > 0) {
-                  filteredItems = filteredItems.filter(item =>
-                    relatedPolicyIds.has(String(item.node?.id))
-                  );
+                  filteredItems = filteredItems.filter(item => {
+                    // Match by ID
+                    if (relatedPolicyIds.has(String(item.node?.id))) return true;
+                    // Match by name
+                    if (relatedPolicyIds.has(item.node?.displayName)) return true;
+                    // Match by causeObjectKey stored in metadata
+                    if (item.node?.metadata?.causeObjectKey &&
+                        relatedPolicyIds.has(String(item.node.metadata.causeObjectKey))) return true;
+                    return false;
+                  });
                   isFiltered = true;
                 }
                 break;
