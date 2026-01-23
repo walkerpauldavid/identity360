@@ -1661,20 +1661,30 @@ const AccessLens = ({
           // Extract all related IDs from filtered entitlements
           const relatedAccountIds = new Set();
           const relatedSystemIds = new Set();
-          const relatedPolicyIds = new Set();
+          const relatedEntitlementIds = new Set(); // For policy filtering by resourceIds
           const relatedLogicalAppIds = new Set();
           const relatedIdentityIds = new Set();
 
           filteredEntitlementsLane.items.forEach(item => {
+            // Extract entitlement ID (resource ID) - used for policy filtering
+            const entitlementId = item.node?.id;
+            if (entitlementId) relatedEntitlementIds.add(String(entitlementId));
+
             // Extract account ID
             const accountId = item.rawData?.account?.id || item.node?.metadata?.accountId;
             if (accountId) relatedAccountIds.add(String(accountId));
+            // Also extract all account IDs if multiple
+            const accountIds = item.node?.metadata?.accountIds || [];
+            accountIds.forEach(id => relatedAccountIds.add(String(id)));
 
             // Extract identity ID (for system-centric or entitlement-centric views)
             const identityId = item.rawData?.identity?.id ||
                                item.node?.metadata?.identityId ||
                                item.rawData?.account?.identity?.id;
             if (identityId) relatedIdentityIds.add(String(identityId));
+            // Also extract all identity IDs if multiple
+            const identityIds = item.node?.metadata?.identityIds || [];
+            identityIds.forEach(id => relatedIdentityIds.add(String(id)));
 
             // Extract system ID (from both account and resource)
             const accountSystemId = item.rawData?.account?.system?.id;
@@ -1682,32 +1692,6 @@ const AccessLens = ({
                                      item.node?.metadata?.systemId;
             if (accountSystemId) relatedSystemIds.add(String(accountSystemId));
             if (resourceSystemId) relatedSystemIds.add(String(resourceSystemId));
-
-            // Extract policy ID and name from reason (if assignment is from a policy)
-            // Policy nodes may have ID as causeObjectKey OR as generated from name
-            const extractPolicyInfo = (r) => {
-              if (r?.reasonType === 'Policy') {
-                if (r.causeObjectKey) {
-                  relatedPolicyIds.add(String(r.causeObjectKey));
-                }
-                // Also extract policy name from description for matching by name
-                // Description format is typically "Policy: PolicyName" or just "PolicyName"
-                if (r.description) {
-                  const policyName = r.description.replace(/^Policy:\s*/i, '').trim();
-                  if (policyName) {
-                    relatedPolicyIds.add(policyName); // Add name for matching
-                    // Also add the generated ID format that might be used
-                    relatedPolicyIds.add(`policy-${policyName.replace(/\s+/g, '-').toLowerCase()}`);
-                  }
-                }
-              }
-            };
-
-            // Check both the single reason field and reasons array
-            const reason = item.rawData?.reason;
-            extractPolicyInfo(reason);
-            const reasons = item.rawData?.reasons || item.reasons || [];
-            reasons.forEach(extractPolicyInfo);
 
             // Extract logical application ID if the resource's system is a logical app
             const logicalAppId = item.node?.metadata?.logicalApplicationId;
@@ -1754,16 +1738,13 @@ const AccessLens = ({
                 break;
 
               case LaneTypes.ASSIGNMENT_POLICIES:
-                if (relatedPolicyIds.size > 0) {
+                // Filter policies by checking if their resourceIds contain any filtered entitlements
+                // Policy items store the entitlement IDs they granted in metadata.resourceIds
+                if (relatedEntitlementIds.size > 0) {
                   filteredItems = filteredItems.filter(item => {
-                    // Match by ID
-                    if (relatedPolicyIds.has(String(item.node?.id))) return true;
-                    // Match by name
-                    if (relatedPolicyIds.has(item.node?.displayName)) return true;
-                    // Match by causeObjectKey stored in metadata
-                    if (item.node?.metadata?.causeObjectKey &&
-                        relatedPolicyIds.has(String(item.node.metadata.causeObjectKey))) return true;
-                    return false;
+                    const policyResourceIds = item.node?.metadata?.resourceIds || [];
+                    // Check if any of the policy's resourceIds match the filtered entitlements
+                    return policyResourceIds.some(rid => relatedEntitlementIds.has(String(rid)));
                   });
                   isFiltered = true;
                 }
