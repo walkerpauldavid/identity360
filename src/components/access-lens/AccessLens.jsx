@@ -1647,6 +1647,208 @@ const AccessLens = ({
         };
       });
 
+      // Step 2b: Cascade compliance/toolbar filters to all other lanes
+      // When compliance filter is active, other lanes should only show items related to filtered entitlements
+      const hasToolbarFilters = filters.complianceStatuses?.length > 0 ||
+                                filters.reasonTypes?.length > 0 ||
+                                (filters.entitlementType && filters.entitlementType !== 'all');
+
+      if (hasToolbarFilters) {
+        // Get the filtered entitlements lane to extract related IDs
+        const filteredEntitlementsLane = filteredLanes.find(l => l.laneType === LaneTypes.EFFECTIVE_ENTITLEMENTS);
+
+        if (filteredEntitlementsLane?.items?.length > 0) {
+          // Extract all related IDs from filtered entitlements
+          const relatedAccountIds = new Set();
+          const relatedSystemIds = new Set();
+          const relatedPolicyIds = new Set();
+          const relatedLogicalAppIds = new Set();
+          const relatedIdentityIds = new Set();
+
+          filteredEntitlementsLane.items.forEach(item => {
+            // Extract account ID
+            const accountId = item.rawData?.account?.id || item.node?.metadata?.accountId;
+            if (accountId) relatedAccountIds.add(String(accountId));
+
+            // Extract identity ID (for system-centric or entitlement-centric views)
+            const identityId = item.rawData?.identity?.id ||
+                               item.node?.metadata?.identityId ||
+                               item.rawData?.account?.identity?.id;
+            if (identityId) relatedIdentityIds.add(String(identityId));
+
+            // Extract system ID (from both account and resource)
+            const accountSystemId = item.rawData?.account?.system?.id;
+            const resourceSystemId = item.rawData?.resource?.system?.id ||
+                                     item.node?.metadata?.systemId;
+            if (accountSystemId) relatedSystemIds.add(String(accountSystemId));
+            if (resourceSystemId) relatedSystemIds.add(String(resourceSystemId));
+
+            // Extract policy ID from reason (if assignment is from a policy)
+            const reasonType = item.rawData?.reason?.reasonType;
+            const causeObjectKey = item.rawData?.reason?.causeObjectKey;
+            if (reasonType === 'AssignmentPolicy' && causeObjectKey) {
+              relatedPolicyIds.add(String(causeObjectKey));
+            }
+
+            // Extract logical application ID if the resource's system is a logical app
+            const logicalAppId = item.node?.metadata?.logicalApplicationId;
+            if (logicalAppId) relatedLogicalAppIds.add(String(logicalAppId));
+          });
+
+          // Apply cascaded filter to other lanes
+          filteredLanes = filteredLanes.map(lane => {
+            // Skip entitlements lane (already filtered)
+            if (lane.laneType === LaneTypes.EFFECTIVE_ENTITLEMENTS) return lane;
+
+            // Skip if lane is filter source
+            if (isLaneFilterSource(lane.laneType, selections)) return lane;
+
+            let filteredItems = [...lane.items];
+            let isFiltered = lane.isFiltered || false;
+
+            switch (lane.laneType) {
+              case LaneTypes.IDENTITIES:
+                if (relatedIdentityIds.size > 0) {
+                  filteredItems = filteredItems.filter(item =>
+                    relatedIdentityIds.has(String(item.node?.id))
+                  );
+                  isFiltered = true;
+                }
+                break;
+
+              case LaneTypes.ACCOUNTS:
+                if (relatedAccountIds.size > 0) {
+                  filteredItems = filteredItems.filter(item =>
+                    relatedAccountIds.has(String(item.node?.id))
+                  );
+                  isFiltered = true;
+                }
+                break;
+
+              case LaneTypes.SYSTEMS:
+                if (relatedSystemIds.size > 0) {
+                  filteredItems = filteredItems.filter(item =>
+                    relatedSystemIds.has(String(item.node?.id))
+                  );
+                  isFiltered = true;
+                }
+                break;
+
+              case LaneTypes.ASSIGNMENT_POLICIES:
+                if (relatedPolicyIds.size > 0) {
+                  filteredItems = filteredItems.filter(item =>
+                    relatedPolicyIds.has(String(item.node?.id))
+                  );
+                  isFiltered = true;
+                }
+                break;
+
+              case LaneTypes.LOGICAL_APPLICATIONS:
+                if (relatedSystemIds.size > 0 || relatedLogicalAppIds.size > 0) {
+                  // Logical apps are matched by their ID or their underlying system IDs
+                  filteredItems = filteredItems.filter(item => {
+                    const appId = String(item.node?.id);
+                    const underlyingSystemIds = item.node?.metadata?.underlyingSystemIds || [];
+
+                    // Check if logical app ID matches
+                    if (relatedLogicalAppIds.has(appId)) return true;
+
+                    // Check if any of the entitlement's system IDs match this logical app
+                    if (relatedSystemIds.has(appId)) return true;
+
+                    // Check if any underlying system matches
+                    return underlyingSystemIds.some(sysId => relatedSystemIds.has(String(sysId)));
+                  });
+                  isFiltered = true;
+                }
+                break;
+
+              case LaneTypes.VIOLATIONS:
+                // Violations are linked to entitlements - filter based on violation IDs in filtered entitlements
+                {
+                  const relatedViolationIds = new Set();
+                  filteredEntitlementsLane.items.forEach(item => {
+                    const violations = item.rawData?.violations || item.node?.metadata?.violations || [];
+                    violations.forEach(v => {
+                      if (v.id) relatedViolationIds.add(String(v.id));
+                    });
+                  });
+                  if (relatedViolationIds.size > 0) {
+                    filteredItems = filteredItems.filter(item =>
+                      relatedViolationIds.has(String(item.node?.id))
+                    );
+                    isFiltered = true;
+                  } else {
+                    // No violations in filtered entitlements means no violations should show
+                    filteredItems = [];
+                    isFiltered = true;
+                  }
+                }
+                break;
+
+              default:
+                // Other lanes pass through unchanged
+                break;
+            }
+
+            if (isFiltered) {
+              return {
+                ...lane,
+                items: filteredItems,
+                totalCount: filteredItems.length,
+                isFiltered: true
+              };
+            }
+            return lane;
+          });
+        } else if (filteredEntitlementsLane) {
+          // Entitlements lane exists but is empty after filtering
+          // All other related lanes should also be empty
+          filteredLanes = filteredLanes.map(lane => {
+            if (lane.laneType === LaneTypes.EFFECTIVE_ENTITLEMENTS) return lane;
+            if (isLaneFilterSource(lane.laneType, selections)) return lane;
+
+            // Clear items from lanes that depend on entitlements
+            if ([LaneTypes.IDENTITIES, LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS, LaneTypes.ASSIGNMENT_POLICIES,
+                 LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.VIOLATIONS].includes(lane.laneType)) {
+              return {
+                ...lane,
+                items: [],
+                totalCount: 0,
+                isFiltered: true
+              };
+            }
+            return lane;
+          });
+        } else {
+          // No Entitlements lane (e.g., entitlement-centric view)
+          // Filter other lanes by their own complianceStatus metadata
+          if (filters.complianceStatuses?.length > 0) {
+            filteredLanes = filteredLanes.map(lane => {
+              if (isLaneFilterSource(lane.laneType, selections)) return lane;
+
+              // These lanes may have complianceStatus in their metadata (from assignments)
+              if ([LaneTypes.IDENTITIES, LaneTypes.ACCOUNTS].includes(lane.laneType)) {
+                const filteredItems = lane.items.filter(item => {
+                  const complianceStatus = item.node?.metadata?.complianceStatus ||
+                                           item.rawData?.complianceStatus ||
+                                           item.node?.rawData?.complianceStatus;
+                  return filters.complianceStatuses.includes(complianceStatus);
+                });
+
+                return {
+                  ...lane,
+                  items: filteredItems,
+                  totalCount: filteredItems.length,
+                  isFiltered: true
+                };
+              }
+              return lane;
+            });
+          }
+        }
+      }
+
       // Step 3: Filter to visible lanes only and apply required lanes logic
       const result = filterVisibleLanes(
         filteredLanes,
