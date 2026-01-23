@@ -173,6 +173,20 @@ As a user, when viewing an Entitlement as the central node and I click on an ide
 **US-092: Entitlement-Centric Account Filtering**
 As a user, when viewing an Entitlement as the central node and I click on an account in the Accounts lane, I want to see the Identities lane filtered to show only the identity that owns that account.
 
+### Toolbar Filter Cascading
+
+**US-100: Compliance Filter Cascading**
+As a user, when I select a compliance status filter (e.g., "Not Approved") from the toolbar dropdown, I want ALL access cards to be filtered to show only items related to entitlements with that compliance status, so that I can focus on specific compliance issues across all access relationships.
+
+**US-101: Cascaded Filter Visual Indicator**
+As a user, when toolbar filters are active, I want to see the "Filtered" badge appear on ALL access cards that have been cascaded-filtered, so that I know the data shown is a subset based on the compliance filter.
+
+**US-102: Reason Type Filter Cascading**
+As a user, when I select a reason type filter from the toolbar, I want all access cards to cascade-filter to show only items related to entitlements with that assignment reason, so that I can analyze access by how it was granted.
+
+**US-103: Empty Filter Results**
+As a user, when a toolbar filter results in zero matching entitlements, I want all related access cards to show empty (with "Filtered" badge), so that I understand no data matches the current filter criteria.
+
 ---
 
 ## Business Rules
@@ -256,18 +270,57 @@ When an Account is selected, the Logical Applications lane shall filter using ca
 1. First, extract the systemRef from the selected account
 2. Then, filter logical applications to show only those whose underlyingSystems include that systemRef
 
+### Toolbar Filter Cascading Rules
+
+**BR-019: Compliance Filter Cascading**
+When a compliance status filter is selected from the toolbar:
+1. The Effective Entitlements lane shall filter to show only entitlements with the selected compliance status(es)
+2. All other lanes shall cascade-filter based on their relationships to the filtered entitlements
+
+**BR-020: Cascaded Filter ID Extraction**
+When cascading toolbar filters, the following IDs shall be extracted from filtered entitlements:
+- `relatedEntitlementIds`: All entitlement (resource) IDs from filtered items - used for policy filtering
+- `relatedAccountIds`: From `metadata.accountIds` array and `rawData.account.id`
+- `relatedIdentityIds`: From `metadata.identityIds` array and `rawData.identity.id`
+- `relatedSystemIds`: From both `rawData.account.system.id` and `metadata.systemId`
+
+**BR-021: Assignment Policies Cascaded Filtering**
+Assignment Policies shall be filtered by checking if their `metadata.resourceIds` array contains any of the filtered entitlement IDs. This approach is used because:
+- Entitlement items may have multiple assignment reasons (from different policies)
+- Due to entitlement deduplication, only the first assignment's reason is preserved in `rawData`
+- Policies store the complete list of entitlement IDs they granted in `metadata.resourceIds`
+
+**BR-022: Logical Applications Cascaded Filtering**
+Logical Applications shall be filtered by:
+1. Checking if the logical app ID matches any filtered entitlement's system ID
+2. Checking if the logical app ID is in the `relatedLogicalAppIds` set
+3. Checking if any of the logical app's `metadata.underlyingSystemIds` match the filtered system IDs
+
+**BR-023: Violations Cascaded Filtering**
+Violations shall be filtered by extracting violation IDs from filtered entitlements' `rawData.violations` or `node.metadata.violations` arrays, then filtering to show only violations with matching IDs.
+
+**BR-024: Empty Entitlements Cascade**
+When toolbar filters result in zero matching entitlements:
+- All related lanes (Identities, Accounts, Systems, Assignment Policies, Logical Applications, Violations) shall be cleared
+- Each cleared lane shall display the "Filtered" indicator with zero items
+
+**BR-025: Entitlement-Centric Compliance Filtering**
+In entitlement-centric view (where there is no Entitlements lane):
+- Identities and Accounts lanes shall be filtered directly by their own `metadata.complianceStatus`
+- This is because these items store their compliance relationship with the central entitlement
+
 ### Layout Rules
 
-**BR-020: Lane Spacing**
+**BR-026: Lane Spacing**
 Lane cards shall be positioned with sufficient spacing to prevent overlap. Minimum vertical gap between adjacent lanes: 400 pixels.
 
-**BR-021: Collision Detection**
+**BR-027: Collision Detection**
 The lane positioning algorithm shall detect and prevent overlaps between lane cards and between lane cards and the central node.
 
-**BR-022: Drag Constraints**
+**BR-028: Drag Constraints**
 Dragged lane cards shall remain within the visible canvas area.
 
-**BR-023: Z-Index Management**
+**BR-029: Z-Index Management**
 - Central node (fulcrum): z-index 10
 - Lane cards (normal): z-index 1
 - Lane cards (hovered): z-index 50
@@ -456,6 +509,118 @@ For filtering relationships that require an intermediate step (e.g., Account -> 
 1. Extract values from source item using `intermediateExtractFields`
 2. Use those values to match against `targetFields` on the target lane items
 3. This allows Account -> System -> Logical App filtering without storing redundant data
+
+### Toolbar Filter Cascading Architecture
+
+When toolbar filters (Compliance, Reason Type, Entitlement Type) are applied, the system cascades these filters to all access cards, not just the Entitlements lane.
+
+#### Data Flow
+
+```
+User selects "Not Approved" from Compliance dropdown
+        ↓
+Step 1: Filter Entitlements lane by complianceStatus
+        ↓
+Step 2: Extract related IDs from filtered entitlements:
+        - relatedEntitlementIds (resource IDs)
+        - relatedAccountIds (from metadata.accountIds)
+        - relatedIdentityIds (from metadata.identityIds)
+        - relatedSystemIds (from account/resource systems)
+        ↓
+Step 3: Cascade filter to other lanes:
+        - Identities: filter by relatedIdentityIds
+        - Accounts: filter by relatedAccountIds
+        - Systems: filter by relatedSystemIds
+        - Assignment Policies: filter by resourceIds intersection
+        - Logical Apps: filter by system ID matching
+        - Violations: filter by violation IDs from filtered entitlements
+```
+
+#### Implementation Details
+
+The cascaded filtering is implemented in `AccessLens.jsx` within the `visibleLanes` useMemo:
+
+```javascript
+// Step 2b: Cascade compliance/toolbar filters to all other lanes
+const hasToolbarFilters = filters.complianceStatuses?.length > 0 ||
+                          filters.reasonTypes?.length > 0 ||
+                          (filters.entitlementType && filters.entitlementType !== 'all');
+
+if (hasToolbarFilters) {
+  const filteredEntitlementsLane = filteredLanes.find(
+    l => l.laneType === LaneTypes.EFFECTIVE_ENTITLEMENTS
+  );
+
+  if (filteredEntitlementsLane?.items?.length > 0) {
+    // Extract IDs from filtered entitlements
+    const relatedEntitlementIds = new Set();
+    const relatedAccountIds = new Set();
+    // ... more ID sets
+
+    filteredEntitlementsLane.items.forEach(item => {
+      // Extract entitlement ID for policy filtering
+      relatedEntitlementIds.add(String(item.node?.id));
+
+      // Extract account IDs (including aggregated array)
+      const accountIds = item.node?.metadata?.accountIds || [];
+      accountIds.forEach(id => relatedAccountIds.add(String(id)));
+      // ... more extraction
+    });
+
+    // Apply cascaded filters to each lane type
+    filteredLanes = filteredLanes.map(lane => {
+      switch (lane.laneType) {
+        case LaneTypes.ASSIGNMENT_POLICIES:
+          // Filter by resourceIds intersection
+          filteredItems = filteredItems.filter(item => {
+            const policyResourceIds = item.node?.metadata?.resourceIds || [];
+            return policyResourceIds.some(rid =>
+              relatedEntitlementIds.has(String(rid))
+            );
+          });
+          break;
+        // ... other lane types
+      }
+    });
+  }
+}
+```
+
+#### Key Design Decisions
+
+**1. Policy Filtering via resourceIds Intersection**
+
+Assignment Policies cannot be reliably filtered by extracting policy IDs from entitlement reasons because:
+- Entitlements are deduplicated by resource ID, keeping only the first assignment's reason
+- If an entitlement has multiple assignments (some from policies, some direct), only one reason is preserved
+
+Instead, policies are filtered by checking if their `metadata.resourceIds` array contains any of the filtered entitlement IDs. This works because policies store the complete list of entitlement IDs they granted.
+
+**2. Aggregated ID Arrays**
+
+Entitlement items store aggregated arrays of related IDs to support proper cascading:
+- `metadata.accountIds`: All account IDs associated with this entitlement
+- `metadata.identityIds`: All identity IDs associated with this entitlement
+
+This is necessary because entitlement deduplication aggregates multiple assignments into one item.
+
+**3. Empty Results Handling**
+
+When toolbar filters result in zero matching entitlements, all related lanes are cleared:
+```javascript
+if ([LaneTypes.IDENTITIES, LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS,
+     LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.LOGICAL_APPLICATIONS,
+     LaneTypes.VIOLATIONS].includes(lane.laneType)) {
+  return { ...lane, items: [], totalCount: 0, isFiltered: true };
+}
+```
+
+**4. Entitlement-Centric View Special Case**
+
+In entitlement-centric view (where the central node IS an entitlement and there's no Entitlements lane), compliance filtering works differently:
+- Identities and Accounts lanes have `complianceStatus` in their metadata
+- These represent the compliance relationship between that identity/account and the central entitlement
+- Filter directly by `item.node?.metadata?.complianceStatus`
 
 ---
 
@@ -740,3 +905,4 @@ API logs show:
 | 1.6 | 2025-01 | Added schema-driven architecture: crossLaneFilterService.js for generic filtering, laneBuilderService.js for generic lane building, LaneConfigSchema with crossLaneFilters configuration, feature flags for gradual migration |
 | 1.7 | 2025-01 | Enhanced Logical Applications documentation: added user stories (US-080L through US-084L), business rules (BR-004a through BR-018), technical architecture for derivation, data flow, and cascaded filtering |
 | 1.8 | 2025-01 | Added comprehensive Data Loading Architecture documentation: API layer details, pagination configuration, data flow diagrams by focus node type, lane building process, schema configurations, extractor registry, and API logging |
+| 1.9 | 2025-01 | Added Toolbar Filter Cascading: compliance/reason/entitlement type filters now cascade to ALL access cards (US-100 through US-103, BR-019 through BR-025). Assignment Policies filtering uses resourceIds intersection instead of reason extraction due to entitlement deduplication. Added aggregated ID arrays (accountIds, identityIds) to entitlement metadata for proper cascading. |
