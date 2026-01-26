@@ -3213,7 +3213,8 @@ export function buildViolationsLane(assignments, filters = {}) {
           resourceIds: new Set(),
           resourceNames: new Set(),
           accountIds: new Set(),
-          systemIds: new Set()
+          systemIds: new Set(),
+          identityIds: new Set()
         });
       }
 
@@ -3222,6 +3223,7 @@ export function buildViolationsLane(assignments, filters = {}) {
       if (resourceName) entry.resourceNames.add(resourceName);
       if (assignment.account?.id) entry.accountIds.add(assignment.account.id);
       if (assignment.resource?.system?.id) entry.systemIds.add(assignment.resource.system.id);
+      if (assignment.identity?.id) entry.identityIds.add(assignment.identity.id);
     });
   });
 
@@ -3253,11 +3255,12 @@ export function buildViolationsLane(assignments, filters = {}) {
         violationStatus: violation.violationStatus,
         conflictingEntitlement: conflictingEntitlement,
         resourceCount: violation.resourceIds.size,
-        // Cross-lane filtering: store resource IDs involved in this violation
+        // Cross-lane filtering: store IDs involved in this violation
         resourceIds: Array.from(violation.resourceIds),
         resourceNames: Array.from(violation.resourceNames),
         accountIds: Array.from(violation.accountIds),
-        systemIds: Array.from(violation.systemIds)
+        systemIds: Array.from(violation.systemIds),
+        identityIds: Array.from(violation.identityIds)
       },
       rawData: {
         description: violation.description,
@@ -3266,7 +3269,8 @@ export function buildViolationsLane(assignments, filters = {}) {
         resourceIds: Array.from(violation.resourceIds),
         resourceNames: Array.from(violation.resourceNames),
         accountIds: Array.from(violation.accountIds),
-        systemIds: Array.from(violation.systemIds)
+        systemIds: Array.from(violation.systemIds),
+        identityIds: Array.from(violation.identityIds)
       }
     };
 
