@@ -20,7 +20,7 @@ import {
   getCrossLaneFilterConfig,
   shouldLog
 } from './accessLensTypes';
-import accessLensDataService, { buildContextsLane, buildLanesFromAssignments, extractUniqueReasonTypes, extractUniqueComplianceStatuses, extractViolationCount } from './accessLensDataService';
+import accessLensDataService, { buildContextsLane, buildLanesFromAssignments, extractUniqueReasonTypes, extractUniqueComplianceStatuses, extractViolationCount, enrichPoliciesWithOData } from './accessLensDataService';
 import { usePreferences } from '../../contexts/PreferencesContext';
 import {
   applyCrossLaneFilters,
@@ -623,7 +623,8 @@ const AccessLens = ({
   initialFocusNode = null,
   initialLanes = null,
   initialReasonTypes = null,
-  initialComplianceStatuses = null
+  initialComplianceStatuses = null,
+  apiContext = null  // API context for OData calls: { omadaApi, bearerToken, impersonateUser }
 }) => {
   // User preferences for Identity360 display behavior
   const { preferences } = usePreferences();
@@ -702,6 +703,7 @@ const AccessLens = ({
     reasonTypes: [],
     complianceStatuses: [],  // Selected compliance statuses for filtering
     entitlementType: 'all',
+    multiPathOnly: false,  // Filter to show only entitlements with multiple assignment paths
     highRiskOnly: false
   });
   const [searchQuery, setSearchQuery] = useState('');
@@ -981,6 +983,45 @@ const AccessLens = ({
       });
     }
   }, [identityContexts, filters]);
+
+  // Enrich Assignment Policies lane with OData details (AP_CONTEXTS for cross-lane filtering)
+  // This runs after lanes are built and we have apiContext
+  useEffect(() => {
+    const enrichPolicies = async () => {
+      if (!apiContext || !lanes || lanes.length === 0) return;
+
+      const policiesLane = lanes.find(l => l.laneType === LaneTypes.ASSIGNMENT_POLICIES);
+      if (!policiesLane || policiesLane.items.length === 0) return;
+
+      // Check if already enriched (has contextUIds on first item)
+      if (policiesLane.items[0]?.node?.metadata?.contextUIds) {
+        return; // Already enriched
+      }
+
+      if (shouldLog('POLICIES')) {
+        console.log('[AccessLens] Enriching assignment policies with OData details (AP_CONTEXTS)');
+      }
+
+      try {
+        const enrichedLane = await enrichPoliciesWithOData(policiesLane, apiContext);
+
+        // Update lanes with enriched policy data
+        setLanes(prevLanes => {
+          return prevLanes.map(lane =>
+            lane.laneType === LaneTypes.ASSIGNMENT_POLICIES ? enrichedLane : lane
+          );
+        });
+
+        if (shouldLog('POLICIES')) {
+          console.log('[AccessLens] Policy enrichment complete');
+        }
+      } catch (error) {
+        console.warn('[AccessLens] Failed to enrich policies with OData:', error.message);
+      }
+    };
+
+    enrichPolicies();
+  }, [lanes, apiContext]);
 
   // Calculate violation count from calculatedAssignments for the FocusCard indicator
   const violationCount = useMemo(() => {
@@ -1639,6 +1680,16 @@ const AccessLens = ({
           isFiltered = true;
         }
 
+        // Apply multi-path filter (show only entitlements with multiple assignment paths)
+        if (filters.multiPathOnly) {
+          filteredItems = filteredItems.filter(item => {
+            const reasonArray = item.rawData?.reason;
+            const pathCount = Array.isArray(reasonArray) ? reasonArray.length : (reasonArray ? 1 : 0);
+            return pathCount > 1;
+          });
+          isFiltered = true;
+        }
+
         return {
           ...lane,
           items: filteredItems,
@@ -1651,7 +1702,8 @@ const AccessLens = ({
       // When compliance filter is active, other lanes should only show items related to filtered entitlements
       const hasToolbarFilters = filters.complianceStatuses?.length > 0 ||
                                 filters.reasonTypes?.length > 0 ||
-                                (filters.entitlementType && filters.entitlementType !== 'all');
+                                (filters.entitlementType && filters.entitlementType !== 'all') ||
+                                filters.multiPathOnly;
 
       if (hasToolbarFilters) {
         // Get the filtered entitlements lane to extract related IDs
@@ -1927,6 +1979,16 @@ const AccessLens = ({
         return reasonType !== 'DirectAssignment' && !reasonDesc.includes('direct');
       }
       return true;
+    });
+    isEntitlementsFiltered = true;
+  }
+
+  // Apply multi-path filter (show only entitlements with multiple assignment paths)
+  if (filters.multiPathOnly && hasEntitlementsLane) {
+    filteredEntitlementItems = filteredEntitlementItems.filter(item => {
+      const reasonArray = item.rawData?.reason;
+      const pathCount = Array.isArray(reasonArray) ? reasonArray.length : (reasonArray ? 1 : 0);
+      return pathCount > 1;
     });
     isEntitlementsFiltered = true;
   }

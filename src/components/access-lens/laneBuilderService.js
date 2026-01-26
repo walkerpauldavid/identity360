@@ -417,6 +417,13 @@ export const buildEntitlementsLane = (assignments, options = {}) => {
     return item;
   });
 
+  // Sort by resource name (displayName) ascending - default sort order for entitlements
+  lane.items.sort((a, b) => {
+    const nameA = (a.node?.displayName || '').toLowerCase();
+    const nameB = (b.node?.displayName || '').toLowerCase();
+    return nameA.localeCompare(nameB);
+  });
+
   return lane;
 };
 

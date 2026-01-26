@@ -158,6 +158,32 @@ const countUniqueIdentities = (assignments) => {
 };
 
 /**
+ * Count assignments with multiple assignment paths (overlapping policies/reasons)
+ * An assignment has multiple paths if its reason array has more than one entry
+ * @param {Array} assignments - Array of assignment objects
+ * @returns {Object} { multiPathCount, totalCount, multiPathRate }
+ */
+const countMultiPathAssignments = (assignments) => {
+  if (!assignments || assignments.length === 0) {
+    return { multiPathCount: 0, totalCount: 0, multiPathRate: 0 };
+  }
+
+  let multiPathCount = 0;
+  assignments.forEach(assignment => {
+    const reasonArray = assignment.reason;
+    const pathCount = Array.isArray(reasonArray) ? reasonArray.length : (reasonArray ? 1 : 0);
+    if (pathCount > 1) {
+      multiPathCount++;
+    }
+  });
+
+  const totalCount = assignments.length;
+  const multiPathRate = totalCount > 0 ? Math.round((multiPathCount / totalCount) * 100) : 0;
+
+  return { multiPathCount, totalCount, multiPathRate };
+};
+
+/**
  * Load heatmap data from local JSON file
  * @returns {Promise<Array>} Array of system objects with compliance data
  */
@@ -319,6 +345,7 @@ export const useSystemCompliance = (bearerToken, impersonateUser, options = {}) 
           const stats = calculateComplianceStats(assignments);
           const accountCount = countUniqueAccounts(assignments);
           const identityCount = countUniqueIdentities(assignments);
+          const multiPathStats = countMultiPathAssignments(assignments);
 
           // Extract description and systemType with multiple field name variations
           const description = system.DESCRIPTION || system.Description || system.description || '';
@@ -334,7 +361,8 @@ export const useSystemCompliance = (bearerToken, impersonateUser, options = {}) 
             assignmentCount: totalAssignments,
             accountCount,
             identityCount,
-            compliance: stats
+            compliance: stats,
+            multiPath: multiPathStats
           });
 
           console.log(`[useSystemCompliance] ${systemName}: ${totalAssignments} assignments, ${stats.complianceRate}% compliant`);
@@ -357,6 +385,7 @@ export const useSystemCompliance = (bearerToken, impersonateUser, options = {}) 
             accountCount: 0,
             identityCount: 0,
             compliance: calculateComplianceStats([]),
+            multiPath: { multiPathCount: 0, totalCount: 0, multiPathRate: 0 },
             error: err.message
           });
         }

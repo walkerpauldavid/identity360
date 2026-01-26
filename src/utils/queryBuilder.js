@@ -436,6 +436,7 @@ export const GraphQLQueries = {
                 id
                 description
                 maxValidity
+                childResourceIds
                 system {
                   id
                   name
@@ -444,11 +445,36 @@ export const GraphQLQueries = {
                   id
                   name
                 }
+                riskLevel {
+                  name
+                  id
+                }
+                accountTypes {
+                  id
+                  name
+                }
                 resourceCategory {
                   name
                   id
                 }
                 resourceFolder {
+                  name
+                  id
+                }
+              }
+              parentResource {
+                id
+                name
+                description
+                system {
+                  name
+                  id
+                }
+                resourceType {
+                  name
+                  id
+                }
+                riskLevel {
                   name
                   id
                 }
@@ -529,7 +555,37 @@ export const GraphQLQueries = {
                 id
                 name
                 description
+                childResourceIds
                 system {
+                  name
+                  id
+                }
+                resourceType {
+                  id
+                  name
+                }
+                riskLevel {
+                  name
+                  id
+                }
+                accountTypes {
+                  id
+                  name
+                }
+              }
+              parentResource {
+                id
+                name
+                description
+                system {
+                  name
+                  id
+                }
+                resourceType {
+                  name
+                  id
+                }
+                riskLevel {
                   name
                   id
                 }
@@ -541,12 +597,17 @@ export const GraphQLQueries = {
                   id
                   name
                 }
+                accountType {
+                  id
+                  name
+                }
               }
               validFrom
               validTo
               reason {
                 description
                 reasonType
+                causeObjectKey
               }
               identity {
                 firstName
@@ -556,6 +617,23 @@ export const GraphQLQueries = {
                 identityId
                 riskLevel {
                   name
+                }
+                accounts {
+                  accountName
+                  id
+                  accountType {
+                    name
+                    id
+                  }
+                  system {
+                    name
+                    id
+                  }
+                }
+                contexts {
+                  displayName
+                  id
+                  type
                 }
               }
             }

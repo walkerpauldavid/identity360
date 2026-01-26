@@ -107,17 +107,29 @@ export const CrossLaneFilterType = {
 export const LaneDisplayRules = {
   SINGLE_COLUMN: {
     columns: 1,
+    rows: 5,
     width: 350,
     maxVisibleItems: 10
   },
   MULTI_COLUMN: {
     columns: 2,
+    rows: 5,
     width: 700,
     maxVisibleItems: 20
   },
   THREE_COLUMN: {
     columns: 3,
+    rows: 5,
     width: 1050,
     maxVisibleItems: 30
   }
+};
+
+// Grid size constraints for lane cards
+export const LaneGridConstraints = {
+  minColumns: 1,
+  maxColumns: 4,
+  minRows: 2,
+  maxRows: 10,
+  columnWidthPx: 350  // Width per column in pixels
 };

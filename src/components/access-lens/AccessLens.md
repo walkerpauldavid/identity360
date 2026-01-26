@@ -187,6 +187,62 @@ As a user, when I select a reason type filter from the toolbar, I want all acces
 **US-103: Empty Filter Results**
 As a user, when a toolbar filter results in zero matching entitlements, I want all related access cards to show empty (with "Filtered" badge), so that I understand no data matches the current filter criteria.
 
+### Entitlement Reason Type Display
+
+**US-110: Reason Type Badge on Entitlements**
+As a user, I want each entitlement lane item to display a color-coded badge showing how the access was granted (Direct, Policy, Inherited, etc.), so that I can quickly understand the assignment source without clicking into details.
+
+**US-111: Reason Type Visual Distinction**
+As a user, I want different reason types to have distinct colors, so that I can visually scan the entitlements lane and identify patterns (e.g., many policy-based vs direct assignments).
+
+**US-112: Multiple Reasons Display**
+As a user, when an entitlement has multiple assignment reasons, I want to see ALL unique reason type badges displayed as pills, so that I understand all the sources of that access (e.g., both "Direct" and "Policy" if applicable).
+
+### Multi-Path Assignment Visualization
+
+**US-120: Multi-Path Indicator on Entitlements**
+As a user, I want to see a visual indicator (⚡ badge with count) on entitlements that have multiple overlapping assignment paths (e.g., granted by both Direct assignment AND Policy), so that I can identify potential over-provisioning.
+
+**US-121: Multi-Path Filter Toggle**
+As a user, I want a "Multi-Path" filter toggle in the toolbar that shows only entitlements with multiple assignment paths, so that I can focus on analyzing potentially over-provisioned access.
+
+**US-122: Multi-Path Cascaded Filtering**
+As a user, when I enable the Multi-Path filter, I want all related lanes (Identities, Accounts, Systems, etc.) to cascade-filter to show only items related to the multi-path entitlements, so that I can understand the full context.
+
+**US-123: Multi-Path in Compliance Heatmap**
+As a user, I want to see multi-path assignment counts in the System Compliance Heatmap, including:
+- A "Multi-Path" count in the header stats showing total across all systems
+- A "Multi-Path" row in each system tile showing count and percentage
+- A "Show only multi-path systems" filter toggle
+So that I can identify which systems have the most overlapping access assignments.
+
+### Inherited Resource Display
+
+**US-124: Inherited Reason Parent Resource Tooltip**
+As a user, when I hover over an "Inherited" reason pill on an entitlement, I want to see the parent resource name in the tooltip (e.g., "Inherited from: AD Security Group - Admins"), so that I understand which parent resource grants this inherited access.
+
+### Assignment Validity Period Display
+
+**US-125: Validity Period on Entitlements**
+As a user, I want to see a validity period pill on each entitlement showing when the assignment is valid (e.g., "Never expires", "Until 07/26", "From 01/25", or "01/25 → 07/26"), so that I can understand the time constraints on each access assignment.
+
+**US-126: Expiring Soon Indicator**
+As a user, I want entitlements expiring within 90 days to be visually highlighted with an amber indicator, so that I can proactively identify and review soon-to-expire access before it lapses.
+
+**US-127: Permanent vs Time-Limited Distinction**
+As a user, I want permanent assignments ("Never expires") to be visually distinct from time-limited assignments, so that I can quickly identify which entitlements have expiration dates that may need attention.
+
+### Assignment Policy to Context Cross-Lane Filtering
+
+**US-128: Policy Context Filtering**
+As a user, when I select an Assignment Policy in the Assignment Policies lane, I want the Contexts lane to filter and show only the organizational contexts that trigger that policy (via AP_CONTEXTS), so that I can understand which contexts cause identities to receive entitlements through that policy.
+
+**US-129: Policy Context Enrichment**
+As a user, I want the Assignment Policies lane to automatically fetch and display context association data (AP_CONTEXTS) from the OData API, so that I can see the relationship between policies and organizational contexts without manual lookup.
+
+**US-130: Policy Context Tooltip**
+As a user, when I hover over an Assignment Policy lane item, I want to see which contexts are associated with it, so that I can quickly understand the policy's scope.
+
 ---
 
 ## Business Rules
@@ -308,6 +364,142 @@ When toolbar filters result in zero matching entitlements:
 In entitlement-centric view (where there is no Entitlements lane):
 - Identities and Accounts lanes shall be filtered directly by their own `metadata.complianceStatus`
 - This is because these items store their compliance relationship with the central entitlement
+
+### Reason Type Display Rules
+
+**BR-026: Reason Type Badge Display**
+Each entitlement lane item shall display a reason type badge derived from the API `reason` array. The badge shows how/why the access was granted.
+
+**BR-027: Reason Type API Structure**
+The API returns `reason` as an array of objects, each containing:
+- `description`: Human-readable explanation of the assignment
+- `reasonType`: Machine-readable type identifier
+
+**BR-028: Reason Type Mapping**
+API reason types shall be mapped to user-friendly display labels:
+
+| API reasonType | Display Label | Color | Description |
+|----------------|---------------|-------|-------------|
+| `ActualDirect` | Direct | Blue (#5e81ac) | Actual assignment in the system |
+| `Direct` | Direct | Blue (#5e81ac) | Direct/manual assignment request |
+| `Policy` | Policy | Purple (#b48ead) | Policy-based automatic assignment |
+| `UnconfirmedActual` | Pending | Amber (#d79921) | Provisioning claim queued/in progress |
+| `ChildResource` | Inherited | Light Blue (#81a1c1) | Inherited from parent resource |
+| `AutoAccount` | Auto | Teal (#458588) | Automatic account creation |
+| `RoleMembership` | Role | Green (#689d6a) | Assigned via role membership |
+| `Birthright` | Birthright | Orange (#d08770) | Birthright/joiner assignment |
+| `AccountLink` | Account | Amber (#d79921) | Account link assignment |
+| `SoDException` | Exception | Red (#bf616a) | SoD exception granted |
+
+All badges use white text for readability.
+
+**BR-029: Multiple Reason Type Display**
+When an entitlement has multiple reasons, ALL unique reason types shall be displayed as separate pills. Duplicate reason types (same type appearing multiple times) shall be deduplicated and shown only once.
+
+**BR-030: Reason Type Fallback**
+If the API returns an unmapped reasonType, the raw value shall be displayed as-is. If no reasonType is available, no badge shall be shown.
+
+**BR-031: Reason Type Styling**
+All reason type badges shall use white text for readability. Each reason type has a distinct background color as defined in BR-028.
+
+**BR-031a: Multiple Reason Pills Display**
+When an entitlement has multiple assignment paths with different reason types, each unique reason type shall be displayed as a separate pill. The following table shows example API responses and their corresponding pill display:
+
+| API Response (reason array) | Pills Displayed |
+|-----------------------------|-----------------|
+| `[{reasonType: "Direct"}]` | Direct |
+| `[{reasonType: "Direct"}, {reasonType: "Policy"}]` | Direct, Policy |
+| `[{reasonType: "Policy"}, {reasonType: "ChildResource"}]` | Policy, Inherited |
+| `[{reasonType: "ActualDirect"}, {reasonType: "RoleMembership"}]` | Direct, Role |
+| `[{reasonType: "Direct"}, {reasonType: "Direct"}]` | Direct (deduplicated) |
+
+**BR-031b: Inherited Reason Tooltip Enhancement**
+When hovering over an "Inherited" reason pill (ChildResource type), the tooltip shall display the parent resource name if available from the API response. Format: "Inherited from: [parentResource.name]". If parentResource is not available, the default description is shown.
+
+### Assignment Validity Period Rules
+
+**BR-037: Validity Period Display**
+Each entitlement lane item shall display a validity period pill showing the assignment's time period. The `validFrom` and `validTo` fields are at the assignment data level in the API response.
+
+**BR-038: Validity Date Formatting**
+Validity dates shall be displayed in MM/YY format (e.g., "07/26" for July 2026). Time components shall not be displayed.
+
+**BR-039: Default Date Handling**
+- If `validFrom` year is 1999: Do not display the start date (this is the Omada default for "no start date")
+- If `validTo` year is 9999: Display "Never expires" (this is the Omada default for "no end date")
+
+**BR-040: Validity Period Display Logic**
+
+| validFrom Year | validTo Year | Display |
+|----------------|--------------|---------|
+| 1999 | 9999 | "Never expires" (green pill) |
+| 1999 | Real date | "Until MM/YY" (blue pill) |
+| Real date | 9999 | "From MM/YY" (green pill) |
+| Real date | Real date | "MM/YY → MM/YY" (blue pill) |
+
+**BR-041: Expiring Soon Indicator**
+Assignments expiring within 90 days shall display an amber pill with a subtle pulse animation to draw attention to soon-to-expire access.
+
+### Assignment Policy to Context Filtering Rules
+
+**BR-042: Policy Context Data Source**
+Assignment Policy context associations shall be fetched from the Omada OData API endpoint `/OData/DataObjects/Assignmentpolicy/{policyId}`. The `AP_CONTEXTS` array in the response contains the organizational contexts that trigger the policy.
+
+**BR-043: Policy OData Enrichment**
+When Assignment Policies are built from calculated assignments, the system shall asynchronously enrich each policy with OData details:
+1. Extract the policy ID from `reason.causeObjectKey`
+2. Fetch policy details from OData using the policy ID
+3. Store `AP_CONTEXTS` array in `metadata.apContexts`
+4. Extract context UIds into `metadata.contextUIds` for cross-lane filtering
+
+**BR-044: Policy to Context Cross-Lane Filter**
+When an Assignment Policy is selected:
+1. The filter type shall be `ARRAY_CONTAINS`
+2. The source field shall be `metadata.contextUIds` (array of context UIds from AP_CONTEXTS)
+3. The target field shall be `metadata.uId` on Context lane items
+4. Only contexts whose UId appears in the policy's AP_CONTEXTS shall be displayed
+
+**BR-045: Context UId Storage**
+Context lane items shall store the context UId in `metadata.uId` to enable cross-lane filtering with Assignment Policies. The UId is extracted from:
+- GraphQL response: `context.id` or `context.UId`
+- OData response: `context.UId` or `context.Id`
+
+**BR-046: AP_CONTEXTS Array Structure**
+The AP_CONTEXTS array from OData contains context objects with the following structure:
+```json
+{
+  "Id": 1003843,
+  "UId": "5d00d8a7-fa5d-46fe-a00b-6392a5fd12f4",
+  "KeyValue": null,
+  "KeyProperty": null,
+  "DisplayName": "Global Banking Group [GBG]"
+}
+```
+The `UId` field is used for cross-lane filtering matches.
+
+### Multi-Path Assignment Rules
+
+**BR-032: Multi-Path Detection**
+An entitlement shall be considered "multi-path" when its `reason` array contains more than one entry, indicating it is granted through multiple overlapping sources (e.g., both Direct and Policy).
+
+**BR-033: Multi-Path Badge Display**
+Entitlements with multiple assignment paths shall display an ⚡ badge with the path count (e.g., "⚡2" for two paths). The badge uses an orange gradient background (#d08770 to #ebcb8b) with white text.
+
+**BR-034: Multi-Path Row Styling**
+Lane item rows for multi-path entitlements shall have an orange left border (3px solid #d08770) to provide additional visual distinction.
+
+**BR-035: Multi-Path Filter Cascading**
+When the Multi-Path toolbar filter is active:
+1. The Entitlements lane shall filter to show only items where `reason` array length > 1
+2. All other lanes shall cascade-filter based on their relationships to the filtered multi-path entitlements
+3. The filter cascading follows the same rules as compliance filter cascading (BR-019 through BR-025)
+
+**BR-036: Multi-Path Heatmap Integration**
+The Compliance Heatmap shall track and display multi-path statistics:
+- `multiPath.multiPathCount`: Number of assignments with multiple paths per system
+- `multiPath.multiPathRate`: Percentage of multi-path assignments per system
+- Systems shall be filterable by "Show only multi-path systems" toggle
+- When multi-path filter is active and non-compliant filter is not, tiles shall be sized by multi-path count
 
 ### Layout Rules
 
@@ -889,6 +1081,20 @@ API logs show:
 | ABORESSION | The OData field containing the system/application reference for a resource or account |
 | Effective Entitlements | All resources/permissions assigned to an identity through any means |
 | Object Inspector | The detail panel showing properties of the selected item |
+| Reason Type | The source/method by which an entitlement was assigned (Direct, Policy, Inherited, etc.) |
+| ActualDirect | API reasonType indicating the assignment physically exists in the target system |
+| UnconfirmedActual | API reasonType indicating a provisioning operation is queued or in progress |
+| ChildResource | API reasonType indicating access is inherited from a parent resource |
+| Multi-Path Assignment | An entitlement that is granted through multiple overlapping sources (e.g., both Direct assignment AND Policy), indicated by a `reason` array with more than one entry |
+| Over-Provisioning | When an identity has access through redundant paths; multi-path assignments may indicate potential over-provisioning that should be reviewed |
+| validFrom | API field indicating when an assignment becomes effective. Year 1999 indicates "no start date" (Omada default) |
+| validTo | API field indicating when an assignment expires. Year 9999 indicates "never expires" (Omada default) |
+| Parent Resource | The parent resource from which an entitlement is inherited (ChildResource reasonType). Available in API response as `parentResource` block |
+| Assignment Validity Period | The time window during which an entitlement assignment is active, defined by validFrom and validTo dates |
+| AP_CONTEXTS | OData field on Assignment Policy containing an array of organizational contexts that trigger the policy. Each entry has Id, UId, and DisplayName. |
+| causeObjectKey | Field in the reason object containing the policy ID when reasonType is "Policy". Used to fetch full policy details from OData. |
+| Policy Enrichment | The async process of fetching Assignment Policy details from OData to get AP_CONTEXTS for cross-lane filtering with Contexts. |
+| Context UId | The unique identifier (UUID) of an organizational context, used for matching between AP_CONTEXTS and Context lane items. |
 
 ---
 
@@ -906,3 +1112,10 @@ API logs show:
 | 1.7 | 2025-01 | Enhanced Logical Applications documentation: added user stories (US-080L through US-084L), business rules (BR-004a through BR-018), technical architecture for derivation, data flow, and cascaded filtering |
 | 1.8 | 2025-01 | Added comprehensive Data Loading Architecture documentation: API layer details, pagination configuration, data flow diagrams by focus node type, lane building process, schema configurations, extractor registry, and API logging |
 | 1.9 | 2025-01 | Added Toolbar Filter Cascading: compliance/reason/entitlement type filters now cascade to ALL access cards (US-100 through US-103, BR-019 through BR-025). Assignment Policies filtering uses resourceIds intersection instead of reason extraction due to entitlement deduplication. Added aggregated ID arrays (accountIds, identityIds) to entitlement metadata for proper cascading. |
+| 1.10 | 2025-01 | Added Reason Type Badge Display: entitlement lane items now show color-coded badges indicating assignment source (US-110 through US-112, BR-026 through BR-031). Supports API reasonTypes: ActualDirect, Direct, Policy, UnconfirmedActual, ChildResource, AutoAccount, RoleMembership, Birthright, AccountLink, SoDException. API returns `reason` as an array; all unique reason types are displayed as separate pills with white text. |
+| 1.11 | 2025-01 | Added Multi-Path Assignment Visualization (US-120 through US-123, BR-032 through BR-036): Entitlements with multiple overlapping assignment paths (e.g., granted by both Direct and Policy) now show ⚡ badge with path count and orange left border. Added "Multi-Path" filter toggle in toolbar that cascades to all lanes. Integrated multi-path tracking into Compliance Heatmap with per-system counts, header totals, and filter toggle. |
+| 1.12 | 2025-01 | Enhanced GraphQL queries: Added parentResource block, resource.childResourceIds, resource.riskLevel, resource.accountTypes to both getCalculatedAssignmentsDetailed and getIdentitiesHavingResource queries. Added identity.accounts and identity.contexts to getIdentitiesHavingResource. |
+| 1.13 | 2025-01 | Added Assignment Validity Period Display (US-125 through US-127, BR-037 through BR-041): Entitlements now show validity period pills with smart date formatting (MM/YY). Handles Omada default dates (1999 = no start, 9999 = never expires). Shows "Never expires" (green), "Until MM/YY" (blue), "From MM/YY" (green), or "MM/YY → MM/YY" (blue). Assignments expiring within 90 days show amber pill with pulse animation. |
+| 1.14 | 2025-01 | Enhanced Inherited Reason Display (US-124, BR-031b): "Inherited" reason pills now show parent resource name in tooltip (e.g., "Inherited from: AD Security Group"). Multiple reason type pills now display for each unique reasonType in the API response (BR-031a) - e.g., an entitlement with both Direct and Policy reasons shows both pills. |
+| 1.15 | 2025-01 | Added Assignment Policy to Context Cross-Lane Filtering (US-128 through US-130, BR-042 through BR-046): Selecting an Assignment Policy now filters the Contexts lane to show only contexts that trigger that policy. Policy data is enriched via OData API call to `/OData/DataObjects/Assignmentpolicy/{policyId}` which returns `AP_CONTEXTS` array. Context UIds are stored in `metadata.contextUIds` for ARRAY_CONTAINS filtering against context `metadata.uId`. |
+| 1.16 | 2025-01 | Fixed violation count mismatch: `extractViolationCount` now deduplicates violations by description (matching `buildViolationsLane` logic) to prevent duplicate counting when same violation appears on multiple assignments. Added default ascending sort by resource name to Effective Entitlements lane in both `accessLensDataService.js` and `laneBuilderService.js`. |

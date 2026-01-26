@@ -342,6 +342,113 @@
   cursor: pointer;
 }
 
+/* Active Filter State - Blue glow to indicate master filtering */
+.filter-dropdown.filtering {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.filter-dropdown.filtering .dropdown-trigger {
+  border-color: #81a1c1;
+  background: rgba(129, 161, 193, 0.15);
+  box-shadow:
+    0 0 10px rgba(129, 161, 193, 0.4),
+    0 0 20px rgba(129, 161, 193, 0.2),
+    0 0 30px rgba(129, 161, 193, 0.1);
+  color: #81a1c1;
+}
+
+.filtering-indicator {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.5rem;
+  background: #81a1c1;
+  color: #1a1a2e;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-radius: 3px;
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 5px rgba(129, 161, 193, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 15px rgba(129, 161, 193, 0.8);
+  }
+}
+
+/* Compliance filter active state */
+.compliance-filter.filter-active {
+  position: relative;
+}
+
+.compliance-filter.filter-active::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 6px;
+  background: transparent;
+  box-shadow:
+    0 0 15px rgba(129, 161, 193, 0.3),
+    0 0 30px rgba(129, 161, 193, 0.15);
+  pointer-events: none;
+  z-index: -1;
+}
+
+/* Multi-path filter toggle */
+.multi-path-filter {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.multi-path-toggle {
+  padding: 0.35rem 0.6rem;
+  background: #2a2a3a;
+  border: 1px solid #3a3a4a;
+  border-radius: 4px;
+  color: #a0a0b0;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.multi-path-toggle:hover {
+  background: #3a3a4a;
+  border-color: #d08770;
+  color: #d08770;
+}
+
+.multi-path-toggle.active {
+  background: linear-gradient(135deg, #d08770 0%, #ebcb8b 100%);
+  border-color: #d08770;
+  color: #ffffff;
+}
+
+.multi-path-filter.filter-active {
+  position: relative;
+}
+
+.multi-path-filter.filter-active::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 6px;
+  background: transparent;
+  box-shadow:
+    0 0 15px rgba(208, 135, 112, 0.3),
+    0 0 30px rgba(208, 135, 112, 0.15);
+  pointer-events: none;
+  z-index: -1;
+}
+
 /* Checkbox Filter */
 .checkbox-filter {
   display: flex;
@@ -576,7 +683,9 @@
 
 /* Ensure lane toggle button stays above drag handle */
 .lane-toggle-btn,
-.lane-maximize-btn {
+.lane-maximize-btn,
+.lane-grid-btn,
+.lane-grid-controls {
   position: relative;
   z-index: 20 !important;
   pointer-events: auto;
@@ -1412,6 +1521,67 @@
   border-color: #ebcb8b;
 }
 
+/* Grid Size Controls */
+.lane-grid-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 0.25rem;
+}
+
+.lane-grid-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 4px;
+  background: rgba(136, 192, 208, 0.1);
+  border: 1px solid rgba(136, 192, 208, 0.3);
+  border-radius: 4px;
+  color: #88c0d0;
+  cursor: pointer;
+  transition: all 0.2s;
+  pointer-events: auto;
+}
+
+.lane-grid-btn:hover:not(.disabled) {
+  background: rgba(136, 192, 208, 0.25);
+  border-color: #88c0d0;
+  transform: scale(1.1);
+}
+
+.lane-grid-btn.disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.lane-grid-btn.increase {
+  background: rgba(163, 190, 140, 0.1);
+  border-color: rgba(163, 190, 140, 0.3);
+  color: #a3be8c;
+}
+
+.lane-grid-btn.increase:hover:not(.disabled) {
+  background: rgba(163, 190, 140, 0.25);
+  border-color: #a3be8c;
+}
+
+.lane-grid-btn.decrease {
+  background: rgba(208, 135, 112, 0.1);
+  border-color: rgba(208, 135, 112, 0.3);
+  color: #d08770;
+}
+
+.lane-grid-btn.decrease:hover:not(.disabled) {
+  background: rgba(208, 135, 112, 0.25);
+  border-color: #d08770;
+}
+
+.lane-grid-btn svg {
+  display: block;
+}
+
 /* Restore Button at Bottom of Maximized Lane */
 .lane-restore-btn {
   width: 100%;
@@ -1673,6 +1843,68 @@
   color: white;
 }
 
+/* Multi-path indicator - shows when entitlement has multiple assignment sources */
+.lane-item-multi-path {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+  font-size: 0.6rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, #d08770 0%, #ebcb8b 100%);
+  color: #ffffff;
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+}
+
+/* Multi-path row styling - subtle indicator for entitlements with overlapping assignments */
+.lane-item-row.multi-path {
+  border-left: 3px solid #d08770;
+}
+
+.lane-item-row.multi-path:hover {
+  border-left-color: #ebcb8b;
+}
+
+/* Validity period pill - shows assignment time period */
+.lane-item-validity {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+  font-size: 0.55rem;
+  font-weight: 600;
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+}
+
+/* Permanent/never expires - subtle green */
+.lane-item-validity.permanent {
+  background: rgba(163, 190, 140, 0.2);
+  color: #a3be8c;
+  border: 1px solid rgba(163, 190, 140, 0.3);
+}
+
+/* Time-limited - has an expiration date */
+.lane-item-validity.time-limited {
+  background: rgba(136, 192, 208, 0.2);
+  color: #88c0d0;
+  border: 1px solid rgba(136, 192, 208, 0.3);
+}
+
+/* Expiring soon (within 90 days) - warning amber */
+.lane-item-validity.expiring-soon {
+  background: rgba(235, 203, 139, 0.3);
+  color: #ebcb8b;
+  border: 1px solid rgba(235, 203, 139, 0.5);
+  animation: pulse-warning 2s ease-in-out infinite;
+}
+
+@keyframes pulse-warning {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
 /* System description (from OData enrichment) */
 .lane-item-description {
   font-size: 0.7rem;
@@ -1901,7 +2133,7 @@
 
 /* Explanation Panel (Object Inspector) */
 .access-lens-explanation {
-  width: 460px;  /* 20% wider than original 384px */
+  width: 552px;  /* 20% wider than previous 460px */
   flex-shrink: 0;
   background: #151515;
   border-left: 1px solid #2a2a2a;
@@ -2489,7 +2721,7 @@
 /* Responsive */
 @media (max-width: 1400px) {
   .access-lens-explanation {
-    width: 403px;  /* 20% wider than original 336px */
+    width: 484px;  /* 20% wider than previous 403px */
   }
 
   .access-lens-radial .lane-card {
@@ -2499,7 +2731,7 @@
 
 @media (max-width: 1200px) {
   .access-lens-explanation {
-    width: 374px;  /* 20% wider than original 312px */
+    width: 449px;  /* 20% wider than previous 374px */
   }
 
   .access-lens-radial {

@@ -20,7 +20,8 @@ export {
   ActionTypes,
   CompassOrientation,
   CrossLaneFilterType,
-  LaneDisplayRules
+  LaneDisplayRules,
+  LaneGridConstraints
 } from './schemas/baseEnums';
 
 // Import for local use in this file
@@ -34,7 +35,8 @@ import {
   ActionTypes,
   CompassOrientation,
   CrossLaneFilterType,
-  LaneDisplayRules
+  LaneDisplayRules,
+  LaneGridConstraints
 } from './schemas/baseEnums';
 
 // ============================================================================
@@ -349,6 +351,7 @@ export const LaneSchema = {
   [LaneTypes.EFFECTIVE_ENTITLEMENTS]: {
     dataType: NodeTypes.ENTITLEMENT,
     displayRule: 'THREE_COLUMN',
+    minColumns: 2,  // Minimum columns for entitlements (enforced in LaneCard)
     icon: '🔑',
     color: '#ebcb8b',
     label: 'Effective Entitlements',
@@ -453,6 +456,7 @@ export const getLaneDisplayConfig = (laneType) => {
       dataType: null,
       displayRule: 'SINGLE_COLUMN',
       columns: 1,
+      rows: 5,
       width: 350,
       maxVisibleItems: 10,
       sortable: true,
@@ -472,7 +476,9 @@ export const getLaneDisplayConfig = (laneType) => {
   return {
     ...schema,
     columns: displayRules.columns,
+    rows: displayRules.rows,
     width: displayRules.width,
+    minColumns: schema.minColumns || 1,  // Lane-specific minimum columns (default: 1)
     maxVisibleItems: schema.maxVisibleItems || displayRules.maxVisibleItems
   };
 };
@@ -1017,7 +1023,11 @@ export const LaneConfigSchema = {
         required: false,
         apiSource: { type: 'GraphQL', query: 'getIdentityContexts', idParam: 'identityUId' },
         position: { x: 380, y: 80 },
-        crossLaneFilters: null  // No cross-lane filtering for contexts
+        crossLaneFilters: {
+          filtersLanes: [],  // Contexts don't filter other lanes directly
+          filteredByLanes: [LaneTypes.ASSIGNMENT_POLICIES],  // Contexts can be filtered by Assignment Policies (via AP_CONTEXTS)
+          filterMappings: {}
+        }
       },
       {
         laneType: LaneTypes.LOGICAL_APPLICATIONS,
@@ -1077,7 +1087,7 @@ export const LaneConfigSchema = {
         apiSource: { type: 'derived', from: 'calculatedAssignments', extract: 'assignmentPolicies' },
         position: { x: -600, y: 80 },
         crossLaneFilters: {
-          filtersLanes: [LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS, LaneTypes.LOGICAL_APPLICATIONS],
+          filtersLanes: [LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.CONTEXTS],
           filteredByLanes: [LaneTypes.VIOLATIONS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS],  // Policies are filtered when a violation, logical app, entitlement, account, or system is selected
           filterMappings: {
             // When Policy is selected, filter Entitlements to show only those assigned by this policy
@@ -1118,6 +1128,13 @@ export const LaneConfigSchema = {
               intermediateTargetField: 'id',        // Match against entitlement's ID
               intermediateExtractFields: ['metadata.systemId', 'metadata.system'],  // Get systemId OR system name
               targetFields: ['id', 'displayName']   // Match against logical app's ID or displayName
+            },
+            // When Policy is selected, filter Contexts to show only those that trigger this policy
+            // Uses AP_CONTEXTS array from OData enrichment - matches context UId
+            [LaneTypes.CONTEXTS]: {
+              type: CrossLaneFilterType.ARRAY_CONTAINS,
+              sourceField: 'metadata.contextUIds',  // Array of context UIds from AP_CONTEXTS
+              targetField: 'metadata.uId'           // Match against context's UId
             }
           }
         }

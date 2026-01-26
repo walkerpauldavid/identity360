@@ -1275,6 +1275,7 @@ const AccessLensPage = () => {
                   onClose={() => navigate(-1)}
                   onFetchObjectDetails={fetchObjectDetails}
                   onPivotToNode={handlePivotToNode}
+                  apiContext={{ omadaApi, bearerToken: getBearerToken(), impersonateUser: user?.email }}
                 />
               </>
             )}
@@ -1308,6 +1309,7 @@ const AccessLensPage = () => {
                   systemDetailsMap={systemDetailsMap}
                   onFetchObjectDetails={fetchObjectDetails}
                   onPivotToNode={handlePivotToNode}
+                  apiContext={{ omadaApi, bearerToken: getBearerToken(), impersonateUser: user?.email }}
                 />
               </>
             )}

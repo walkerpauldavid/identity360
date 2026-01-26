@@ -134,7 +134,10 @@ const extractorRegistry = {
         displayName: ctx.DisplayName || ctx.Name || ctx.displayName || 'Unknown Context',
         status: 'active',
         badges: [],
-        metadata: { ...ctx }
+        metadata: {
+          ...ctx,
+          uId: ctx.UId || ctx.uId || ctx.Id || ctx.id  // UId for cross-lane filtering
+        }
       }
     }));
   },
@@ -602,6 +605,8 @@ export const transformContextToNode = (context) => {
 
   // Handle both camelCase (GraphQL) and PascalCase (OData) field names
   const contextDisplayName = context.displayName || context.DisplayName || context.name || context.Name || 'Unknown Context';
+  // Store UId for cross-lane filtering (Assignment Policies -> Contexts via AP_CONTEXTS)
+  const contextUId = context.UId || context.uId || context.id || context.Id;
 
   return {
     id: context.id || context.UId || context.Id,
@@ -614,6 +619,7 @@ export const transformContextToNode = (context) => {
     metadata: {
       type: context.type || context.Type,
       description: context.description || context.Description,
+      uId: contextUId,  // UId for cross-lane filtering with AP_CONTEXTS
       _raw: context
     }
   };
@@ -1838,21 +1844,82 @@ function buildEntitlementsLane(assignments, filters) {
     };
 
     // Transform reasons if available (from first assignment)
-    const reasons = (firstAssignment.reasons || []).map((r, i) => transformReason(r, i));
+    const legacyReasons = (firstAssignment.reasons || []).map((r, i) => transformReason(r, i));
+
+    // Map API reasonType values to user-friendly display names
+    const reasonTypeDisplayMap = {
+      'ActualDirect': 'Direct',
+      'Direct': 'Direct',
+      'Policy': 'Policy',
+      'UnconfirmedActual': 'Pending',
+      'ChildResource': 'Inherited',
+      'AutoAccount': 'Auto',
+      'RoleMembership': 'Role',
+      'Birthright': 'Birthright',
+      'AccountLink': 'Account Link',
+      'SoDException': 'SoD Exception'
+    };
+
+    // Build reason pills from ALL unique reason types in the reason array
+    // Each reason in the array represents a different assignment path (e.g., Direct + Policy)
+    const reasonArray = firstAssignment.reason;
+    let apiReasons = [];
+
+    if (Array.isArray(reasonArray) && reasonArray.length > 0) {
+      // Track unique reason types to avoid duplicate pills
+      const seenReasonTypes = new Set();
+
+      apiReasons = reasonArray
+        .filter(r => {
+          const reasonType = r?.reasonType;
+          if (!reasonType || seenReasonTypes.has(reasonType)) {
+            return false;
+          }
+          seenReasonTypes.add(reasonType);
+          return true;
+        })
+        .map((r, i) => {
+          const reasonType = r?.reasonType;
+          const displayName = reasonTypeDisplayMap[reasonType] || reasonType || 'Assignment';
+          return {
+            id: `reason-${index}-${i}-${reasonType}`,
+            type: reasonType,
+            reasonType: reasonType,
+            title: displayName,
+            description: r?.description || `Assigned via ${displayName}`,
+            confidence: 'high'
+          };
+        });
+    } else if (reasonArray?.reasonType) {
+      // Single reason object (legacy format)
+      const reasonType = reasonArray.reasonType;
+      const displayName = reasonTypeDisplayMap[reasonType] || reasonType || 'Assignment';
+      apiReasons = [{
+        id: `reason-${index}-0-${reasonType}`,
+        type: reasonType,
+        reasonType: reasonType,
+        title: displayName,
+        description: reasonArray?.description || `Assigned via ${displayName}`,
+        confidence: 'high'
+      }];
+    }
+
+    // Use API reasons if available, otherwise fall back to legacy or default
+    const reasons = apiReasons.length > 0 ? apiReasons : (legacyReasons.length > 0 ? legacyReasons : [
+      {
+        id: `reason-${index}-default`,
+        type: ReasonTypes.OTHER,
+        title: 'Assignment',
+        description: entry.assignments.length > 1
+          ? `Assigned to ${entry.identityIds.size} user(s) via ${entry.accountIds.size} account(s)`
+          : `Assigned via ${firstAssignment.assignmentType || 'unknown method'}`,
+        confidence: 'high'
+      }
+    ]);
 
     return {
       node: entitlementNode,
-      reasons: reasons.length > 0 ? reasons : [
-        {
-          id: `reason-${index}-default`,
-          type: ReasonTypes.OTHER,
-          title: 'Assignment',
-          description: entry.assignments.length > 1
-            ? `Assigned to ${entry.identityIds.size} user(s) via ${entry.accountIds.size} account(s)`
-            : `Assigned via ${firstAssignment.assignmentType || 'unknown method'}`,
-          confidence: 'high'
-        }
-      ],
+      reasons,
       groupKey: resource?.system?.id,
       groupLabel: resource?.system?.name,
       rawData: firstAssignment
@@ -1873,6 +1940,13 @@ function buildEntitlementsLane(assignments, filters) {
       item.reasons?.some(r => filters.reasonTypes.includes(r.type))
     );
   }
+
+  // Sort by resource name (displayName) ascending - default sort order for entitlements
+  filteredItems.sort((a, b) => {
+    const nameA = (a.node?.displayName || '').toLowerCase();
+    const nameB = (b.node?.displayName || '').toLowerCase();
+    return nameA.localeCompare(nameB);
+  });
 
   // console.log('[buildEntitlementsLane] Final:', filteredItems.length, 'entitlements');
 
@@ -2914,6 +2988,94 @@ export function buildAssignmentPoliciesLane(assignments, filters = {}) {
 }
 
 /**
+ * Enrich Assignment Policies lane items with OData details
+ * Fetches policy details from OData API to get AP_CONTEXTS (contexts that trigger each policy)
+ * This enables cross-lane filtering between Assignment Policies and Contexts
+ *
+ * @param {Object} policiesLane - The assignment policies lane object
+ * @param {Object} apiContext - API context with { omadaApi, bearerToken, impersonateUser }
+ * @returns {Promise<Object>} Enriched lane object with AP_CONTEXTS data
+ */
+export async function enrichPoliciesWithOData(policiesLane, apiContext) {
+  if (!policiesLane || !policiesLane.items || policiesLane.items.length === 0) {
+    return policiesLane;
+  }
+
+  const { omadaApi, bearerToken, impersonateUser } = apiContext;
+
+  if (!omadaApi || !bearerToken) {
+    console.warn('[enrichPoliciesWithOData] Missing API context, skipping enrichment');
+    return policiesLane;
+  }
+
+  if (shouldLog('POLICIES')) {
+    console.log(`[enrichPoliciesWithOData] Enriching ${policiesLane.items.length} policies with OData details`);
+  }
+
+  // Fetch policy details for each policy with a valid causeObjectKey (policy ID)
+  const enrichmentPromises = policiesLane.items.map(async (item) => {
+    const policyId = item.node?.rawData?.causeObjectKey || item.rawData?.causeObjectKey;
+
+    if (!policyId) {
+      if (shouldLog('POLICIES')) {
+        console.log(`[enrichPoliciesWithOData] No policy ID for "${item.node?.displayName}", skipping`);
+      }
+      return item;
+    }
+
+    try {
+      const result = await omadaApi.assignmentPolicy.getAssignmentPolicyById(
+        policyId,
+        bearerToken,
+        impersonateUser
+      );
+
+      if (result.status === 'success' && result.data) {
+        const policyData = result.data;
+        const apContexts = policyData.AP_CONTEXTS || [];
+
+        // Extract context UIds for cross-lane filtering
+        const contextUIds = apContexts
+          .map(ctx => ctx.UId || ctx.uId)
+          .filter(Boolean);
+
+        // Enrich the item with AP_CONTEXTS data
+        item.node.metadata.contextUIds = contextUIds;
+        item.node.metadata.apContexts = apContexts;
+        item.node.rawData = {
+          ...item.node.rawData,
+          AP_CONTEXTS: apContexts,
+          contextUIds: contextUIds
+        };
+        item.rawData = {
+          ...item.rawData,
+          AP_CONTEXTS: apContexts,
+          contextUIds: contextUIds
+        };
+
+        if (shouldLog('POLICIES')) {
+          console.log(`[enrichPoliciesWithOData] "${item.node?.displayName}" has ${apContexts.length} contexts:`,
+            apContexts.map(c => c.DisplayName).join(', '));
+        }
+      }
+    } catch (error) {
+      console.warn(`[enrichPoliciesWithOData] Failed to fetch details for policy "${item.node?.displayName}":`, error.message);
+    }
+
+    return item;
+  });
+
+  // Wait for all enrichment to complete
+  await Promise.all(enrichmentPromises);
+
+  if (shouldLog('POLICIES')) {
+    console.log('[enrichPoliciesWithOData] Enrichment complete');
+  }
+
+  return policiesLane;
+}
+
+/**
  * Build Violations lane from calculated assignments
  * Extracts violations from assignments and groups them by unique violation description
  *
@@ -3046,19 +3208,29 @@ export function buildViolationsLane(assignments, filters = {}) {
 
 /**
  * Extract total violation count from assignments (for FocusCard indicator)
+ * Deduplicates violations by description to avoid counting the same violation
+ * multiple times when it appears on multiple assignments (multi-path entitlements)
  * @param {Array} assignments - Calculated assignments
- * @returns {number} Total number of violations
+ * @returns {number} Total number of unique violations
  */
 export function extractViolationCount(assignments) {
   if (!assignments || !Array.isArray(assignments)) return 0;
 
-  let count = 0;
+  // Use a Set to track unique violations by description
+  // This matches the deduplication logic in buildViolationsLane
+  const uniqueViolations = new Set();
+
   assignments.forEach(assignment => {
     if (assignment.violations && Array.isArray(assignment.violations)) {
-      count += assignment.violations.length;
+      assignment.violations.forEach(violation => {
+        // Use description as the unique key (same as buildViolationsLane)
+        const key = violation.description || `violation-${violation.violationStatus || 'unknown'}`;
+        uniqueViolations.add(key);
+      });
     }
   });
-  return count;
+
+  return uniqueViolations.size;
 }
 
 /**
@@ -3083,6 +3255,7 @@ export default {
   buildLanesFromAssignments,
   buildLanesForEntitlement,
   buildAssignmentPoliciesLane,
+  enrichPoliciesWithOData,
   buildViolationsLane,
   populateLanesForNodeType,
   // Extractor registry functions

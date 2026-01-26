@@ -22,7 +22,8 @@ const FilterBar = ({
     visibleLanes = Object.values(LaneTypes),
     reasonTypes = [],
     complianceStatuses = [],
-    entitlementType = 'all' // 'all', 'direct', 'inherited'
+    entitlementType = 'all', // 'all', 'direct', 'inherited'
+    multiPathOnly = false // Filter to show only entitlements with multiple assignment paths
   } = filters;
 
   const toggleLane = (laneType) => {
@@ -141,6 +142,20 @@ const FilterBar = ({
         </select>
       </div>
 
+      {/* Multi-Path Filter Toggle */}
+      <div className={`filter-group multi-path-filter ${multiPathOnly ? 'filter-active' : ''}`}>
+        <button
+          className={`toggle-btn multi-path-toggle ${multiPathOnly ? 'active' : ''}`}
+          onClick={() => onFilterChange({ ...filters, multiPathOnly: !multiPathOnly })}
+          title={multiPathOnly ? 'Showing entitlements with multiple assignment paths - Click to show all' : 'Show only entitlements with multiple assignment paths (overlapping policies)'}
+        >
+          ⚡ Multi-Path
+        </button>
+        {multiPathOnly && (
+          <span className="filtering-indicator">Filtering</span>
+        )}
+      </div>
+
       {/* Reason Type Filter */}
       <div className="filter-group reason-filter">
         <div className="filter-dropdown">
@@ -202,11 +217,14 @@ const FilterBar = ({
 
       {/* Compliance Status Filter - Multi-select dropdown */}
       {availableComplianceStatuses.length > 0 && (
-        <div className="filter-group compliance-filter">
-          <div className="filter-dropdown">
+        <div className={`filter-group compliance-filter ${complianceStatuses.length > 0 ? 'filter-active' : ''}`}>
+          <div className={`filter-dropdown ${complianceStatuses.length > 0 ? 'filtering' : ''}`}>
             <button className="dropdown-trigger">
               Compliance {complianceStatuses.length > 0 && `(${complianceStatuses.length})`} ▾
             </button>
+            {complianceStatuses.length > 0 && (
+              <span className="filtering-indicator">Filtering</span>
+            )}
             <div className="dropdown-menu">
               {availableComplianceStatuses.map((status) => {
                 const sanitizedId = `compliance-status-${status.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-]/g, '')}`;

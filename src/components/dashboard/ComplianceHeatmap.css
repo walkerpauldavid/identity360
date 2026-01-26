@@ -373,6 +373,32 @@
   color: #5f5f1a;
 }
 
+.stat-icon.multi-path {
+  color: #d08770;
+}
+
+.stat-row.multi-path {
+  color: var(--secondary-color, rgba(255,255,255,0.8));
+  font-weight: 500;
+}
+
+/* Multi-path filter toggle */
+.filter-toggle.multi-path-toggle {
+  border-left: 1px solid #3a3a4a;
+  padding-left: 1rem;
+  margin-left: 0.5rem;
+}
+
+.filter-toggle.multi-path-toggle input {
+  accent-color: #d08770;
+}
+
+/* Multi-path header stat */
+.header-stat.multi-path {
+  border-left: 2px solid #d08770;
+  padding-left: 1rem;
+}
+
 .stat-label {
   color: var(--secondary-color, rgba(0, 0, 0, 0.6));
 }

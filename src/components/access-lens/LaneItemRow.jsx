@@ -8,6 +8,73 @@ import { memo } from 'react';
 import { getNodeIcon, getNodeColor, getRiskColor, getStatusColor } from './accessLensTypes';
 import ReasonChips from './ReasonChips';
 
+/**
+ * Format a date as MM/YY (e.g., 07/26 for July 2026)
+ * @param {string} dateString - ISO date string
+ * @returns {string} Formatted date or null if invalid
+ */
+const formatValidityDate = (dateString) => {
+  if (!dateString) return null;
+  try {
+    const date = new Date(dateString);
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = String(date.getFullYear()).slice(-2);
+    return `${month}/${year}`;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Get the validity period display text for an assignment
+ * Rules:
+ * - If validTo year is 9999 → "Never expires"
+ * - If validFrom year is 1999 → don't show validFrom
+ * - Format: MM/YY (e.g., 07/26 for July 2026)
+ * @param {string} validFrom - ISO date string for start
+ * @param {string} validTo - ISO date string for end
+ * @returns {Object} { text: string, isExpiring: boolean }
+ */
+const getValidityDisplay = (validFrom, validTo) => {
+  if (!validFrom && !validTo) return null;
+
+  const fromDate = validFrom ? new Date(validFrom) : null;
+  const toDate = validTo ? new Date(validTo) : null;
+
+  const fromYear = fromDate?.getFullYear();
+  const toYear = toDate?.getFullYear();
+
+  const isFromDefault = fromYear === 1999;
+  const isNeverExpires = toYear === 9999;
+
+  // Check if expiring soon (within 90 days)
+  const now = new Date();
+  const ninetyDaysFromNow = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
+  const isExpiringSoon = toDate && !isNeverExpires && toDate <= ninetyDaysFromNow;
+
+  // Build display text
+  if (isFromDefault && isNeverExpires) {
+    return { text: 'Never expires', isExpiring: false, isExpiringSoon: false };
+  }
+
+  if (isFromDefault && !isNeverExpires) {
+    // Only show end date
+    const toFormatted = formatValidityDate(validTo);
+    return { text: `Until ${toFormatted}`, isExpiring: true, isExpiringSoon };
+  }
+
+  if (!isFromDefault && isNeverExpires) {
+    // Only show start date
+    const fromFormatted = formatValidityDate(validFrom);
+    return { text: `From ${fromFormatted}`, isExpiring: false, isExpiringSoon: false };
+  }
+
+  // Both dates are real
+  const fromFormatted = formatValidityDate(validFrom);
+  const toFormatted = formatValidityDate(validTo);
+  return { text: `${fromFormatted} → ${toFormatted}`, isExpiring: true, isExpiringSoon };
+};
+
 const LaneItemRow = ({
   item,
   isSelected,
@@ -45,6 +112,18 @@ const LaneItemRow = ({
   const complianceStatus = node.metadata?.complianceStatus || rawData?.complianceStatus || null;
   // Check if this entitlement has violations
   const hasViolations = node.metadata?.hasViolations || rawData?.hasViolations || (node.metadata?.violations?.length > 0) || (rawData?.violations?.length > 0);
+
+  // Check for multiple assignment paths (reason array with more than one entry)
+  // This indicates overlapping policies/reasons granting the same entitlement
+  const reasonArray = rawData?.reason;
+  const assignmentPathCount = Array.isArray(reasonArray) ? reasonArray.length : (reasonArray ? 1 : 0);
+  const hasMultiplePaths = assignmentPathCount > 1;
+
+  // Get validity period for entitlements (validFrom/validTo at assignment level)
+  const validFrom = rawData?.validFrom || node.metadata?.validFrom;
+  const validTo = rawData?.validTo || node.metadata?.validTo;
+  const validityDisplay = isEntitlementNode ? getValidityDisplay(validFrom, validTo) : null;
+
 
   // Check if this is a Violation type node
   const isViolationNode = node.type === 'Violation';
@@ -110,7 +189,7 @@ const LaneItemRow = ({
 
   return (
     <div
-      className={`lane-item-row ${isSelected ? 'selected' : ''} ${isActiveFilter ? 'active-filter' : ''} ${viewMode === 'risk' && node.riskScore >= 50 ? 'high-risk' : ''} ${isLogicalSystem ? 'logical-system' : ''} ${hasViolations ? 'has-violations' : ''} ${isViolationNode ? 'violation-node' : ''}`}
+      className={`lane-item-row ${isSelected ? 'selected' : ''} ${isActiveFilter ? 'active-filter' : ''} ${viewMode === 'risk' && node.riskScore >= 50 ? 'high-risk' : ''} ${isLogicalSystem ? 'logical-system' : ''} ${hasViolations ? 'has-violations' : ''} ${isViolationNode ? 'violation-node' : ''} ${hasMultiplePaths ? 'multi-path' : ''}`}
       onClick={handleClick}
       style={{ cursor: 'pointer' }}
       title={hoverDescription || node.displayName}
@@ -158,6 +237,24 @@ const LaneItemRow = ({
               className={`lane-item-compliance ${complianceStatus === 'Approved' ? 'approved' : complianceStatus === 'Not Approved' ? 'not-approved' : 'pending'}`}
             >
               {complianceStatus}
+            </span>
+          )}
+          {/* Multi-path indicator - shows when entitlement has multiple assignment sources */}
+          {isEntitlementNode && hasMultiplePaths && (
+            <span
+              className="lane-item-multi-path"
+              title={`${assignmentPathCount} assignment paths: This entitlement is granted through multiple overlapping policies or reasons`}
+            >
+              ⚡{assignmentPathCount}
+            </span>
+          )}
+          {/* Validity period pill - shows assignment time period */}
+          {isEntitlementNode && validityDisplay && (
+            <span
+              className={`lane-item-validity ${validityDisplay.isExpiring ? 'time-limited' : 'permanent'} ${validityDisplay.isExpiringSoon ? 'expiring-soon' : ''}`}
+              title={`Assignment validity: ${validityDisplay.text}`}
+            >
+              {validityDisplay.text}
             </span>
           )}
         </div>
@@ -217,6 +314,7 @@ const LaneItemRow = ({
             maxVisible={2}
             onReasonClick={onReasonClick}
             selectedReasonId={selectedReasonId}
+            parentResource={rawData?.parentResource}
           />
         )}
 

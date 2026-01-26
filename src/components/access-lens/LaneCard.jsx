@@ -13,7 +13,7 @@
  */
 
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { LaneTypes, getLaneDisplayConfig } from './accessLensTypes';
+import { LaneTypes, getLaneDisplayConfig, LaneGridConstraints } from './accessLensTypes';
 import LaneItemRow from './LaneItemRow';
 import { getItemResourceType } from './accessLensUtils';
 
@@ -50,6 +50,9 @@ const LaneCard = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedResourceTypes, setSelectedResourceTypes] = useState([]);
   const [calculatedMaxHeight, setCalculatedMaxHeight] = useState(null);
+  // Grid size state - null means use defaults from schema
+  const [customColumns, setCustomColumns] = useState(null);
+  const [customRows, setCustomRows] = useState(null);
 
   // Ref hooks
   const cardRef = useRef(null);
@@ -185,10 +188,29 @@ const LaneCard = ({
   // ==========================================================================
   const displayConfig = getLaneDisplayConfig(laneType);
   const showReasons = laneType === LaneTypes.EFFECTIVE_ENTITLEMENTS && focusNodeType === 'Identity';
-  const effectiveColumns = isMaximized ? 2 : displayConfig.columns;
+
+  // Grid size: use custom values if set, otherwise use defaults from schema
+  // Schema minColumns overrides global minimum (e.g., Entitlements requires min 2 columns)
+  const { minColumns: globalMinColumns, maxColumns, minRows, maxRows, columnWidthPx } = LaneGridConstraints;
+  const schemaMinColumns = displayConfig.minColumns || globalMinColumns;
+  const effectiveMinColumns = Math.max(globalMinColumns, schemaMinColumns);
+
+  const currentColumns = customColumns ?? displayConfig.columns;
+  const currentRows = customRows ?? displayConfig.rows;
+  // Ensure columns never go below schema minimum
+  const effectiveColumns = isMaximized
+    ? Math.max(effectiveMinColumns, currentColumns)
+    : Math.max(effectiveMinColumns, currentColumns);
+  const effectiveRows = isMaximized ? 10 : currentRows;
+  const maxVisibleItems = effectiveColumns * effectiveRows;
+
   const isMultiColumn = effectiveColumns > 1;
   const hasMoreItems = !laneIsFiltered && totalCount > items.length;
   const isCollapsed = !isExpanded;
+
+  // Check if grid can be increased/decreased (respecting schema minColumns)
+  const canIncreaseGrid = currentColumns < maxColumns || currentRows < maxRows;
+  const canDecreaseGrid = currentColumns > effectiveMinColumns || currentRows > minRows;
 
   // Regular functions (not hooks, so can be defined after early return)
   const toggleResourceType = (type) => {
@@ -201,21 +223,40 @@ const LaneCard = ({
     setSelectedResourceTypes([]);
   };
 
-  // Use width from displayConfig (350px for single column, 700px for multi-column)
-  // Maximized mode uses 700px (2 columns), normal mode uses displayConfig width
-  const normalWidth = displayConfig.width;
-  const laneWidth = isMaximized ? '700px' : `${normalWidth}px`;
+  // Grid size adjustment functions
+  const increaseGridSize = () => {
+    const newColumns = Math.min(maxColumns, currentColumns + 1);
+    const newRows = Math.min(maxRows, currentRows + 1);
+    setCustomColumns(newColumns);
+    setCustomRows(newRows);
+  };
+
+  const decreaseGridSize = () => {
+    // Respect schema minColumns (e.g., Entitlements min 2)
+    const newColumns = Math.max(effectiveMinColumns, currentColumns - 1);
+    const newRows = Math.max(minRows, currentRows - 1);
+    setCustomColumns(newColumns);
+    setCustomRows(newRows);
+  };
+
+  // Use width from displayConfig (350px for single column, adjusted for custom columns)
+  // Maximized mode uses calculated width, normal mode uses column-based width
+  const calculatedWidth = currentColumns * columnWidthPx;
+  const normalWidth = customColumns ? calculatedWidth : displayConfig.width;
+  const laneWidth = isMaximized ? `${Math.max(700, calculatedWidth)}px` : `${normalWidth}px`;
 
   return (
     <div
       ref={cardRef}
-      className={`lane-card ${isExpanded ? 'expanded' : 'collapsed'} ${isMaximized ? 'maximized' : ''} ${isFilterSource ? 'filter-source' : ''} ${laneIsFiltered ? 'filtered' : ''} ${isMultiColumn ? 'multi-column' : ''} columns-${displayConfig.columns}`}
+      className={`lane-card ${isExpanded ? 'expanded' : 'collapsed'} ${isMaximized ? 'maximized' : ''} ${isFilterSource ? 'filter-source' : ''} ${laneIsFiltered ? 'filtered' : ''} ${isMultiColumn ? 'multi-column' : ''} columns-${effectiveColumns}`}
       data-lane-type={laneType}
       data-collapsed={isCollapsed}
       data-maximized={isMaximized}
-      data-columns={displayConfig.columns}
+      data-columns={effectiveColumns}
+      data-rows={effectiveRows}
       style={{
-        '--lane-columns': displayConfig.columns,
+        '--lane-columns': effectiveColumns,
+        '--lane-rows': effectiveRows,
         '--lane-color': displayConfig.color,
         width: isExpanded ? laneWidth : '250px'
       }}
@@ -267,6 +308,55 @@ const LaneCard = ({
         </span>
         {laneIsFiltered && !isFilterSource && <span className="lane-filter-badge">Filtered</span>}
         {isFilterSource && <span className="lane-filter-badge active">Filtering</span>}
+
+        {/* Grid size controls - only show when expanded */}
+        {isExpanded && (
+          <div className="lane-grid-controls">
+            <button
+              className={`lane-grid-btn decrease ${!canDecreaseGrid ? 'disabled' : ''}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                if (canDecreaseGrid) decreaseGridSize();
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+              disabled={!canDecreaseGrid}
+              title={`Decrease grid size (${currentColumns}×${currentRows})`}
+            >
+              <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
+                <rect x="2" y="2" width="5" height="5" rx="1" opacity="0.4"/>
+                <rect x="9" y="2" width="5" height="5" rx="1" opacity="0.4"/>
+                <rect x="2" y="9" width="5" height="5" rx="1" opacity="0.4"/>
+                <rect x="9" y="9" width="5" height="5" rx="1" opacity="0.4"/>
+              </svg>
+            </button>
+            <button
+              className={`lane-grid-btn increase ${!canIncreaseGrid ? 'disabled' : ''}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                if (canIncreaseGrid) increaseGridSize();
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+              disabled={!canIncreaseGrid}
+              title={`Increase grid size (${currentColumns}×${currentRows})`}
+            >
+              <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
+                <rect x="1" y="1" width="4" height="4" rx="0.5"/>
+                <rect x="6" y="1" width="4" height="4" rx="0.5"/>
+                <rect x="11" y="1" width="4" height="4" rx="0.5"/>
+                <rect x="1" y="6" width="4" height="4" rx="0.5"/>
+                <rect x="6" y="6" width="4" height="4" rx="0.5"/>
+                <rect x="11" y="6" width="4" height="4" rx="0.5"/>
+                <rect x="1" y="11" width="4" height="4" rx="0.5"/>
+                <rect x="6" y="11" width="4" height="4" rx="0.5"/>
+                <rect x="11" y="11" width="4" height="4" rx="0.5"/>
+              </svg>
+            </button>
+          </div>
+        )}
 
         {/* Maximize/Restore button - only show when there are more items */}
         {isExpanded && hasMoreItems && (
@@ -362,7 +452,8 @@ const LaneCard = ({
             <div className="lane-empty">No items</div>
           ) : (
             <>
-              {displayItems.map((item, index) => (
+              {/* Limit items to maxVisibleItems when not maximized */}
+              {(isMaximized ? displayItems : displayItems.slice(0, maxVisibleItems)).map((item, index) => (
                 <LaneItemRow
                   key={item.node.id || index}
                   item={item}
@@ -377,8 +468,8 @@ const LaneCard = ({
                 />
               ))}
 
-              {/* Load More - only show when not maximized and there are more items */}
-              {!isMaximized && canLoadMore && (
+              {/* Load More - only show when not maximized and there are more items than visible */}
+              {!isMaximized && (displayItems.length > maxVisibleItems || canLoadMore) && (
                 <button
                   className="lane-load-more"
                   onClick={handleMaximize}
