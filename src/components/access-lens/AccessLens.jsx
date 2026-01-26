@@ -405,7 +405,8 @@ const DraggableLane = ({ id, position, children, onPositionChange }) => {
       data-lane-type={id}
       {...attributes}
     >
-      {/* Drag handle overlay - covers the header area for dragging */}
+      {/* Drag handle overlay - covers left portion of header for dragging */}
+      {/* Right side (buttons area) is left uncovered so buttons receive clicks */}
       <div
         className="drag-handle-overlay"
         {...listeners}
@@ -413,11 +414,10 @@ const DraggableLane = ({ id, position, children, onPositionChange }) => {
           position: 'absolute',
           top: 0,
           left: 0,
-          right: 0,
+          right: '140px', // Leave space for header buttons (toggle, maximize, grid controls)
           height: '40px', // Height of the lane header
           cursor: isDragging ? 'grabbing' : 'grab',
           zIndex: 10,
-          // Re-enable pointer events on the handle during drag
           pointerEvents: 'auto',
         }}
       />
@@ -684,6 +684,7 @@ const AccessLens = ({
   const [selectedEntitlementId, setSelectedEntitlementId] = useState(null);  // For filtering identities/accounts by entitlement (System-centric view)
   const [selectedViolationId, setSelectedViolationId] = useState(null);  // For filtering by violation
   const [pendingNodeType, setPendingNodeType] = useState(null);  // Track target node type during pivot for correct loading placeholders
+  const [currentAssignments, setCurrentAssignments] = useState(null);  // Track current assignments for violation count (updated on pivot)
 
   // Filter state
   const [viewMode, setViewMode] = useState(ViewModes.EXPLORE);
@@ -845,9 +846,10 @@ const AccessLens = ({
     }
   }, [filters, focusNode?.type]);
 
-  // Initial load - use identity from props
+  // Initial load - use identity from props (only for identity-centric view)
+  // Skip if initialFocusNode is provided (system-centric view takes precedence)
   useEffect(() => {
-    if (identity) {
+    if (identity && !initialFocusNode) {
       if (shouldLog('INIT')) {
         console.log('=== AccessLens: Creating node from identity ===');
         console.log('Identity prop received:', identity);
@@ -860,8 +862,8 @@ const AccessLens = ({
 
       loadFocus(identityNode);
     }
-    // No fallback to mock data - identity prop is required
-  }, [identity]);
+    // No fallback to mock data - identity prop is required for identity-centric view
+  }, [identity, initialFocusNode]);
 
   // Direct initialization from props (e.g., system-centric view from heatmap)
   useEffect(() => {
@@ -906,12 +908,13 @@ const AccessLens = ({
     }
   }, [initialFocusNode, initialLanes, initialReasonTypes, initialComplianceStatuses]);
 
-  // Reload when filters change
+  // Reload when filters change (only for identity-centric view)
+  // For system-centric view (initialFocusNode), filtering is done at render level without reloading
   useEffect(() => {
-    if (focusNode) {
+    if (focusNode && !initialFocusNode) {
       loadFocus(focusNode, false);
     }
-  }, [filters]);
+  }, [filters, initialFocusNode]);
 
   // Update lanes when calculatedAssignments API data is provided (from AccessLensPage)
   useEffect(() => {
@@ -1023,11 +1026,19 @@ const AccessLens = ({
     enrichPolicies();
   }, [lanes, apiContext]);
 
-  // Calculate violation count from calculatedAssignments for the FocusCard indicator
-  const violationCount = useMemo(() => {
-    if (!calculatedAssignments || !Array.isArray(calculatedAssignments)) return 0;
-    return extractViolationCount(calculatedAssignments);
+  // Sync currentAssignments with prop when prop changes (initial load or external update)
+  useEffect(() => {
+    if (calculatedAssignments && Array.isArray(calculatedAssignments)) {
+      setCurrentAssignments(calculatedAssignments);
+    }
   }, [calculatedAssignments]);
+
+  // Calculate violation count from currentAssignments for the FocusCard indicator
+  // Uses currentAssignments which is updated both from prop and from pivot results
+  const violationCount = useMemo(() => {
+    if (!currentAssignments || !Array.isArray(currentAssignments)) return 0;
+    return extractViolationCount(currentAssignments);
+  }, [currentAssignments]);
 
   // Track previous compliance filter to detect changes
   const prevComplianceFilterRef = useRef(null);
@@ -1390,6 +1401,14 @@ const AccessLens = ({
             setAvailableComplianceStatuses(pivotResult.complianceStatuses);
           }
 
+          // Update current assignments for violation count (Identity pivots return this)
+          if (pivotResult.assignments) {
+            setCurrentAssignments(pivotResult.assignments);
+          } else if (newFocusNode?.type !== NodeTypes.IDENTITY) {
+            // Clear assignments when pivoting to non-Identity (System, etc.) to reset violation count
+            setCurrentAssignments(null);
+          }
+
           // Reset lane positions for new node type
           if (newFocusNode?.type !== focusNode?.type) {
             setLanePositions({});
@@ -1422,10 +1441,17 @@ const AccessLens = ({
       try {
         const result = await onPivotToNode(node);
         if (result) {
-          setFocusNode(result.focusNode || node);
+          const newNode = result.focusNode || node;
+          setFocusNode(newNode);
           if (result.lanes) setLanes(result.lanes);
           if (result.reasonTypes) setAvailableReasonTypes(result.reasonTypes);
           if (result.complianceStatuses) setAvailableComplianceStatuses(result.complianceStatuses);
+          // Update assignments for violation count
+          if (result.assignments) {
+            setCurrentAssignments(result.assignments);
+          } else if (newNode?.type !== NodeTypes.IDENTITY) {
+            setCurrentAssignments(null);
+          }
         } else {
           // Fallback - just set the focus node
           setFocusNode(node);
@@ -1456,10 +1482,17 @@ const AccessLens = ({
         try {
           const result = await onPivotToNode(prevNode);
           if (result) {
-            setFocusNode(result.focusNode || prevNode);
+            const newNode = result.focusNode || prevNode;
+            setFocusNode(newNode);
             if (result.lanes) setLanes(result.lanes);
             if (result.reasonTypes) setAvailableReasonTypes(result.reasonTypes);
             if (result.complianceStatuses) setAvailableComplianceStatuses(result.complianceStatuses);
+            // Update assignments for violation count
+            if (result.assignments) {
+              setCurrentAssignments(result.assignments);
+            } else if (newNode?.type !== NodeTypes.IDENTITY) {
+              setCurrentAssignments(null);
+            }
           }
         } catch (err) {
           console.error('Error navigating back:', err);
@@ -1488,10 +1521,17 @@ const AccessLens = ({
         try {
           const result = await onPivotToNode(nextNode);
           if (result) {
-            setFocusNode(result.focusNode || nextNode);
+            const newNode = result.focusNode || nextNode;
+            setFocusNode(newNode);
             if (result.lanes) setLanes(result.lanes);
             if (result.reasonTypes) setAvailableReasonTypes(result.reasonTypes);
             if (result.complianceStatuses) setAvailableComplianceStatuses(result.complianceStatuses);
+            // Update assignments for violation count
+            if (result.assignments) {
+              setCurrentAssignments(result.assignments);
+            } else if (newNode?.type !== NodeTypes.IDENTITY) {
+              setCurrentAssignments(null);
+            }
           }
         } catch (err) {
           console.error('Error navigating forward:', err);
@@ -1643,23 +1683,46 @@ const AccessLens = ({
 
         // Apply compliance status filter
         if (filters.complianceStatuses?.length > 0) {
+          console.log('[DEBUG] Compliance filter active:', filters.complianceStatuses);
+          console.log('[DEBUG] Items before filter:', filteredItems.length);
+          console.log('[DEBUG] Sample item complianceStatus:', filteredItems[0]?.node?.metadata?.complianceStatus);
           filteredItems = filteredItems.filter(item =>
             filters.complianceStatuses.includes(item.node.metadata?.complianceStatus)
           );
+          console.log('[DEBUG] Items after filter:', filteredItems.length);
           isFiltered = true;
         }
 
         // Apply reason types filter
         if (filters.reasonTypes?.length > 0) {
           filteredItems = filteredItems.filter(item => {
-            const reasonType = item.rawData?.reason?.reasonType;
-            const reasonDesc = item.rawData?.reason?.description?.toLowerCase() || '';
+            const reasonArray = item.rawData?.reason;
+            const reasons = Array.isArray(reasonArray) ? reasonArray : (reasonArray ? [reasonArray] : []);
+            const reasonTypes = reasons.map(r => r?.reasonType).filter(Boolean);
+            const uniqueReasonTypes = new Set(reasonTypes);
+
+            // Check if this is an "External" item (only ActualDirect, no other reasons)
+            const isExternalOnly = uniqueReasonTypes.size === 1 && uniqueReasonTypes.has('ActualDirect');
+
             return filters.reasonTypes.some(filterType => {
-              if (reasonType === filterType) return true;
-              if (filterType === 'Direct' && (reasonType === 'DirectAssignment' || reasonDesc.includes('direct'))) return true;
-              if (filterType === 'Implicit' && reasonDesc.includes('implicit')) return true;
-              if (filterType === 'Explicit' && reasonDesc.includes('explicit')) return true;
-              return false;
+              // External filter: match items with ONLY ActualDirect
+              if (filterType === 'External') {
+                return isExternalOnly;
+              }
+              // Direct filter: match Direct or DirectAssignment, but NOT items with only ActualDirect
+              if (filterType === 'Direct') {
+                if (isExternalOnly) return false; // Don't match External items with Direct filter
+                return uniqueReasonTypes.has('Direct') || uniqueReasonTypes.has('DirectAssignment');
+              }
+              // Other filters
+              if (filterType === 'Implicit') {
+                return reasons.some(r => r?.description?.toLowerCase()?.includes('implicit'));
+              }
+              if (filterType === 'Explicit') {
+                return reasons.some(r => r?.description?.toLowerCase()?.includes('explicit'));
+              }
+              // Direct match on reason type
+              return uniqueReasonTypes.has(filterType);
             });
           });
           isFiltered = true;

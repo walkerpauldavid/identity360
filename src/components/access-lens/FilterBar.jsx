@@ -159,15 +159,33 @@ const FilterBar = ({
       {/* Reason Type Filter */}
       <div className="filter-group reason-filter">
         <div className="filter-dropdown">
-          <button className="dropdown-trigger">
+          <button className="dropdown-trigger" title="Filter entitlements by how they were assigned">
             Reason Types {reasonTypes.length > 0 && `(${reasonTypes.length})`} ▾
           </button>
-          <div className="dropdown-menu">
-            {/* Base reason types - always shown */}
+          <div className="dropdown-menu reason-types-menu">
+            {/* Help text header */}
+            <div className="dropdown-help-header">
+              <span className="help-icon">ℹ️</span>
+              <span className="help-text">Filter by assignment method</span>
+            </div>
+            <div className="dropdown-divider"></div>
+            {/* Base reason types - always shown with descriptions */}
             {Object.values(BaseReasonTypes).map((type) => {
               const sanitizedId = `reason-type-${type.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-]/g, '')}`;
+              // Help descriptions for each reason type
+              const reasonTypeHelp = {
+                'Direct': 'Assignments made directly through Omada (managed direct assignments)',
+                'External': 'Assignments made outside of Omada in the target system (unmanaged)',
+                'Implicit': 'Assignments inherited through group membership or hierarchy',
+                'Explicit': 'Assignments explicitly granted to the user'
+              };
               return (
-                <label key={type} className="dropdown-item" htmlFor={sanitizedId}>
+                <label
+                  key={type}
+                  className="dropdown-item with-help"
+                  htmlFor={sanitizedId}
+                  title={reasonTypeHelp[type] || type}
+                >
                   <input
                     type="checkbox"
                     id={sanitizedId}
@@ -175,7 +193,10 @@ const FilterBar = ({
                     checked={reasonTypes.includes(type)}
                     onChange={() => toggleReasonType(type)}
                   />
-                  {type}
+                  <span className="reason-type-label">
+                    {type}
+                    <span className="reason-type-hint">{reasonTypeHelp[type]}</span>
+                  </span>
                 </label>
               );
             })}

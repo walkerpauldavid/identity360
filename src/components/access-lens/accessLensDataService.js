@@ -626,6 +626,64 @@ export const transformContextToNode = (context) => {
 };
 
 /**
+ * Build Contexts lane from assignments data (for system-centric view)
+ * Extracts unique contexts from all identities that have access to the system
+ * @param {Array} assignments - Array of calculated assignments
+ * @param {Object} filters - Active filters
+ * @returns {Object} Contexts lane object
+ */
+export function buildContextsLaneFromAssignments(assignments, filters = {}) {
+  if (!assignments || !Array.isArray(assignments) || assignments.length === 0) {
+    return {
+      laneType: LaneTypes.CONTEXTS,
+      totalCount: 0,
+      items: [],
+      allItemsData: [],
+      canLoadMore: false
+    };
+  }
+
+  // Extract unique contexts from all identities
+  const contextsMap = new Map();
+
+  assignments.forEach(assignment => {
+    const identityContexts = assignment.identity?.contexts || [];
+    identityContexts.forEach(context => {
+      const contextId = context.id || context.Id || context.UId;
+      if (contextId && !contextsMap.has(contextId)) {
+        contextsMap.set(contextId, context);
+      }
+    });
+  });
+
+  const contexts = Array.from(contextsMap.values());
+
+  // Transform to lane items
+  const items = contexts.map((context) => {
+    const contextNode = transformContextToNode(context);
+    return {
+      node: contextNode,
+      reasons: [],
+      groupKey: context.type || 'default',
+      groupLabel: context.type || 'Context'
+    };
+  });
+
+  // Sort by displayName
+  items.sort((a, b) =>
+    (a.node.displayName || '').toLowerCase().localeCompare((b.node.displayName || '').toLowerCase())
+  );
+
+  return {
+    laneType: LaneTypes.CONTEXTS,
+    totalCount: items.length,
+    items: items,
+    allItemsData: items,
+    canLoadMore: false
+  };
+}
+
+/**
  * Build Contexts lane from identity contexts data
  */
 export function buildContextsLane(contexts, filters = {}) {
@@ -745,8 +803,9 @@ export function buildLanesFromAssignments(assignments, filters = {}, options = {
   lanes.push(buildEntitlementsLane(assignments, filters));
 
   // Build Assignment Policies lane (policies extracted from assignment reasons)
-  // Show in Identity-centric view and Account-centric view
-  if (!options.includeIdentities || isAccountCentric) {
+  // Show in Identity-centric view, Account-centric view, AND System-centric view
+  const isSystemCentric = !!options.focusSystemId;
+  if (!options.includeIdentities || isAccountCentric || isSystemCentric) {
     const assignmentPoliciesLane = buildAssignmentPoliciesLane(assignments, filters);
     // Only add if there are policies
     if (assignmentPoliciesLane.items.length > 0) {
@@ -755,8 +814,8 @@ export function buildLanesFromAssignments(assignments, filters = {}, options = {
   }
 
   // Build Violations lane (violations extracted from assignments)
-  // Show in Identity-centric view and Account-centric view
-  if (!options.includeIdentities || isAccountCentric) {
+  // Show in Identity-centric view, Account-centric view, AND System-centric view
+  if (!options.includeIdentities || isAccountCentric || isSystemCentric) {
     const violationsLane = buildViolationsLane(assignments, filters);
     // Only add if there are violations
     if (violationsLane.items.length > 0) {
@@ -767,6 +826,18 @@ export function buildLanesFromAssignments(assignments, filters = {}, options = {
   // Build Identities lane (for system-centric and account-centric views)
   if (options.includeIdentities) {
     lanes.push(buildIdentitiesLane(assignments, filters));
+  }
+
+  // Build Contexts lane (for system-centric view)
+  // Shows the organizational contexts (roles, departments, etc.) of identities with access to the system
+  if (isSystemCentric) {
+    const contextsLane = buildContextsLaneFromAssignments(assignments, filters);
+    if (contextsLane.items.length > 0) {
+      lanes.push(contextsLane);
+      if (shouldLog('LANES')) {
+        console.log(`[buildLanesFromAssignments] Contexts lane (system): ${contextsLane.items.length} items`);
+      }
+    }
   }
 
   // Build Logical Applications lane
@@ -1869,6 +1940,17 @@ function buildEntitlementsLane(assignments, filters) {
       // Track unique reason types to avoid duplicate pills
       const seenReasonTypes = new Set();
 
+      // First pass: collect all unique reason types
+      reasonArray.forEach(r => {
+        if (r?.reasonType) seenReasonTypes.add(r.reasonType);
+      });
+
+      // Check if ActualDirect is the ONLY reason type (assigned outside of Omada)
+      const isOnlyActualDirect = seenReasonTypes.size === 1 && seenReasonTypes.has('ActualDirect');
+
+      // Reset for second pass
+      seenReasonTypes.clear();
+
       apiReasons = reasonArray
         .filter(r => {
           const reasonType = r?.reasonType;
@@ -1880,7 +1962,13 @@ function buildEntitlementsLane(assignments, filters) {
         })
         .map((r, i) => {
           const reasonType = r?.reasonType;
-          const displayName = reasonTypeDisplayMap[reasonType] || reasonType || 'Assignment';
+          // Special case: ActualDirect with no other reasons = "External"
+          let displayName;
+          if (reasonType === 'ActualDirect' && isOnlyActualDirect) {
+            displayName = 'External';
+          } else {
+            displayName = reasonTypeDisplayMap[reasonType] || reasonType || 'Assignment';
+          }
           return {
             id: `reason-${index}-${i}-${reasonType}`,
             type: reasonType,
@@ -1893,7 +1981,10 @@ function buildEntitlementsLane(assignments, filters) {
     } else if (reasonArray?.reasonType) {
       // Single reason object (legacy format)
       const reasonType = reasonArray.reasonType;
-      const displayName = reasonTypeDisplayMap[reasonType] || reasonType || 'Assignment';
+      // Special case: ActualDirect alone = "External"
+      const displayName = reasonType === 'ActualDirect'
+        ? 'External'
+        : (reasonTypeDisplayMap[reasonType] || reasonType || 'Assignment');
       apiReasons = [{
         id: `reason-${index}-0-${reasonType}`,
         type: reasonType,

@@ -710,7 +710,8 @@ const AccessLensPage = () => {
           return {
             focusNode: node,
             lanes,
-            reasonTypes
+            reasonTypes,
+            assignments: assignmentsResult.status === 'success' ? assignmentsResult.data : []
           };
         }
 
@@ -802,6 +803,67 @@ const AccessLensPage = () => {
             const { extractUniqueComplianceStatuses } = await import('./accessLensDataService');
             complianceStatuses = extractUniqueComplianceStatuses(assignmentsResult.data);
 
+            // IDENTITY ENRICHMENT - Fetch OData details for identities in the lane
+            const identitiesLane = lanes.find(l => l.laneType === 'Identities');
+            if (identitiesLane) {
+              try {
+                const identityDetailsMap = await fetchAllIdentityDetails(assignmentsResult.data, bearerToken, impersonateUser);
+                if (Object.keys(identityDetailsMap).length > 0) {
+                  lanes = lanes.map(lane => {
+                    if (lane.laneType === 'Identities') {
+                      const enrichedItems = lane.items.map((item) => {
+                        const identityId = String(item.node.id);
+                        let odataDetails = identityDetailsMap[identityId];
+
+                        // If not found by direct ID, try to find by UId match
+                        if (!odataDetails) {
+                          odataDetails = Object.values(identityDetailsMap).find(d =>
+                            String(d.UId) === identityId || String(d.Id) === identityId
+                          );
+                        }
+
+                        if (odataDetails) {
+                          return {
+                            ...item,
+                            node: {
+                              ...item.node,
+                              metadata: {
+                                ...item.node.metadata,
+                                email: odataDetails.EMAIL,
+                                title: odataDetails.JOBTITLE,
+                                employeeId: odataDetails.EMPLOYEEID || odataDetails.IDENTITYID,
+                                department: odataDetails.DEPARTMENT,
+                                category: odataDetails.IDENTITYCATEGORY?.DisplayName,
+                                status: odataDetails.IDENTITYSTATUS?.DisplayName
+                              },
+                              rawData: {
+                                ...item.node.rawData,
+                                ...odataDetails
+                              }
+                            },
+                            rawData: {
+                              ...item.rawData,
+                              ...odataDetails
+                            }
+                          };
+                        }
+                        return item;
+                      });
+
+                      return {
+                        ...lane,
+                        items: enrichedItems,
+                        allItemsData: enrichedItems
+                      };
+                    }
+                    return lane;
+                  });
+                }
+              } catch (enrichError) {
+                console.error('[System Pivot] Identity enrichment error:', enrichError.message);
+              }
+            }
+
             if (shouldLog('LANES')) {
               console.log('[Pivot] Built', lanes.length, 'system-centric lanes');
             }
@@ -885,6 +947,67 @@ const AccessLensPage = () => {
             // Extract compliance statuses
             const { extractUniqueComplianceStatuses } = await import('./accessLensDataService');
             complianceStatuses = extractUniqueComplianceStatuses(assignmentsResult.data);
+
+            // IDENTITY ENRICHMENT - Fetch OData details for identities in the lane
+            const identitiesLane = lanes.find(l => l.laneType === 'Identities');
+            if (identitiesLane) {
+              try {
+                const identityDetailsMap = await fetchAllIdentityDetails(assignmentsResult.data, bearerToken, impersonateUser);
+                if (Object.keys(identityDetailsMap).length > 0) {
+                  lanes = lanes.map(lane => {
+                    if (lane.laneType === 'Identities') {
+                      const enrichedItems = lane.items.map((item) => {
+                        const identityId = String(item.node.id);
+                        let odataDetails = identityDetailsMap[identityId];
+
+                        // If not found by direct ID, try to find by UId match
+                        if (!odataDetails) {
+                          odataDetails = Object.values(identityDetailsMap).find(d =>
+                            String(d.UId) === identityId || String(d.Id) === identityId
+                          );
+                        }
+
+                        if (odataDetails) {
+                          return {
+                            ...item,
+                            node: {
+                              ...item.node,
+                              metadata: {
+                                ...item.node.metadata,
+                                email: odataDetails.EMAIL,
+                                title: odataDetails.JOBTITLE,
+                                employeeId: odataDetails.EMPLOYEEID || odataDetails.IDENTITYID,
+                                department: odataDetails.DEPARTMENT,
+                                category: odataDetails.IDENTITYCATEGORY?.DisplayName,
+                                status: odataDetails.IDENTITYSTATUS?.DisplayName
+                              },
+                              rawData: {
+                                ...item.node.rawData,
+                                ...odataDetails
+                              }
+                            },
+                            rawData: {
+                              ...item.rawData,
+                              ...odataDetails
+                            }
+                          };
+                        }
+                        return item;
+                      });
+
+                      return {
+                        ...lane,
+                        items: enrichedItems,
+                        allItemsData: enrichedItems
+                      };
+                    }
+                    return lane;
+                  });
+                }
+              } catch (enrichError) {
+                console.error('[LogicalApp Pivot] Identity enrichment error:', enrichError.message);
+              }
+            }
 
             if (shouldLog('LANES')) {
               console.log('[Pivot] Built', lanes.length, 'logical-app-centric lanes');

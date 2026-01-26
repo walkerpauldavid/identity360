@@ -31,6 +31,7 @@ export const EdgeTypes = {
 // Base reason types - always shown in dropdown
 export const BaseReasonTypes = {
   DIRECT: 'Direct',
+  EXTERNAL: 'External',  // ActualDirect - assignments made outside of Omada
   IMPLICIT: 'Implicit',
   EXPLICIT: 'Explicit'
 };
