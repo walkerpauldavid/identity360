@@ -342,6 +342,51 @@
   cursor: pointer;
 }
 
+/* Reason Types dropdown help styles */
+.reason-types-menu {
+  min-width: 320px;
+}
+
+.dropdown-help-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  color: #88c0d0;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.dropdown-help-header .help-icon {
+  font-size: 0.85rem;
+}
+
+.dropdown-item.with-help {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+  padding: 0.5rem;
+}
+
+.dropdown-item.with-help > input {
+  position: absolute;
+  margin-top: 0.15rem;
+}
+
+.reason-type-label {
+  display: flex;
+  flex-direction: column;
+  margin-left: 1.5rem;
+  gap: 0.15rem;
+}
+
+.reason-type-hint {
+  font-size: 0.7rem;
+  color: #808090;
+  font-weight: normal;
+  line-height: 1.3;
+}
+
 /* Active Filter State - Blue glow to indicate master filtering */
 .filter-dropdown.filtering {
   display: flex;
@@ -702,6 +747,8 @@
   /* No max-height on card itself - let content control scrolling */
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   transition: width 0.3s ease, box-shadow 0.2s;
+  /* Position relative so lane-header's z-index works above drag-handle-overlay */
+  position: relative;
 }
 
 /* Lane widths are now set via inline styles in LaneCard.jsx */
@@ -1174,11 +1221,11 @@
   gap: 0.5rem;
   padding: 0.6rem 0.75rem;
   background: #1a1a1a;
-  cursor: pointer;
+  cursor: grab;
   user-select: none;
   transition: background 0.2s;
   border-left: 4px solid var(--lane-color, #4c566a);
-  /* Allow drag events to pass through to the overlay, but interactive children override this */
+  /* Allow drag events to pass through to the overlay */
   pointer-events: none;
 }
 
@@ -1686,14 +1733,23 @@
   border-left: 3px solid #bf616a;
 }
 
+/* Active filter state - prominent blue highlighting for the selected filter item */
+/* This applies to ALL lane types when an item is clicked and used as a filter */
 .lane-item-row.active-filter {
-  background: rgba(163, 190, 140, 0.15);
-  border-color: #a3be8c;
-  border-left: 3px solid #a3be8c;
+  background: linear-gradient(135deg, rgba(136, 192, 208, 0.25) 0%, rgba(143, 188, 187, 0.35) 100%);
+  border: 2px solid #88c0d0;
+  border-left: 4px solid #88c0d0;
+  box-shadow: 0 0 12px rgba(136, 192, 208, 0.4), inset 0 0 8px rgba(136, 192, 208, 0.1);
 }
 
 .lane-item-row.active-filter:hover {
-  background: rgba(163, 190, 140, 0.2);
+  background: linear-gradient(135deg, rgba(136, 192, 208, 0.3) 0%, rgba(143, 188, 187, 0.4) 100%);
+  box-shadow: 0 0 16px rgba(136, 192, 208, 0.5), inset 0 0 10px rgba(136, 192, 208, 0.15);
+}
+
+.lane-item-row.active-filter .lane-item-name {
+  color: #88c0d0;
+  font-weight: 600;
 }
 
 /* Logical System styling - systems that have resources but no direct accounts
@@ -1731,14 +1787,14 @@
 }
 
 /* Violation highlighting for entitlements with violations */
+/* Keep the amber/orange border but use standard background */
 .lane-item-row.has-violations {
-  background: rgba(245, 158, 11, 0.1);
   border-left: 3px solid #f59e0b;
   border-color: rgba(245, 158, 11, 0.4);
 }
 
 .lane-item-row.has-violations:hover {
-  background: rgba(245, 158, 11, 0.18);
+  background: rgba(136, 192, 208, 0.08);
   border-color: rgba(245, 158, 11, 0.6);
 }
 
@@ -1783,13 +1839,41 @@
 
 .lane-item-name.logical-system-name {
   font-style: italic;
-  color: #8fbcbb;
+  /* Same white color as other lane items */
+  color: #e0e0e0;
+}
+
+/* Icon wrapper for icon + optional path count */
+.lane-item-icon-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+  min-width: 1.2rem;
 }
 
 .lane-item-icon {
   font-size: 1rem;
   flex-shrink: 0;
+}
+
+/* Path count displayed below the icon */
+.lane-item-path-count {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.55rem;
+  font-weight: 700;
+  color: #d08770;
+  background: rgba(208, 135, 112, 0.2);
+  border-radius: 3px;
+  padding: 0 0.2rem;
   margin-top: 0.1rem;
+  line-height: 1.1;
+}
+
+.lane-item-path-count .path-icon {
+  font-size: 0.6rem;
+  margin-right: 0.1rem;
 }
 
 .lane-item-content {
@@ -1872,37 +1956,54 @@
   align-items: center;
   padding: 0.1rem 0.4rem;
   border-radius: 3px;
-  font-size: 0.55rem;
-  font-weight: 600;
+  font-size: 0.65rem;
+  font-weight: 500;
+  font-family: inherit;
   white-space: nowrap;
   letter-spacing: 0.02em;
+  /* Unified color for all validity states - subtle neutral */
+  background: rgba(100, 100, 120, 0.15);
+  color: #a0a0a8;
+  border: 1px solid rgba(100, 100, 120, 0.25);
 }
 
-/* Permanent/never expires - subtle green */
+/* Permanent/never expires - same styling, no visual difference */
 .lane-item-validity.permanent {
-  background: rgba(163, 190, 140, 0.2);
-  color: #a3be8c;
-  border: 1px solid rgba(163, 190, 140, 0.3);
+  /* Same as base - no changes needed */
 }
 
-/* Time-limited - has an expiration date */
-.lane-item-validity.time-limited {
-  background: rgba(136, 192, 208, 0.2);
-  color: #88c0d0;
-  border: 1px solid rgba(136, 192, 208, 0.3);
-}
-
-/* Expiring soon (within 90 days) - warning amber */
-.lane-item-validity.expiring-soon {
-  background: rgba(235, 203, 139, 0.3);
+/* Never expires - yellow/amber highlight */
+.lane-item-validity.never-expires {
+  background: rgba(235, 203, 139, 0.25);
   color: #ebcb8b;
-  border: 1px solid rgba(235, 203, 139, 0.5);
+  border: 1px solid rgba(235, 203, 139, 0.4);
+}
+
+/* Time-limited - has an expiration date - same styling */
+.lane-item-validity.time-limited {
+  /* Same as base - no changes needed */
+}
+
+/* Expiring soon (within 90 days) - warning amber highlight */
+.lane-item-validity.expiring-soon {
+  background: rgba(235, 203, 139, 0.25);
+  color: #ebcb8b;
+  border: 1px solid rgba(235, 203, 139, 0.4);
   animation: pulse-warning 2s ease-in-out infinite;
 }
 
 @keyframes pulse-warning {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.7; }
+}
+
+/* Reasons row - contains compliance, validity, and reason chips */
+.lane-item-reasons-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 0.25rem;
 }
 
 /* System description (from OData enrichment) */
@@ -1964,14 +2065,17 @@
 .lane-item-account-details {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.35rem;
-  margin-top: 0.2rem;
-  font-size: 0.7rem;
+  gap: 0.25rem;
+  margin-top: 0.25rem;
 }
 
+/* Match the badge style used by Assignment Policies */
 .lane-item-account-details .account-entitlement-count {
-  color: #a3be8c;
-  font-weight: 500;
+  padding: 0.1rem 0.3rem;
+  background: rgba(100, 100, 120, 0.2);
+  border-radius: 2px;
+  font-size: 0.65rem;
+  color: #909090;
 }
 
 .lane-item-identity-details .identity-risk {

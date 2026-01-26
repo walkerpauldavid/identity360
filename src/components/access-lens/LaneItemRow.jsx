@@ -54,25 +54,25 @@ const getValidityDisplay = (validFrom, validTo) => {
 
   // Build display text
   if (isFromDefault && isNeverExpires) {
-    return { text: 'Never expires', isExpiring: false, isExpiringSoon: false };
+    return { text: 'Never expires', isExpiring: false, isExpiringSoon: false, isNeverExpires: true };
   }
 
   if (isFromDefault && !isNeverExpires) {
     // Only show end date
     const toFormatted = formatValidityDate(validTo);
-    return { text: `Until ${toFormatted}`, isExpiring: true, isExpiringSoon };
+    return { text: `Until ${toFormatted}`, isExpiring: true, isExpiringSoon, isNeverExpires: false };
   }
 
   if (!isFromDefault && isNeverExpires) {
     // Only show start date
     const fromFormatted = formatValidityDate(validFrom);
-    return { text: `From ${fromFormatted}`, isExpiring: false, isExpiringSoon: false };
+    return { text: `From ${fromFormatted}`, isExpiring: false, isExpiringSoon: false, isNeverExpires: false };
   }
 
   // Both dates are real
   const fromFormatted = formatValidityDate(validFrom);
   const toFormatted = formatValidityDate(validTo);
-  return { text: `${fromFormatted} → ${toFormatted}`, isExpiring: true, isExpiringSoon };
+  return { text: `${fromFormatted} → ${toFormatted}`, isExpiring: true, isExpiringSoon, isNeverExpires: false };
 };
 
 const LaneItemRow = ({
@@ -131,6 +131,10 @@ const LaneItemRow = ({
   // Check if this is an Account type node (for entitlement count display)
   const isAccountNode = node.type === 'Account';
   const accountResourceCount = node.metadata?.resourceCount || rawData?.resourceCount || 0;
+
+  // Check if this is a Logical Application type node (for entitlement count display)
+  const isLogicalAppNode = node.type === 'LogicalApplication' || (node.type === 'System' && isLogicalSystem);
+  const logicalAppResourceCount = node.metadata?.resourceCount || rawData?.resourceCount || 0;
 
   // Debug: Log identity node data to trace attribute flow (suppressed for performance)
   // if (isIdentityNode) {
@@ -194,10 +198,21 @@ const LaneItemRow = ({
       style={{ cursor: 'pointer' }}
       title={hoverDescription || node.displayName}
     >
-      {/* Node Icon */}
-      <span className="lane-item-icon" style={{ color: isLogicalSystem ? '#8fbcbb' : nodeColor }}>
-        {getNodeIcon(node.type)}
-      </span>
+      {/* Node Icon with optional path count below */}
+      <div className="lane-item-icon-wrapper">
+        <span className="lane-item-icon" style={{ color: isLogicalSystem ? '#8fbcbb' : nodeColor }}>
+          {getNodeIcon(node.type)}
+        </span>
+        {/* Multi-path indicator below the icon */}
+        {hasMultiplePaths && (
+          <span
+            className="lane-item-path-count"
+            title={`${assignmentPathCount} assignment paths: This entitlement is granted through multiple overlapping policies or reasons`}
+          >
+            <span className="path-icon">⚡</span>{assignmentPathCount}
+          </span>
+        )}
+      </div>
 
       {/* Main Content */}
       <div className="lane-item-content">
@@ -231,30 +246,12 @@ const LaneItemRow = ({
               Violation!
             </span>
           )}
-          {/* Compliance status for entitlements - only show when NO violations */}
-          {isEntitlementNode && complianceStatus && !hasViolations && (
+          {/* Compliance status for entitlements - always show on header line after resource name */}
+          {isEntitlementNode && complianceStatus && (
             <span
               className={`lane-item-compliance ${complianceStatus === 'Approved' ? 'approved' : complianceStatus === 'Not Approved' ? 'not-approved' : 'pending'}`}
             >
               {complianceStatus}
-            </span>
-          )}
-          {/* Multi-path indicator - shows when entitlement has multiple assignment sources */}
-          {isEntitlementNode && hasMultiplePaths && (
-            <span
-              className="lane-item-multi-path"
-              title={`${assignmentPathCount} assignment paths: This entitlement is granted through multiple overlapping policies or reasons`}
-            >
-              ⚡{assignmentPathCount}
-            </span>
-          )}
-          {/* Validity period pill - shows assignment time period */}
-          {isEntitlementNode && validityDisplay && (
-            <span
-              className={`lane-item-validity ${validityDisplay.isExpiring ? 'time-limited' : 'permanent'} ${validityDisplay.isExpiringSoon ? 'expiring-soon' : ''}`}
-              title={`Assignment validity: ${validityDisplay.text}`}
-            >
-              {validityDisplay.text}
             </span>
           )}
         </div>
@@ -298,6 +295,15 @@ const LaneItemRow = ({
           </div>
         )}
 
+        {/* Logical Application entitlement count */}
+        {isLogicalAppNode && logicalAppResourceCount > 0 && (
+          <div className="lane-item-account-details">
+            <span className="account-entitlement-count">
+              {logicalAppResourceCount} entitlement{logicalAppResourceCount !== 1 ? 's' : ''}
+            </span>
+          </div>
+        )}
+
         {/* Badges */}
         {node.badges && node.badges.length > 0 && (
           <div className="lane-item-badges">
@@ -307,15 +313,29 @@ const LaneItemRow = ({
           </div>
         )}
 
-        {/* Reasons (for effective entitlements) */}
-        {showReasons && reasons && reasons.length > 0 && (
-          <ReasonChips
-            reasons={reasons}
-            maxVisible={2}
-            onReasonClick={onReasonClick}
-            selectedReasonId={selectedReasonId}
-            parentResource={rawData?.parentResource}
-          />
+        {/* Reasons and extra info (for effective entitlements without violations) */}
+        {showReasons && (
+          <div className="lane-item-reasons-row">
+            {/* Show validity period when NO violations (compliance is now always in header) */}
+            {isEntitlementNode && !hasViolations && validityDisplay && (
+              <span
+                className={`lane-item-validity ${validityDisplay.isExpiring ? 'time-limited' : 'permanent'} ${validityDisplay.isExpiringSoon ? 'expiring-soon' : ''} ${validityDisplay.isNeverExpires ? 'never-expires' : ''}`}
+                title={`Assignment validity: ${validityDisplay.text}`}
+              >
+                {validityDisplay.text}
+              </span>
+            )}
+            {/* Reason chips after compliance/validity info */}
+            {reasons && reasons.length > 0 && (
+              <ReasonChips
+                reasons={reasons}
+                maxVisible={2}
+                onReasonClick={onReasonClick}
+                selectedReasonId={selectedReasonId}
+                parentResource={rawData?.parentResource}
+              />
+            )}
+          </div>
         )}
 
         {/* Edge info */}
