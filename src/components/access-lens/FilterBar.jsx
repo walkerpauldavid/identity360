@@ -49,33 +49,7 @@ const FilterBar = ({
 
   return (
     <div className="filter-bar">
-      {/* View Mode Toggle */}
-      <div className="filter-group view-modes">
-        <button
-          className={`mode-btn ${viewMode === ViewModes.EXPLORE ? 'active' : ''}`}
-          onClick={() => onViewModeChange(ViewModes.EXPLORE)}
-          title="Explore Mode"
-        >
-          🔍 Explore
-        </button>
-        <button
-          className={`mode-btn ${viewMode === ViewModes.RISK ? 'active' : ''}`}
-          onClick={() => onViewModeChange(ViewModes.RISK)}
-          title="Risk Mode"
-        >
-          ⚠️ Risk
-        </button>
-        <button
-          className={`mode-btn ${viewMode === ViewModes.REVIEW ? 'active' : ''}`}
-          onClick={() => onViewModeChange(ViewModes.REVIEW)}
-          title="Review Mode"
-        >
-          ✓ Review
-        </button>
-      </div>
-
-      {/* Divider */}
-      <div className="filter-divider"></div>
+      {/* View Mode Toggle removed */}
 
       {/* Lane Toggles */}
       <div className="filter-group lane-toggles">

@@ -2753,11 +2753,7 @@ const AccessLens = ({
           <button className="reset-positions-btn" onClick={handleResetPositions} title="Reset lane positions and clear filters">
             ↺ Reset Layout
           </button>
-          {isFullscreen && onClose && (
-            <button className="exit-fullscreen-btn" onClick={onClose}>
-              ✕ Exit
-            </button>
-          )}
+          {/* Exit button removed */}
         </div>
         <Breadcrumbs
           history={history}
