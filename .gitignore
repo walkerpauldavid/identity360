@@ -27,6 +27,8 @@ dist-ssr
 .env
 .env.local
 .env.*.local
+.env.production
+.env.development
 
 # Claude Code session data
 .claude/
