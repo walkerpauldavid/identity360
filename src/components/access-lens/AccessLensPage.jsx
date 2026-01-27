@@ -201,9 +201,9 @@ const AccessLensPage = () => {
         }
       });
 
-      // Small delay between batches to let browser recover resources
+      // Yield to the event loop between batches so the UI thread can paint
       if (i + batchSize < identityIds.length) {
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await new Promise(resolve => setTimeout(resolve, 0));
       }
     }
 
@@ -262,9 +262,9 @@ const AccessLensPage = () => {
         }
       });
 
-      // Small delay between batches to let browser recover resources
+      // Yield to the event loop between batches so the UI thread can paint
       if (i + batchSize < systemIds.length) {
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await new Promise(resolve => setTimeout(resolve, 0));
       }
     }
 
@@ -663,8 +663,17 @@ const AccessLensPage = () => {
     const impersonateUser = user?.email;
 
     try {
-      // Import the data service functions
-      const { buildLanesFromAssignments, extractUniqueReasonTypes } = await import('./accessLensDataService');
+      // Import all data service functions once (avoids redundant dynamic imports per switch case)
+      const {
+        buildLanesFromAssignments,
+        extractUniqueReasonTypes,
+        extractUniqueComplianceStatuses,
+        buildContextsLane,
+        buildLanesForEntitlement,
+        buildContextsLaneFromAPData,
+        buildSystemsLane,
+        buildEntitlementsLaneFromAPResources
+      } = await import('./accessLensDataService');
 
       // Different handling based on node type
       switch (node.type) {
@@ -716,7 +725,6 @@ const AccessLensPage = () => {
 
           // Build contexts lane if available
           if (contextsResult.status === 'success' && contextsResult.data?.length > 0) {
-            const { buildContextsLane } = await import('./accessLensDataService');
             const contextsLane = buildContextsLane(contextsResult.data, {});
             if (contextsLane) {
               lanes.push(contextsLane);
@@ -815,8 +823,6 @@ const AccessLensPage = () => {
             });
             reasonTypes = extractUniqueReasonTypes(assignmentsResult.data);
 
-            // Extract compliance statuses for filtering
-            const { extractUniqueComplianceStatuses } = await import('./accessLensDataService');
             complianceStatuses = extractUniqueComplianceStatuses(assignmentsResult.data);
 
             // IDENTITY ENRICHMENT - Fetch OData details for identities in the lane
@@ -960,8 +966,6 @@ const AccessLensPage = () => {
             });
             reasonTypes = extractUniqueReasonTypes(assignmentsResult.data);
 
-            // Extract compliance statuses
-            const { extractUniqueComplianceStatuses } = await import('./accessLensDataService');
             complianceStatuses = extractUniqueComplianceStatuses(assignmentsResult.data);
 
             // IDENTITY ENRICHMENT - Fetch OData details for identities in the lane
@@ -1101,8 +1105,6 @@ const AccessLensPage = () => {
             });
             reasonTypes = extractUniqueReasonTypes(assignmentsResult.data);
 
-            // Extract compliance statuses for filtering
-            const { extractUniqueComplianceStatuses } = await import('./accessLensDataService');
             complianceStatuses = extractUniqueComplianceStatuses(assignmentsResult.data);
 
             if (shouldLog('LANES')) {
@@ -1242,9 +1244,6 @@ const AccessLensPage = () => {
               });
 
               // Build lanes for entitlement-centric view
-              const { buildLanesForEntitlement, extractUniqueReasonTypes, extractUniqueComplianceStatuses } =
-                await import('./accessLensDataService');
-
               lanes = buildLanesForEntitlement(enrichedAssignments, {}, node);
               reasonTypes = extractUniqueReasonTypes(enrichedAssignments);
               complianceStatuses = extractUniqueComplianceStatuses(enrichedAssignments);
@@ -1460,9 +1459,6 @@ const AccessLensPage = () => {
           if (shouldLog('PIVOT')) console.log(`[AP Pivot] Total assignments collected: ${allAssignments.length}`);
 
           // Step 4: Build lanes from collected assignments
-          const { buildContextsLaneFromAPData, buildSystemsLane, buildEntitlementsLaneFromAPResources, extractUniqueComplianceStatuses: extractCompStatuses } =
-            await import('./accessLensDataService');
-
           let lanes = [];
           let reasonTypes = [];
           let complianceStatuses = [];
@@ -1480,7 +1476,7 @@ const AccessLensPage = () => {
             }
 
             reasonTypes = extractUniqueReasonTypes(allAssignments);
-            complianceStatuses = extractCompStatuses(allAssignments);
+            complianceStatuses = extractUniqueComplianceStatuses(allAssignments);
           }
 
           // Step 4b: Replace Entitlements lane with one built from AP_RESOURCES

@@ -67,7 +67,7 @@ const getDisplayValue = (value, type = null) => {
   return String(value);
 };
 
-const FocusCard = ({ node, onNavigateBack, isLoading = false, selectedIdentityCompliance = null, violationCount = 0 }) => {
+const FocusCard = ({ node, onNavigateBack, isLoading = false, selectedIdentityCompliance = null, violationCount = 0, isMinimized = false, onToggleMinimize }) => {
   // Show loading placeholder when loading or no node
   if (isLoading || !node) {
     return (
@@ -143,6 +143,53 @@ const FocusCard = ({ node, onNavigateBack, isLoading = false, selectedIdentityCo
     });
   }
 
+  // Friendly type label
+  const typeLabel = node.type === NodeTypes.LOGICAL_APPLICATION
+    ? 'Logical Application'
+    : node.type === NodeTypes.SYSTEM && (node.metadata?.isLogical || node.rawData?.isLogical)
+      ? 'Logical Application'
+      : node.type === NodeTypes.ASSIGNMENT_POLICY
+        ? 'Assignment Policy'
+        : node.type;
+
+  // Minimized view — compact pill with icon, name, and expand button
+  if (isMinimized) {
+    return (
+      <div className="focus-card focus-card-minimized" style={{ borderColor: nodeColor }}>
+        <div className="focus-card-header">
+          <span className="focus-icon focus-icon-sm" style={{ backgroundColor: nodeColor }}>
+            {getNodeIcon(node.type)}
+          </span>
+          <span className="focus-name-compact" title={node.displayName}>
+            {node.displayName}
+          </span>
+          {node.status && (
+            <span
+              className="focus-status"
+              style={{ backgroundColor: getStatusColor(node.status) }}
+            >
+              {node.status}
+            </span>
+          )}
+          {onToggleMinimize && (
+            <button
+              className="focus-minimize-btn"
+              onClick={onToggleMinimize}
+              title="Expand focus card"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="15 3 21 3 21 9" />
+                <polyline points="9 21 3 21 3 15" />
+                <line x1="21" y1="3" x2="14" y2="10" />
+                <line x1="3" y1="21" x2="10" y2="14" />
+              </svg>
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="focus-card" style={{ borderColor: nodeColor }}>
       {/* Node Icon and Type */}
@@ -151,15 +198,22 @@ const FocusCard = ({ node, onNavigateBack, isLoading = false, selectedIdentityCo
           {getNodeIcon(node.type)}
         </span>
         <span className="focus-type-badge" style={{ backgroundColor: nodeColor }}>
-          {/* Show user-friendly type names */}
-          {node.type === NodeTypes.LOGICAL_APPLICATION
-            ? 'Logical Application'
-            : node.type === NodeTypes.SYSTEM && (node.metadata?.isLogical || node.rawData?.isLogical)
-              ? 'Logical Application'
-              : node.type === NodeTypes.ASSIGNMENT_POLICY
-                ? 'Assignment Policy'
-                : node.type}
+          {typeLabel}
         </span>
+        {onToggleMinimize && (
+          <button
+            className="focus-minimize-btn"
+            onClick={onToggleMinimize}
+            title="Minimize focus card"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="4 14 10 14 10 20" />
+              <polyline points="20 10 14 10 14 4" />
+              <line x1="14" y1="10" x2="21" y2="3" />
+              <line x1="3" y1="21" x2="10" y2="14" />
+            </svg>
+          </button>
+        )}
       </div>
 
       {/* Display Name - with IDENTITYID for Identity nodes */}

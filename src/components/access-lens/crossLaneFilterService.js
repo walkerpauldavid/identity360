@@ -478,69 +478,16 @@ export const applyCrossLaneFilters = (
   }
 
   // Build a map of selection lane type to selected node using O(1) lookups
+  // Data-driven: maps selection key → lane type for DRY iteration
   const selectionMap = {};
 
-  if (selections.identityId) {
-    const identitiesLane = laneMap.get(LaneTypes.IDENTITIES);
-    const selectedItem = findItemById(identitiesLane, selections.identityId, itemIdMaps.get(LaneTypes.IDENTITIES));
-    if (selectedItem) {
-      selectionMap[LaneTypes.IDENTITIES] = selectedItem.node;
-    }
-  }
-
-  if (selections.accountId) {
-    const accountsLane = laneMap.get(LaneTypes.ACCOUNTS);
-    const selectedItem = findItemById(accountsLane, selections.accountId, itemIdMaps.get(LaneTypes.ACCOUNTS));
-    if (selectedItem) {
-      selectionMap[LaneTypes.ACCOUNTS] = selectedItem.node;
-    }
-  }
-
-  if (selections.systemId) {
-    const systemsLane = laneMap.get(LaneTypes.SYSTEMS);
-    const selectedItem = findItemById(systemsLane, selections.systemId, itemIdMaps.get(LaneTypes.SYSTEMS));
-    if (selectedItem) {
-      selectionMap[LaneTypes.SYSTEMS] = selectedItem.node;
-    }
-  }
-
-  if (selections.logicalAppId) {
-    const logicalAppsLane = laneMap.get(LaneTypes.LOGICAL_APPLICATIONS);
-    const selectedItem = findItemById(logicalAppsLane, selections.logicalAppId, itemIdMaps.get(LaneTypes.LOGICAL_APPLICATIONS));
-    if (selectedItem) {
-      selectionMap[LaneTypes.LOGICAL_APPLICATIONS] = selectedItem.node;
-    }
-  }
-
-  if (selections.policyId) {
-    const policiesLane = laneMap.get(LaneTypes.ASSIGNMENT_POLICIES);
-    const selectedItem = findItemById(policiesLane, selections.policyId, itemIdMaps.get(LaneTypes.ASSIGNMENT_POLICIES));
-    if (selectedItem) {
-      selectionMap[LaneTypes.ASSIGNMENT_POLICIES] = selectedItem.node;
-    }
-  }
-
-  if (selections.entitlementId) {
-    const entitlementsLane = laneMap.get(LaneTypes.EFFECTIVE_ENTITLEMENTS);
-    const selectedItem = findItemById(entitlementsLane, selections.entitlementId, itemIdMaps.get(LaneTypes.EFFECTIVE_ENTITLEMENTS));
-    if (selectedItem) {
-      selectionMap[LaneTypes.EFFECTIVE_ENTITLEMENTS] = selectedItem.node;
-    }
-  }
-
-  if (selections.violationId) {
-    const violationsLane = laneMap.get(LaneTypes.VIOLATIONS);
-    const selectedItem = findItemById(violationsLane, selections.violationId, itemIdMaps.get(LaneTypes.VIOLATIONS));
-    if (selectedItem) {
-      selectionMap[LaneTypes.VIOLATIONS] = selectedItem.node;
-    }
-  }
-
-  if (selections.contextId) {
-    const contextsLane = laneMap.get(LaneTypes.CONTEXTS);
-    const selectedItem = findItemById(contextsLane, selections.contextId, itemIdMaps.get(LaneTypes.CONTEXTS));
-    if (selectedItem) {
-      selectionMap[LaneTypes.CONTEXTS] = selectedItem.node;
+  for (const [selectionId, laneType] of selectionLaneTypes) {
+    if (selectionId) {
+      const lane = laneMap.get(laneType);
+      const selectedItem = findItemById(lane, selectionId, itemIdMaps.get(laneType));
+      if (selectedItem) {
+        selectionMap[laneType] = selectedItem.node;
+      }
     }
   }
 

@@ -4,7 +4,7 @@
  */
 
 // Node types in the access graph
-export const NodeTypes = {
+export const NodeTypes = Object.freeze({
   IDENTITY: 'Identity',
   ROLE: 'Role',
   ENTITLEMENT: 'Entitlement',
@@ -15,10 +15,10 @@ export const NodeTypes = {
   LOGICAL_APPLICATION: 'LogicalApplication',  // System marked as logical (has resources but no direct accounts)
   CONTEXT: 'Context',
   VIOLATION: 'Violation'  // Represents an access violation (e.g., SoD conflict)
-};
+});
 
 // Edge/relationship types
-export const EdgeTypes = {
+export const EdgeTypes = Object.freeze({
   ASSIGNED_DIRECT: 'assigned_direct',
   INHERITED: 'inherited',
   POLICY_DRIVEN: 'policy_driven',
@@ -26,18 +26,18 @@ export const EdgeTypes = {
   MEMBER_OF: 'member_of',
   PROVIDES: 'provides',
   GOVERNS: 'governs'
-};
+});
 
 // Base reason types - always shown in dropdown
-export const BaseReasonTypes = {
+export const BaseReasonTypes = Object.freeze({
   DIRECT: 'Direct',
   EXTERNAL: 'External',  // ActualDirect - assignments made outside of Omada
   IMPLICIT: 'Implicit',
   EXPLICIT: 'Explicit'
-};
+});
 
 // Extended reason types for entitlement effectiveness (from API)
-export const ReasonTypes = {
+export const ReasonTypes = Object.freeze({
   DIRECT: 'Direct',
   IMPLICIT: 'Implicit',
   EXPLICIT: 'Explicit',
@@ -48,10 +48,10 @@ export const ReasonTypes = {
   BIRTHRIGHT: 'Birthright',
   SOD_EXCEPTION: 'SoDException',
   OTHER: 'Other'
-};
+});
 
 // Lane types for relationship display
-export const LaneTypes = {
+export const LaneTypes = Object.freeze({
   ROLES: 'Roles',
   ACCOUNTS: 'Accounts',
   EFFECTIVE_ENTITLEMENTS: 'EffectiveEntitlements',
@@ -63,17 +63,17 @@ export const LaneTypes = {
   IDENTITIES: 'Identities',
   CONTEXTS: 'Contexts',
   VIOLATIONS: 'Violations'  // Access violations (SoD conflicts, policy breaches, etc.)
-};
+});
 
 // View modes
-export const ViewModes = {
+export const ViewModes = Object.freeze({
   EXPLORE: 'explore',
   RISK: 'risk',
   REVIEW: 'review'
-};
+});
 
 // Action types for state changes
-export const ActionTypes = {
+export const ActionTypes = Object.freeze({
   SELECT: 'select',
   PIVOT: 'pivot',
   EXPAND: 'expand',
@@ -82,10 +82,10 @@ export const ActionTypes = {
   EXPLAIN: 'explain',
   CERTIFY: 'certify',
   REVIEW: 'review'
-};
+});
 
 // Compass orientations for lane positioning
-export const CompassOrientation = {
+export const CompassOrientation = Object.freeze({
   N: 'N',
   NE: 'NE',
   E: 'E',
@@ -94,43 +94,43 @@ export const CompassOrientation = {
   SW: 'SW',
   W: 'W',
   NW: 'NW'
-};
+});
 
 // Cross-lane filter relationship types
-export const CrossLaneFilterType = {
+export const CrossLaneFilterType = Object.freeze({
   FIELD_MATCH: 'fieldMatch',
   ARRAY_CONTAINS: 'arrayContains',
   MULTI_FIELD_MATCH: 'multiFieldMatch',
   CASCADED_THROUGH: 'cascadedThrough'
-};
+});
 
 // Lane display rules
-export const LaneDisplayRules = {
-  SINGLE_COLUMN: {
+export const LaneDisplayRules = Object.freeze({
+  SINGLE_COLUMN: Object.freeze({
     columns: 1,
     rows: 4,
     width: 350,
     maxVisibleItems: 4
-  },
-  MULTI_COLUMN: {
+  }),
+  MULTI_COLUMN: Object.freeze({
     columns: 2,
     rows: 5,
     width: 700,
     maxVisibleItems: 20
-  },
-  THREE_COLUMN: {
+  }),
+  THREE_COLUMN: Object.freeze({
     columns: 3,
     rows: 5,
     width: 1050,
     maxVisibleItems: 30
-  }
-};
+  })
+});
 
 // Grid size constraints for lane cards
-export const LaneGridConstraints = {
+export const LaneGridConstraints = Object.freeze({
   minColumns: 1,
   maxColumns: 4,
   minRows: 2,
   maxRows: 10,
   columnWidthPx: 350  // Width per column in pixels
-};
+});

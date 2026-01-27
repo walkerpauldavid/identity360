@@ -278,11 +278,9 @@ const LaneCard = ({
               autoComplete="off"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              onClick={(e) => e.stopPropagation()}
               onMouseDown={(e) => e.stopPropagation()}
               onPointerDown={(e) => e.stopPropagation()}
               onKeyDown={(e) => e.stopPropagation()}
-              onFocus={(e) => e.stopPropagation()}
             />
             {searchQuery && (
               <button

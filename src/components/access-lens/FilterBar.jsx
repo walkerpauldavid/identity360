@@ -5,6 +5,14 @@
 
 import { LaneTypes, BaseReasonTypes, ViewModes } from './accessLensTypes';
 
+// Help descriptions for each base reason type (module-level constant to avoid re-creation per render)
+const REASON_TYPE_HELP = {
+  'Direct': 'Assignments made directly through Omada (managed direct assignments)',
+  'External': 'Assignments made outside of Omada in the target system (unmanaged)',
+  'Implicit': 'Assignments inherited through group membership or hierarchy',
+  'Explicit': 'Assignments explicitly granted to the user'
+};
+
 const FilterBar = ({
   filters,
   onFilterChange,
@@ -19,7 +27,6 @@ const FilterBar = ({
   onClearAllSelections, // Callback to clear all lane selections
   onExpandAll, // Callback to expand all lanes
   onResetLayout, // Callback to reset lane positions and clear filters
-  breadcrumbs // Breadcrumbs element to render on the right
 }) => {
   const {
     visibleLanes = Object.values(LaneTypes),
@@ -143,19 +150,12 @@ const FilterBar = ({
             {/* Base reason types - always shown with descriptions */}
             {Object.values(BaseReasonTypes).map((type) => {
               const sanitizedId = `reason-type-${type.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-]/g, '')}`;
-              // Help descriptions for each reason type
-              const reasonTypeHelp = {
-                'Direct': 'Assignments made directly through Omada (managed direct assignments)',
-                'External': 'Assignments made outside of Omada in the target system (unmanaged)',
-                'Implicit': 'Assignments inherited through group membership or hierarchy',
-                'Explicit': 'Assignments explicitly granted to the user'
-              };
               return (
                 <label
                   key={type}
                   className="dropdown-item with-help"
                   htmlFor={sanitizedId}
-                  title={reasonTypeHelp[type] || type}
+                  title={REASON_TYPE_HELP[type] || type}
                 >
                   <input
                     type="checkbox"
@@ -166,7 +166,7 @@ const FilterBar = ({
                   />
                   <span className="reason-type-label">
                     {type}
-                    <span className="reason-type-hint">{reasonTypeHelp[type]}</span>
+                    <span className="reason-type-hint">{REASON_TYPE_HELP[type]}</span>
                   </span>
                 </label>
               );
@@ -246,7 +246,7 @@ const FilterBar = ({
         </div>
       )}
 
-      {/* Search + Breadcrumbs (right-aligned) */}
+      {/* Search (right-aligned) */}
       <div className="filter-group toolbar-right">
         <input
           type="text"
@@ -257,12 +257,6 @@ const FilterBar = ({
           autoComplete="off"
           onChange={(e) => onSearch?.(e.target.value)}
         />
-        {breadcrumbs && (
-          <>
-            <div className="filter-divider"></div>
-            {breadcrumbs}
-          </>
-        )}
       </div>
     </div>
   );

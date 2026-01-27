@@ -61,12 +61,18 @@ const shouldHideField = (fieldKey, nodeType) => {
 
 /**
  * Format a camelCase or PascalCase key to a readable label
+ * Results are cached to avoid repeated regex operations on the same keys
  */
+const _formatLabelCache = new Map();
 const formatLabel = (key) => {
-  return key
+  let result = _formatLabelCache.get(key);
+  if (result !== undefined) return result;
+  result = key
     .replace(/([A-Z])/g, ' $1')
     .replace(/^./, str => str.toUpperCase())
     .trim();
+  _formatLabelCache.set(key, result);
+  return result;
 };
 
 /**

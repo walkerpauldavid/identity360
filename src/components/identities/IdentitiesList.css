@@ -441,6 +441,8 @@
 
 .identities-table tbody tr.clickable-row {
   cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .identities-table tbody tr.clickable-row:hover {

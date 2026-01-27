@@ -453,8 +453,8 @@ if (typeof window !== 'undefined') {
     // Load logs from localStorage on startup
     window.__apiLoggerInstance.loadFromLocalStorage();
 
-    // Auto-save logs every 30 seconds
-    setInterval(() => {
+    // Auto-save logs every 30 seconds (store interval ID for cleanup)
+    window.__apiLoggerAutoSaveInterval = setInterval(() => {
       window.__apiLoggerInstance.saveToLocalStorage();
     }, 30000);
   } else {

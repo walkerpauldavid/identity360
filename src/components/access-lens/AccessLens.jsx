@@ -31,7 +31,7 @@ import {
 
 // Feature flag to enable schema-driven cross-lane filtering
 // Set to true to use the new crossLaneFilterService, false for legacy behavior
-const USE_SCHEMA_DRIVEN_FILTERING = true;  // Enabled for CASCADED_THROUGH policy filtering
+// Schema-driven filtering is now the only code path (legacy hardcoded filtering removed)
 import FilterBar from './FilterBar';
 import Breadcrumbs from './Breadcrumbs';
 import FocusCard from './FocusCard';
@@ -386,6 +386,7 @@ const DraggableLane = ({ id, position, children, onPositionChange }) => {
 
   // Use GPU-accelerated transforms for smooth dragging
   // IMPORTANT: Must include translate(-50%, -50%) for centering AND drag offset together
+  // willChange and pointerEvents are now handled via CSS .dragging class (L-12 fix)
   const style = {
     position: 'absolute',
     left: `calc(50% + ${position.x}px)`,
@@ -395,10 +396,6 @@ const DraggableLane = ({ id, position, children, onPositionChange }) => {
     // The dragX, dragY adds the drag offset during active dragging
     transform: `translate3d(calc(-50% + ${dragX}px), calc(-50% + ${dragY}px), 0)`,
     zIndex: isDragging ? 100 : 1,
-    // GPU hints for smoother animation
-    willChange: isDragging ? 'transform' : 'auto',
-    // Disable pointer events during drag for performance
-    pointerEvents: isDragging ? 'none' : 'auto',
   };
 
   return (
@@ -640,15 +637,23 @@ const AccessLens = ({
   const previousFocusNodeId = useRef(null);  // Track focus node changes
   const previousVisibleLanesRef = useRef([]);  // Store previous visibleLanes to preserve filtered state when lane becomes filter source
 
+  // Refs for stable callback access (H-01 fix: avoid recreating handleItemClick on every state change)
+  const showObjectInspectorRef = useRef(false);
+  const inspectorCollapsedRef = useRef(false);
+
   // State
   const [focusNode, setFocusNode] = useState(null);
   const [lanes, setLanes] = useState([]);
+  const MAX_HISTORY = 15;
   const [history, setHistory] = useState([]);
   const [historyIndex, setHistoryIndex] = useState(-1);  // Current position in history (-1 means no history yet)
   const [isLoading, setIsLoading] = useState(false);  // Data is pre-loaded by AccessLensPage
   const [lanesLoading, setLanesLoading] = useState(true);  // Track when lanes are being built from data
   const [pivotLoadingStatus, setPivotLoadingStatus] = useState('');  // Loading status message during pivot
   const [error, setError] = useState(null);
+
+  // Focus card minimize state
+  const [focusCardMinimized, setFocusCardMinimized] = useState(false);
 
   // Animation state for staggered lane reveal
   const [centralNodeRevealed, setCentralNodeRevealed] = useState(false);
@@ -678,6 +683,10 @@ const AccessLens = ({
   // Inspector panel state
   const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
   const [showObjectInspector, setShowObjectInspector] = useState(false); // Hidden by default on first load
+
+  // Keep refs in sync for stable callback access (H-01 fix)
+  showObjectInspectorRef.current = showObjectInspector;
+  inspectorCollapsedRef.current = inspectorCollapsed;
 
   // Cross-lane filtering state
   const [selectedAccountId, setSelectedAccountId] = useState(null);
@@ -785,8 +794,9 @@ const AccessLens = ({
       // Focus node changed - collapse lanes if preference is enabled
       if (collapseLanesOnFocusChange) {
         setLanesForceCollapsed(true);
-        // Reset the flag after a brief delay so lanes can be expanded again by user
-        setTimeout(() => setLanesForceCollapsed(false), 100);
+        // Reset the flag on next frame so lanes can be expanded again by user
+        // Uses requestAnimationFrame instead of setTimeout(100) to avoid redundant 100ms delay
+        requestAnimationFrame(() => setLanesForceCollapsed(false));
       }
     }
 
@@ -841,7 +851,12 @@ const AccessLens = ({
             return updatedHistory.slice(0, existingIndex + 1);
           }
           // New node, add to history after current position (trimming any "forward" history)
-          const newHistory = [...prev.slice(0, historyIndex + 1), finalFocusNode];
+          let newHistory = [...prev.slice(0, historyIndex + 1), finalFocusNode];
+          // Cap at MAX_HISTORY — drop oldest entries
+          if (newHistory.length > MAX_HISTORY) {
+            const overflow = newHistory.length - MAX_HISTORY;
+            newHistory = newHistory.slice(overflow);
+          }
           setHistoryIndex(newHistory.length - 1);
           return newHistory;
         });
@@ -1167,20 +1182,20 @@ const AccessLens = ({
     // When clicking an item in a lane, it becomes the new master filter
     // All other lane selections are cleared so the clicked lane takes control
 
-    // Map lane types to their selection setters
+    // Map lane types to their selection setters (no current values needed — uses functional updaters)
     const selectionSetters = {
-      [LaneTypes.ACCOUNTS]: { setter: setSelectedAccountId, current: selectedAccountId },
-      [LaneTypes.SYSTEMS]: { setter: setSelectedSystemId, current: selectedSystemId },
-      [LaneTypes.LOGICAL_APPLICATIONS]: { setter: setSelectedLogicalAppId, current: selectedLogicalAppId },
-      [LaneTypes.IDENTITIES]: { setter: setSelectedIdentityId, current: selectedIdentityId },
-      [LaneTypes.ASSIGNMENT_POLICIES]: { setter: setSelectedPolicyId, current: selectedPolicyId },
-      [LaneTypes.EFFECTIVE_ENTITLEMENTS]: { setter: setSelectedEntitlementId, current: selectedEntitlementId },
-      [LaneTypes.VIOLATIONS]: { setter: setSelectedViolationId, current: selectedViolationId },
-      [LaneTypes.CONTEXTS]: { setter: setSelectedContextId, current: selectedContextId }
+      [LaneTypes.ACCOUNTS]: setSelectedAccountId,
+      [LaneTypes.SYSTEMS]: setSelectedSystemId,
+      [LaneTypes.LOGICAL_APPLICATIONS]: setSelectedLogicalAppId,
+      [LaneTypes.IDENTITIES]: setSelectedIdentityId,
+      [LaneTypes.ASSIGNMENT_POLICIES]: setSelectedPolicyId,
+      [LaneTypes.EFFECTIVE_ENTITLEMENTS]: setSelectedEntitlementId,
+      [LaneTypes.VIOLATIONS]: setSelectedViolationId,
+      [LaneTypes.CONTEXTS]: setSelectedContextId
     };
 
     // Clear ALL other lane selections - the clicked lane becomes the master filter
-    Object.entries(selectionSetters).forEach(([lane, { setter }]) => {
+    Object.entries(selectionSetters).forEach(([lane, setter]) => {
       if (lane !== laneType) {
         setter(null);
       }
@@ -1188,18 +1203,20 @@ const AccessLens = ({
 
     // Set the selection for the clicked lane (toggle if clicking same item)
     if (selectionSetters[laneType]) {
-      selectionSetters[laneType].setter(prev => prev === item.node.id ? null : item.node.id);
+      selectionSetters[laneType](prev => prev === item.node.id ? null : item.node.id);
     }
 
-    // Auto-show Object Inspector when an item is clicked
-    if (!showObjectInspector) {
-      setShowObjectInspector(true);
-    }
-
-    // Set reason and expand inspector
+    // Set reason and expand inspector (only if inspector is visible)
+    // Read from refs for stable callback identity (H-01 fix)
     setSelectedReasonId(item.reasons?.[0]?.id || null);
-    if (inspectorCollapsed) {
+    if (showObjectInspectorRef.current && inspectorCollapsedRef.current) {
       setInspectorCollapsed(false);
+    }
+
+    // Skip Object Inspector update when it's hidden — selection/filtering still works
+    if (!showObjectInspectorRef.current) {
+      setExplanationLoading(false);
+      return;
     }
 
     // Show loading state in Object Inspector
@@ -1272,7 +1289,7 @@ const AccessLens = ({
     }
 
     setExplanationLoading(false);
-  }, [showObjectInspector, inspectorCollapsed, onFetchObjectDetails, focusNode?.type, selectedAccountId, selectedSystemId, selectedLogicalAppId, selectedIdentityId, selectedPolicyId, selectedEntitlementId, selectedContextId]);
+  }, [onFetchObjectDetails]);
 
   // Handle central node (Identity) click - show all attributes in Object Inspector
   const handleCentralNodeClick = useCallback(() => {
@@ -1382,7 +1399,12 @@ const AccessLens = ({
               return prev.slice(0, existingIndex + 1);
             }
             // New node - add to end and update index
-            const newHistory = [...prev, newFocusNode];
+            let newHistory = [...prev, newFocusNode];
+            // Cap at MAX_HISTORY — drop oldest entries
+            if (newHistory.length > MAX_HISTORY) {
+              const overflow = newHistory.length - MAX_HISTORY;
+              newHistory = newHistory.slice(overflow);
+            }
             setHistoryIndex(newHistory.length - 1);
             return newHistory;
           });
@@ -1641,24 +1663,27 @@ const AccessLens = ({
     setExplanation(null);
   }, []);
 
+  // Consolidated selection state — avoids rebuilding inside the useMemo on every call
+  const selections = useMemo(() => ({
+    identityId: selectedIdentityId,
+    accountId: selectedAccountId,
+    systemId: selectedSystemId,
+    logicalAppId: selectedLogicalAppId,
+    policyId: selectedPolicyId,
+    entitlementId: selectedEntitlementId,
+    violationId: selectedViolationId,
+    contextId: selectedContextId
+  }), [selectedIdentityId, selectedAccountId, selectedSystemId, selectedLogicalAppId,
+       selectedPolicyId, selectedEntitlementId, selectedViolationId, selectedContextId]);
+
   const visibleLanes = useMemo(() => {
+    // Early exit — no focus node means no lanes to filter
+    if (!focusNode?.type) return [];
+
     // ============================================================================
-    // SCHEMA-DRIVEN FILTERING PATH (when USE_SCHEMA_DRIVEN_FILTERING is enabled)
+    // SCHEMA-DRIVEN FILTERING
     // Uses crossLaneFilterService for generic, configuration-based filtering
     // ============================================================================
-    if (USE_SCHEMA_DRIVEN_FILTERING && focusNode?.type) {
-
-      // Build selections object from current state
-      const selections = {
-        identityId: selectedIdentityId,
-        accountId: selectedAccountId,
-        systemId: selectedSystemId,
-        logicalAppId: selectedLogicalAppId,
-        policyId: selectedPolicyId,
-        entitlementId: selectedEntitlementId,
-        violationId: selectedViolationId,
-        contextId: selectedContextId
-      };
 
       // Additional filters from toolbar
       const additionalFilters = {
@@ -1694,13 +1719,9 @@ const AccessLens = ({
 
         // Apply compliance status filter
         if (filters.complianceStatuses?.length > 0) {
-          console.log('[DEBUG] Compliance filter active:', filters.complianceStatuses);
-          console.log('[DEBUG] Items before filter:', filteredItems.length);
-          console.log('[DEBUG] Sample item complianceStatus:', filteredItems[0]?.node?.metadata?.complianceStatus);
           filteredItems = filteredItems.filter(item =>
             filters.complianceStatuses.includes(item.node.metadata?.complianceStatus)
           );
-          console.log('[DEBUG] Items after filter:', filteredItems.length);
           isFiltered = true;
         }
 
@@ -1994,644 +2015,14 @@ const AccessLens = ({
       previousVisibleLanesRef.current = result;
 
       return result;
-    }
-
-    // ============================================================================
-    // LEGACY FILTERING PATH (original hardcoded logic)
-    // ============================================================================
-
-    // Step 1: Get the Effective Entitlements lane and apply all toolbar filters
-    // NOTE: In entitlement-centric view (focusNode.type === ENTITLEMENT), there is no Entitlements lane
-    // so isEntitlementsFiltered should remain false to prevent cross-lane filtering from empty data
-    const entitlementsLane = lanes.find(l => l.laneType === LaneTypes.EFFECTIVE_ENTITLEMENTS);
-    const hasEntitlementsLane = entitlementsLane && entitlementsLane.items && entitlementsLane.items.length > 0;
-    let filteredEntitlementItems = entitlementsLane?.items ? [...entitlementsLane.items] : [];
-    let isEntitlementsFiltered = false;
-
-  // Apply compliance status filter (only if we have an entitlements lane - not in entitlement-centric view)
-  if (filters.complianceStatuses && filters.complianceStatuses.length > 0 && hasEntitlementsLane) {
-    filteredEntitlementItems = filteredEntitlementItems.filter(item =>
-      filters.complianceStatuses.includes(item.node.metadata?.complianceStatus)
-    );
-    isEntitlementsFiltered = true;
-  }
-
-  // Apply reason types filter
-  if (filters.reasonTypes && filters.reasonTypes.length > 0) {
-    filteredEntitlementItems = filteredEntitlementItems.filter(item => {
-      // Check the reason in rawData
-      const reasonType = item.rawData?.reason?.reasonType;
-      const reasonDesc = item.rawData?.reason?.description?.toLowerCase() || '';
-
-      // Match against selected reason types
-      return filters.reasonTypes.some(filterType => {
-        // Direct match on reasonType
-        if (reasonType === filterType) return true;
-
-        // Match based on description keywords for base types
-        if (filterType === 'Direct' && (reasonType === 'DirectAssignment' || reasonDesc.includes('direct'))) return true;
-        if (filterType === 'Implicit' && reasonDesc.includes('implicit')) return true;
-        if (filterType === 'Explicit' && reasonDesc.includes('explicit')) return true;
-
-        return false;
-      });
-    });
-    if (hasEntitlementsLane) isEntitlementsFiltered = true;
-  }
-
-  // Apply entitlement type filter (direct vs inherited) - only if we have an entitlements lane
-  if (filters.entitlementType && filters.entitlementType !== 'all' && hasEntitlementsLane) {
-    filteredEntitlementItems = filteredEntitlementItems.filter(item => {
-      const reasonType = item.rawData?.reason?.reasonType;
-      const reasonDesc = item.rawData?.reason?.description?.toLowerCase() || '';
-
-      if (filters.entitlementType === 'direct') {
-        // Direct entitlements: DirectAssignment or reason contains 'direct'
-        return reasonType === 'DirectAssignment' || reasonDesc.includes('direct');
-      } else if (filters.entitlementType === 'inherited') {
-        // Inherited: anything that's not direct (role membership, birthright, policy, etc.)
-        return reasonType !== 'DirectAssignment' && !reasonDesc.includes('direct');
-      }
-      return true;
-    });
-    isEntitlementsFiltered = true;
-  }
-
-  // Apply multi-path filter (show only entitlements with multiple assignment paths)
-  if (filters.multiPathOnly && hasEntitlementsLane) {
-    filteredEntitlementItems = filteredEntitlementItems.filter(item => {
-      const reasonArray = item.rawData?.reason;
-      const pathCount = Array.isArray(reasonArray) ? reasonArray.length : (reasonArray ? 1 : 0);
-      return pathCount > 1;
-    });
-    isEntitlementsFiltered = true;
-  }
-
-  // Variables to store selected account's system info for cross-lane filtering (Systems and Logical Apps)
-  let selectedAccountSystemName = null;
-  let selectedAccountSystemId = null;
-
-  // Apply selected account filter (when user clicks an account in the Accounts lane)
-  if (selectedAccountId) {
-    const selectedAccountIdStr = String(selectedAccountId);
-    const accountItem = lanes
-      .find(l => l.laneType === LaneTypes.ACCOUNTS)?.items
-      .find(item => String(item.node.id) === selectedAccountIdStr);
-    const accountNode = accountItem?.node;
-
-    if (accountNode) {
-      const accountSystem = accountNode.metadata?.system;
-      const accountSystemId = accountNode.metadata?.systemId;
-      const accountName = accountNode.displayName;
-
-      // Store for cross-lane filtering of Systems and Logical Apps
-      selectedAccountSystemName = accountSystem;
-      selectedAccountSystemId = accountSystemId ? String(accountSystemId) : null;
-
-      // Filter entitlements that belong to this account
-      // Use the same pattern as system filtering - check metadata first, then rawData
-      filteredEntitlementItems = filteredEntitlementItems.filter(item => {
-        // Get account info from metadata (primary) or rawData (fallback)
-        const entitlementAccountName = item.node.metadata?.accountName ||
-                                       item.rawData?.account?.accountName;
-        const entitlementAccountId = item.node.metadata?.accountId ||
-                                     item.rawData?.account?.id;
-
-        // Use string comparison for IDs
-        const entitlementAccountIdStr = entitlementAccountId ? String(entitlementAccountId) : null;
-
-        const idMatch = entitlementAccountIdStr === selectedAccountIdStr;
-        const nameMatch = accountName && entitlementAccountName === accountName;
-        return idMatch || nameMatch;
-      });
-    }
-    if (hasEntitlementsLane) isEntitlementsFiltered = true;
-  }
-
-  // Apply selected identity filter for entitlements (System-centric view)
-  // When user clicks an identity in the Identities lane, filter entitlements to show only their access
-  if (selectedIdentityId && focusNode?.type === NodeTypes.SYSTEM && hasEntitlementsLane) {
-    const selectedIdentityIdStr = String(selectedIdentityId);
-
-    filteredEntitlementItems = filteredEntitlementItems.filter(item => {
-      // Get identity info from metadata (set in buildEntitlementsLane)
-      const entitlementIdentityId = item.node.metadata?.identityId ||
-                                    item.rawData?.identity?.id;
-      const entitlementIdentityIdStr = entitlementIdentityId ? String(entitlementIdentityId) : null;
-
-      return entitlementIdentityIdStr === selectedIdentityIdStr;
-    });
-
-    isEntitlementsFiltered = true;
-  }
-
-  // Apply selected system filter (when user clicks a system in the Systems lane) - only if we have an entitlements lane
-  if (selectedSystemId && hasEntitlementsLane) {
-    const selectedSystemIdStr = String(selectedSystemId);
-    const systemNode = lanes
-      .find(l => l.laneType === LaneTypes.SYSTEMS)?.items
-      .find(item => String(item.node.id) === selectedSystemIdStr)?.node;
-
-    if (systemNode) {
-      const systemName = systemNode.displayName;
-
-      filteredEntitlementItems = filteredEntitlementItems.filter(item => {
-        const entitlementSystem = item.node.metadata?.system;
-        const entitlementSystemId = item.node.metadata?.systemId;
-        const entitlementGroupLabel = item.groupLabel;
-
-        // Use string comparison for IDs
-        const idMatch = entitlementSystemId && String(entitlementSystemId) === selectedSystemIdStr;
-        const nameMatch = entitlementSystem === systemName || entitlementGroupLabel === systemName;
-
-        return idMatch || nameMatch;
-      });
-    }
-    if (hasEntitlementsLane) isEntitlementsFiltered = true;
-  }
-
-  // Apply selected logical application filter
-  // When user clicks a logical app, filter entitlements to only show resources belonging to that app
-  // Also track the underlying physical systems to filter the Systems lane
-  let logicalAppUnderlyingSystemIds = [];
-  let logicalAppUnderlyingSystemNames = [];
-
-  if (selectedLogicalAppId) {
-    const selectedLogicalAppIdStr = String(selectedLogicalAppId);
-    const logicalAppItem = lanes
-      .find(l => l.laneType === LaneTypes.LOGICAL_APPLICATIONS)?.items
-      .find(item => String(item.node.id) === selectedLogicalAppIdStr);
-    const logicalAppNode = logicalAppItem?.node;
-
-    if (logicalAppNode) {
-      const logicalAppName = logicalAppNode.displayName;
-      const logicalAppSystemIdStr = String(logicalAppNode.id);
-
-      // Filter entitlements that belong to this logical application (by resource's system)
-      filteredEntitlementItems = filteredEntitlementItems.filter(item => {
-        const entitlementSystem = item.node.metadata?.system;
-        const entitlementSystemId = item.node.metadata?.systemId;
-        const entitlementGroupLabel = item.groupLabel;
-
-        // Match by system ID (using string comparison) or system name
-        const idMatch = entitlementSystemId && String(entitlementSystemId) === logicalAppSystemIdStr;
-        const nameMatch = entitlementSystem === logicalAppName || entitlementGroupLabel === logicalAppName;
-
-        return idMatch || nameMatch;
-      });
-
-      // Store the underlying physical systems for filtering the Systems lane
-      logicalAppUnderlyingSystemIds = (logicalAppNode.metadata?.underlyingSystemIds || []).map(id => String(id));
-      logicalAppUnderlyingSystemNames = (logicalAppNode.metadata?.underlyingSystems || []).map(s => s.name);
-    }
-    if (hasEntitlementsLane) isEntitlementsFiltered = true;
-  }
-
-  // Apply selected assignment policy filter
-  // When user clicks a policy in the Assignment Policies lane, filter entitlements to only show
-  // those that were assigned by that policy (using resourceIds stored in policy metadata)
-  if (selectedPolicyId && hasEntitlementsLane) {
-    const selectedPolicyIdStr = String(selectedPolicyId);
-    const policyItem = lanes
-      .find(l => l.laneType === LaneTypes.ASSIGNMENT_POLICIES)?.items
-      .find(item => String(item.node.id) === selectedPolicyIdStr);
-    const policyNode = policyItem?.node;
-
-    if (policyNode) {
-      // Get the array of resource IDs this policy assigns
-      const policyResourceIds = (policyNode.metadata?.resourceIds || []).map(id => String(id));
-
-      // Filter entitlements to only show those with IDs in the policy's resourceIds array
-      filteredEntitlementItems = filteredEntitlementItems.filter(item => {
-        const entitlementId = item.node.id;
-        const entitlementIdStr = String(entitlementId);
-        // Also check the resource ID from rawData
-        const rawResourceId = item.rawData?.resource?.id || item.rawData?.id;
-        const rawResourceIdStr = rawResourceId ? String(rawResourceId) : null;
-
-        return policyResourceIds.includes(entitlementIdStr) ||
-               (rawResourceIdStr && policyResourceIds.includes(rawResourceIdStr));
-      });
-    }
-    isEntitlementsFiltered = true;
-  }
-
-  // Step 2: Extract unique accounts and systems from the FILTERED entitlements
-  // This allows cross-lane filtering: when entitlements are filtered, other lanes adapt
-  const relatedAccountIds = new Set();
-  const relatedAccountNames = new Set();
-  const relatedSystemIds = new Set();
-  const relatedSystemNames = new Set();
-
-  // Get the Logical Applications lane to look up underlying physical systems
-  const logicalAppsLane = lanes.find(l => l.laneType === LaneTypes.LOGICAL_APPLICATIONS);
-  const logicalAppsMap = new Map();
-  if (logicalAppsLane?.items) {
-    logicalAppsLane.items.forEach(item => {
-      logicalAppsMap.set(String(item.node.id), item.node);
-      if (item.node.displayName) {
-        logicalAppsMap.set(item.node.displayName, item.node);
-      }
-    });
-  }
-
-  filteredEntitlementItems.forEach(item => {
-    // Extract account info from rawData (the original assignment)
-    const account = item.rawData?.account;
-    if (account) {
-      // Store both original and string versions for consistent matching
-      if (account.id) {
-        relatedAccountIds.add(account.id);
-        relatedAccountIds.add(String(account.id));
-      }
-      if (account.accountName) relatedAccountNames.add(account.accountName);
-    }
-
-    // Extract system info from the entitlement
-    const systemId = item.rawData?.system?.id || item.node.metadata?.systemId;
-    const systemName = item.node.metadata?.system || item.groupLabel;
-    if (systemId) {
-      // Store both original and string versions for consistent matching
-      relatedSystemIds.add(systemId);
-      relatedSystemIds.add(String(systemId));
-
-      // Check if this system is a logical application - if so, add its underlying physical systems
-      const logicalApp = logicalAppsMap.get(String(systemId)) || logicalAppsMap.get(systemName);
-      if (logicalApp?.metadata?.underlyingSystemIds) {
-        logicalApp.metadata.underlyingSystemIds.forEach(underlyingId => {
-          relatedSystemIds.add(underlyingId);
-          relatedSystemIds.add(String(underlyingId));
-        });
-      }
-      if (logicalApp?.metadata?.underlyingSystems) {
-        logicalApp.metadata.underlyingSystems.forEach(underlying => {
-          if (underlying.id) {
-            relatedSystemIds.add(underlying.id);
-            relatedSystemIds.add(String(underlying.id));
-          }
-          if (underlying.name) relatedSystemNames.add(underlying.name);
-        });
-      }
-    }
-    if (systemName) relatedSystemNames.add(systemName);
-  });
-
-  // Step 3: Apply cross-lane filtering to all lanes
-  return lanes.filter(lane =>
-    filters.visibleLanes.includes(lane.laneType)
-  ).map(lane => {
-    // Apply filtered entitlements to the Effective Entitlements lane
-    if (lane.laneType === LaneTypes.EFFECTIVE_ENTITLEMENTS) {
-      return {
-        ...lane,
-        items: filteredEntitlementItems,
-        totalCount: filteredEntitlementItems.length,
-        isFiltered: isEntitlementsFiltered
-      };
-    }
-
-    // Cross-lane filter: Accounts lane
-    // When a system is selected, filter accounts directly by their system
-    // When an identity is selected (entitlement-centric view), filter accounts by that identity
-    // Otherwise, filter based on related accounts from filtered entitlements
-    // IMPORTANT: Do NOT filter Accounts lane when an Account is selected (selectedAccountId) - it should just highlight
-    if (lane.laneType === LaneTypes.ACCOUNTS && !selectedAccountId) {
-      let filteredAccountItems = lane.items;
-      let accountsFiltered = false;
-
-      // Identity filter: when user clicks an identity in the Identities lane (entitlement-centric view)
-      // Filter accounts to show only those belonging to the selected identity
-      if (selectedIdentityId) {
-        const selectedIdentityIdStr = String(selectedIdentityId);
-
-        // Also find the selected identity node to get alternative IDs (identityId field)
-        const identitiesLane = lanes.find(l => l.laneType === LaneTypes.IDENTITIES);
-        const selectedIdentityNode = identitiesLane?.items?.find(
-          item => String(item.node.id) === selectedIdentityIdStr
-        )?.node;
-        const selectedIdentityIdAlt = selectedIdentityNode?.metadata?.identityId; // IDENTITYID field
-
-        filteredAccountItems = filteredAccountItems.filter(item => {
-          // Get the identity associated with this account from multiple possible paths
-          // In entitlement-centric view, each account item has identity info from the calculated assignment
-          const accountIdentityId = item.node.metadata?.identityId ||
-                                    item.rawData?.identity?.id ||
-                                    item.node.rawData?.identity?.id;
-          const accountIdentityIdAlt = item.rawData?.identity?.identityId ||
-                                       item.node.rawData?.identity?.identityId;
-          const accountIdentityIdStr = accountIdentityId ? String(accountIdentityId) : null;
-          const accountIdentityIdAltStr = accountIdentityIdAlt ? String(accountIdentityIdAlt) : null;
-
-          // Match on either the UUID (id) or the IDENTITYID field
-          const idMatch = accountIdentityIdStr === selectedIdentityIdStr;
-          const altIdMatch = selectedIdentityIdAlt && accountIdentityIdAltStr === String(selectedIdentityIdAlt);
-          return idMatch || altIdMatch;
-        });
-
-        accountsFiltered = true;
-      }
-      // Direct system filter: when user clicks a system, show only accounts on that system
-      else if (selectedSystemId) {
-        // Find the selected system node - use string comparison to avoid type mismatches
-        const selectedSystemIdStr = String(selectedSystemId);
-        const systemsLane = lanes.find(l => l.laneType === LaneTypes.SYSTEMS);
-
-        const selectedSystemNode = systemsLane?.items
-          .find(item => String(item.node.id) === selectedSystemIdStr)?.node;
-
-        // Get the system name - use selectedSystemNode if found, otherwise try to get from accounts
-        const selectedSystemName = selectedSystemNode?.displayName;
-
-        filteredAccountItems = filteredAccountItems.filter(item => {
-          // Check account's system in multiple places - use string comparison
-          const accountSystemName = item.node.metadata?.system ||
-                                    item.rawData?.system?.name ||
-                                    item.node.rawData?.system?.name;
-          const accountSystemId = item.node.metadata?.systemId ||
-                                  item.rawData?.system?.id ||
-                                  item.node.rawData?.system?.id;
-
-          // Use string comparison for IDs to avoid type mismatch issues
-          const accountSystemIdStr = accountSystemId ? String(accountSystemId) : null;
-
-          const idMatch = accountSystemIdStr === selectedSystemIdStr;
-          const nameMatch = selectedSystemName && accountSystemName === selectedSystemName;
-          return idMatch || nameMatch;
-        });
-
-        accountsFiltered = true;
-      }
-      // When a Logical Application is selected, filter accounts by underlying physical systems
-      else if (selectedLogicalAppId && (logicalAppUnderlyingSystemIds.length > 0 || logicalAppUnderlyingSystemNames.length > 0)) {
-        filteredAccountItems = filteredAccountItems.filter(item => {
-          // Get account's system info
-          const accountSystemName = item.node.metadata?.system ||
-                                    item.rawData?.system?.name ||
-                                    item.node.rawData?.system?.name;
-          const accountSystemId = item.node.metadata?.systemId ||
-                                  item.rawData?.system?.id ||
-                                  item.node.rawData?.system?.id;
-          const accountSystemIdStr = accountSystemId ? String(accountSystemId) : null;
-
-          // Check if account's system is one of the underlying physical systems
-          const idMatch = accountSystemIdStr && logicalAppUnderlyingSystemIds.includes(accountSystemIdStr);
-          const nameMatch = accountSystemName && logicalAppUnderlyingSystemNames.includes(accountSystemName);
-          return idMatch || nameMatch;
-        });
-
-        accountsFiltered = true;
-      }
-      // Cross-lane filter from entitlements (when entitlements are filtered by other criteria)
-      else if (isEntitlementsFiltered) {
-        filteredAccountItems = filteredAccountItems.filter(item => {
-          const accountId = item.node.id;
-          const accountName = item.node.displayName;
-          // Match by ID or by name
-          return relatedAccountIds.has(accountId) ||
-                 relatedAccountNames.has(accountId) ||
-                 relatedAccountNames.has(accountName);
-        });
-        accountsFiltered = true;
-      }
-
-      if (accountsFiltered) {
-        return {
-          ...lane,
-          items: filteredAccountItems,
-          totalCount: filteredAccountItems.length,
-          isFiltered: true
-        };
-      }
-    }
-
-    // Cross-lane filter: Systems lane - only show systems related to filtered entitlements
-    // When a logical application is selected, also show its underlying physical systems
-    // When an account is selected, show only the system that account belongs to
-    // IMPORTANT: Do NOT filter Systems lane when a System is selected (selectedSystemId) - it should just highlight
-    if (lane.laneType === LaneTypes.SYSTEMS && (isEntitlementsFiltered || selectedAccountId) && !selectedSystemId) {
-      const filteredSystemItems = lane.items.filter(item => {
-        const systemId = item.node.id;
-        const systemIdStr = String(systemId);
-        const systemName = item.node.displayName;
-
-        // If an account is selected, filter to show only its system
-        if (selectedAccountId && (selectedAccountSystemName || selectedAccountSystemId)) {
-          const idMatch = selectedAccountSystemId && systemIdStr === selectedAccountSystemId;
-          const nameMatch = selectedAccountSystemName && systemName === selectedAccountSystemName;
-          return idMatch || nameMatch;
-        }
-
-        // If a logical app is selected, filter to show only its underlying physical systems
-        if (selectedLogicalAppId && (logicalAppUnderlyingSystemIds.length > 0 || logicalAppUnderlyingSystemNames.length > 0)) {
-          // Use string comparison for IDs
-          return logicalAppUnderlyingSystemIds.includes(systemIdStr) ||
-                 logicalAppUnderlyingSystemNames.includes(systemName);
-        }
-
-        // Otherwise, match by ID or by name from filtered entitlements
-        // Convert to string for comparison
-        return relatedSystemIds.has(systemId) ||
-               relatedSystemIds.has(systemIdStr) ||
-               relatedSystemNames.has(systemId) ||
-               relatedSystemNames.has(systemName);
-      });
-
-      return {
-        ...lane,
-        items: filteredSystemItems,
-        totalCount: filteredSystemItems.length,
-        isFiltered: true
-      };
-    }
-
-    // Cross-lane filter: Logical Applications lane
-    // When a System is selected, show only Logical Apps whose underlying systems include the selected system
-    // When entitlements are filtered, show only Logical Apps whose resources are in the filtered entitlements
-    if (lane.laneType === LaneTypes.LOGICAL_APPLICATIONS) {
-      let filteredLogicalAppItems = lane.items;
-      let logicalAppsFiltered = false;
-
-      // When a physical System is selected, filter to Logical Apps that use this system
-      if (selectedSystemId) {
-        const selectedSystemIdStr = String(selectedSystemId);
-
-        // Find the selected system's name for name-based matching
-        const selectedSystemNode = lanes
-          .find(l => l.laneType === LaneTypes.SYSTEMS)?.items
-          .find(item => String(item.node.id) === selectedSystemIdStr)?.node;
-        const selectedSystemName = selectedSystemNode?.displayName;
-
-        filteredLogicalAppItems = filteredLogicalAppItems.filter(item => {
-          // A Logical App is related to a System if:
-          // 1. The System is in the Logical App's underlyingSystemIds
-          // 2. The System is in the Logical App's underlyingSystems names
-          const underlyingSystemIds = (item.node.metadata?.underlyingSystemIds || []).map(id => String(id));
-          const underlyingSystemNames = (item.node.metadata?.underlyingSystems || []).map(s => s.name);
-
-          const idMatch = underlyingSystemIds.includes(selectedSystemIdStr);
-          const nameMatch = selectedSystemName && underlyingSystemNames.includes(selectedSystemName);
-          return idMatch || nameMatch;
-        });
-
-        logicalAppsFiltered = true;
-      }
-      // When an Account is selected, filter to Logical Apps whose underlying systems include the account's system
-      else if (selectedAccountId && (selectedAccountSystemName || selectedAccountSystemId)) {
-        filteredLogicalAppItems = filteredLogicalAppItems.filter(item => {
-          // A Logical App is related to the account's system if:
-          // 1. The account's system is in the Logical App's underlyingSystemIds
-          // 2. The account's system is in the Logical App's underlyingSystems names
-          const underlyingSystemIds = (item.node.metadata?.underlyingSystemIds || []).map(id => String(id));
-          const underlyingSystemNames = (item.node.metadata?.underlyingSystems || []).map(s => s.name);
-
-          const idMatch = selectedAccountSystemId && underlyingSystemIds.includes(selectedAccountSystemId);
-          const nameMatch = selectedAccountSystemName && underlyingSystemNames.includes(selectedAccountSystemName);
-          return idMatch || nameMatch;
-        });
-
-        logicalAppsFiltered = true;
-      }
-      // When entitlements are filtered (by other criteria), show Logical Apps whose resources are in the filtered entitlements
-      else if (isEntitlementsFiltered && !selectedLogicalAppId) {
-        // Extract unique Logical App system IDs from the filtered entitlements
-        // (entitlements that belong to logical apps, not physical systems)
-        const logicalAppSystemIds = new Set();
-
-        filteredEntitlementItems.forEach(item => {
-          const entitlementSystemId = item.node.metadata?.systemId;
-          if (entitlementSystemId) {
-            logicalAppSystemIds.add(String(entitlementSystemId));
-          }
-        });
-
-        filteredLogicalAppItems = filteredLogicalAppItems.filter(item => {
-          const logicalAppId = String(item.node.id);
-          return logicalAppSystemIds.has(logicalAppId);
-        });
-
-        logicalAppsFiltered = true;
-      }
-
-      if (logicalAppsFiltered) {
-        return {
-          ...lane,
-          items: filteredLogicalAppItems,
-          totalCount: filteredLogicalAppItems.length,
-          isFiltered: true
-        };
-      }
-    }
-
-    // Cross-lane filter: Identities lane (for entitlement-centric and system-centric views)
-    // When an Account is selected, filter identities to show only the account's owner
-    // When the focus node is an Entitlement, filter identities by compliance status
-    // IMPORTANT: Do NOT filter Identities lane when an Identity is selected - it should just highlight
-    if (lane.laneType === LaneTypes.IDENTITIES && !selectedIdentityId) {
-      let filteredIdentityItems = lane.items;
-      let identitiesFiltered = false;
-
-      // Account filter: when user clicks an account in the Accounts lane
-      // Works for both Entitlement-centric and System-centric views
-      // Filter identities to show only the identity that owns the selected account
-      if (selectedAccountId && (focusNode?.type === NodeTypes.ENTITLEMENT || focusNode?.type === NodeTypes.SYSTEM)) {
-        const selectedAccountIdStr = String(selectedAccountId);
-
-        // Find the selected account to get its identity
-        const accountsLane = lanes.find(l => l.laneType === LaneTypes.ACCOUNTS);
-        const selectedAccountItem = accountsLane?.items?.find(
-          item => String(item.node.id) === selectedAccountIdStr
-        );
-
-        if (selectedAccountItem) {
-          // Get the identity ID(s) from the account
-          // In System-centric view, an account may be associated with multiple identities (identityIds array)
-          const accountIdentityIds = selectedAccountItem.node.metadata?.identityIds ||
-                                     selectedAccountItem.rawData?.identityIds || [];
-          const accountIdentityId = selectedAccountItem.node.metadata?.identityId ||
-                                    selectedAccountItem.rawData?.identity?.id ||
-                                    selectedAccountItem.node.rawData?.identity?.id;
-
-          // Build a set of all identity IDs associated with this account
-          const identityIdsSet = new Set(
-            accountIdentityIds.map(id => String(id)).filter(Boolean)
-          );
-          if (accountIdentityId) {
-            identityIdsSet.add(String(accountIdentityId));
-          }
-
-          if (identityIdsSet.size > 0) {
-            filteredIdentityItems = filteredIdentityItems.filter(item => {
-              const identityId = String(item.node.id);
-              return identityIdsSet.has(identityId);
-            });
-
-            identitiesFiltered = true;
-          }
-        }
-      }
-      // Apply compliance status filter to identities in entitlement-centric view
-      // Each identity has a complianceStatus from their relationship with the central entitlement
-      else if (filters.complianceStatuses && filters.complianceStatuses.length > 0 && focusNode?.type === NodeTypes.ENTITLEMENT) {
-        filteredIdentityItems = filteredIdentityItems.filter(item => {
-          // Get compliance status from node metadata or rawData
-          const complianceStatus = item.node.metadata?.complianceStatus ||
-                                   item.rawData?.complianceStatus ||
-                                   item.node.rawData?.complianceStatus;
-
-          return filters.complianceStatuses.includes(complianceStatus);
-        });
-
-        identitiesFiltered = true;
-      }
-
-      if (identitiesFiltered) {
-        return {
-          ...lane,
-          items: filteredIdentityItems,
-          totalCount: filteredIdentityItems.length,
-          isFiltered: true
-        };
-      }
-    }
-
-    return lane;
-  }).filter(lane => {
-    // Always show lanes that have data
-    if (lane.items && lane.items.length > 0) return true;
-
-    // For System focus node, always show required lanes even if empty (they may populate after filtering)
-    // This ensures Identities, Accounts, Entitlements, and Logical Applications lanes are always visible
-    if (focusNode?.type === NodeTypes.SYSTEM) {
-      const requiredLanesForSystem = [LaneTypes.IDENTITIES, LaneTypes.ACCOUNTS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.LOGICAL_APPLICATIONS];
-      if (requiredLanesForSystem.includes(lane.laneType)) {
-        return true;
-      }
-    }
-
-    // For Entitlement focus node, always show Identities and Accounts lanes
-    if (focusNode?.type === NodeTypes.ENTITLEMENT) {
-      const requiredLanesForEntitlement = [LaneTypes.IDENTITIES, LaneTypes.ACCOUNTS];
-      if (requiredLanesForEntitlement.includes(lane.laneType)) {
-        return true;
-      }
-    }
-
-    return false; // Hide other empty lanes
-  });
   }, [
     lanes,
+    selections,
     filters.complianceStatuses,
     filters.reasonTypes,
     filters.entitlementType,
     filters.visibleLanes,
-    selectedAccountId,
-    selectedSystemId,
-    selectedLogicalAppId,
-    selectedIdentityId,
-    selectedPolicyId,
-    selectedEntitlementId,
-    selectedViolationId,
-    selectedContextId,
+    filters.multiPathOnly,
     focusNode
   ]);
 
@@ -2767,29 +2158,35 @@ const AccessLens = ({
         onClearAllSelections={handleClearAllSelections}
         onExpandAll={handleExpandAll}
         onResetLayout={handleResetPositions}
-        breadcrumbs={
+      />
+
+      {/* Breadcrumb Bar — dedicated row beneath filters, left-aligned */}
+      {history.length > 0 && (
+        <div className="breadcrumb-bar">
           <Breadcrumbs
             history={history}
             currentIndex={historyIndex}
             onNavigate={handleBreadcrumbNavigate}
             onRemove={handleRemoveBreadcrumb}
           />
-        }
-      />
+        </div>
+      )}
 
       {/* Main Content */}
       <div className="access-lens-content">
-        {/* Pivot Loading Overlay - shows when changing central node */}
-        {isLoading && focusNode && (
-          <div className="pivot-loading-overlay">
-            <div className="pivot-loading-spinner"></div>
-            <h3 className="pivot-loading-title">Updating Identity360</h3>
-            <p className="pivot-loading-status">{pivotLoadingStatus || 'Loading...'}</p>
-          </div>
-        )}
+        {/* Scrollable canvas area — scrolls independently so Object Inspector stays pinned right */}
+        <div className="canvas-scroll-container">
+          {/* Pivot Loading Overlay - shows when changing central node */}
+          {isLoading && focusNode && (
+            <div className="pivot-loading-overlay">
+              <div className="pivot-loading-spinner"></div>
+              <h3 className="pivot-loading-title">Updating Identity360</h3>
+              <p className="pivot-loading-status">{pivotLoadingStatus || 'Loading...'}</p>
+            </div>
+          )}
 
-        {/* Canvas with draggable lanes */}
-        <div className="access-lens-canvas">
+          {/* Canvas with draggable lanes */}
+          <div className="access-lens-canvas">
           {/* Connector Lines SVG - only show for revealed lanes */}
           <ConnectorLines
             lanePositions={Object.fromEntries(
@@ -2818,6 +2215,8 @@ const AccessLens = ({
                 onNavigateBack={() => history.length > 1 && handleBreadcrumbNavigate(history[history.length - 2], history.length - 2)}
                 selectedIdentityCompliance={selectedIdentityComplianceStatus}
                 violationCount={violationCount}
+                isMinimized={focusCardMinimized}
+                onToggleMinimize={(e) => { e.stopPropagation(); setFocusCardMinimized(prev => !prev); }}
               />
             </div>
 
@@ -2905,6 +2304,7 @@ const AccessLens = ({
             ))}
           </DndContext>
         </div>
+        </div>{/* end canvas-scroll-container */}
 
         {/* Object Inspector Panel - only render when enabled */}
         {showObjectInspector && (

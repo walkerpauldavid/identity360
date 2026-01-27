@@ -1,21 +1,23 @@
-﻿import { useState, useEffect } from 'react'
+﻿import { useState, useEffect, lazy, Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './contexts/AuthContext'
 import Login from './components/auth/Login'
 import Callback from './components/auth/Callback'
-import Dashboard from './components/dashboard/Dashboard'
-import IdentitiesList from './components/identities/IdentitiesList'
-import LogViewer from './components/logs/LogViewer'
-import Settings from './components/settings/Settings'
-import MyAccess from './components/access/MyAccess'
-import MyTeam from './components/team/MyTeam'
-import AccessRequestsList from './components/access-requests/AccessRequestsList'
-import AccessLensPage from './components/access-lens/AccessLensPage'
-import Admin from './components/admin/Admin'
 import Navbar from './components/layout/Navbar'
 import Breadcrumbs from './components/layout/Breadcrumbs'
-import AgentChat from './components/dashboard/AgentChat'
 import './App.css'
+
+// Lazy-loaded page components — split into separate chunks for faster initial load
+const Dashboard = lazy(() => import('./components/dashboard/Dashboard'))
+const IdentitiesList = lazy(() => import('./components/identities/IdentitiesList'))
+const LogViewer = lazy(() => import('./components/logs/LogViewer'))
+const Settings = lazy(() => import('./components/settings/Settings'))
+const MyAccess = lazy(() => import('./components/access/MyAccess'))
+const MyTeam = lazy(() => import('./components/team/MyTeam'))
+const AccessRequestsList = lazy(() => import('./components/access-requests/AccessRequestsList'))
+const AccessLensPage = lazy(() => import('./components/access-lens/AccessLensPage'))
+const Admin = lazy(() => import('./components/admin/Admin'))
+const AgentChat = lazy(() => import('./components/dashboard/AgentChat'))
 
 // Layout wrapper for protected routes
 const ProtectedLayout = ({ children, title }) => {
@@ -55,6 +57,7 @@ function App() {
 
   return (
     <>
+      <Suspense fallback={<div className="loading-container"><div className="spinner"></div><p>Loading...</p></div>}>
       <Routes>
       {/* OAuth Callback Route */}
       <Route path="/callback" element={<Callback />} />
@@ -194,6 +197,7 @@ function App() {
       {/* Catch all - redirect to home */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+      </Suspense>
 
     {/* Global Agent Chat - Available on all pages when authenticated */}
     {isAuthenticated && (

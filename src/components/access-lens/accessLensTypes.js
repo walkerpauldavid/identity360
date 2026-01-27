@@ -72,24 +72,32 @@ export const DebugConfig = {
   ALL: false                  // Enable all debug logging (overrides individual flags)
 };
 
-// Helper function to check if logging is enabled for a module
-// Also checks user preference from localStorage
-export const shouldLog = (module) => {
-  // First check if Identity360 logging is enabled in user preferences
+// Cached user preference for AccessLens logging (avoids synchronous localStorage read on every call)
+let _accessLensLoggingEnabled = (() => {
   try {
     const stored = localStorage.getItem('app_user_preferences');
     if (stored) {
       const prefs = JSON.parse(stored);
-      // If user has disabled Identity360 logging, return false
-      if (prefs.debugEnableAccessLensLogging === false) {
-        return false;
-      }
+      return prefs.debugEnableAccessLensLogging !== false;
     }
-  } catch (e) {
-    // Ignore errors, fall through to default behavior
-  }
+  } catch (e) { /* ignore */ }
+  return true; // Default: enabled
+})();
 
-  // Then check the module-specific debug config
+// Allow runtime updates (e.g., from Settings page) without page reload
+export const refreshLogPreference = () => {
+  try {
+    const stored = localStorage.getItem('app_user_preferences');
+    if (stored) {
+      const prefs = JSON.parse(stored);
+      _accessLensLoggingEnabled = prefs.debugEnableAccessLensLogging !== false;
+    }
+  } catch (e) { /* ignore */ }
+};
+
+// Helper function to check if logging is enabled for a module
+export const shouldLog = (module) => {
+  if (!_accessLensLoggingEnabled) return false;
   return DebugConfig.ALL || DebugConfig[module] || false;
 };
 
@@ -229,8 +237,8 @@ export const LaneSchema = {
     collapsible: true,
     exclusionList: [],
     defaultPosition: {
-      compass: CompassOrientation.S,  // South — reveals before Assignment Policies (SW) in clockwise order
-      priority: 1
+      compass: CompassOrientation.SW,  // South-West — reveals after Assignment Policies (S) in clockwise order
+      priority: 2
     },
     apiSource: {
       type: 'GraphQL',
@@ -330,8 +338,8 @@ export const LaneSchema = {
     collapsible: true,
     exclusionList: [],
     defaultPosition: {
-      compass: CompassOrientation.SW,  // South-West — reveals after Contexts (S) in clockwise order
-      priority: 2
+      compass: CompassOrientation.S,  // South — reveals before Contexts (SW) in clockwise order
+      priority: 1
     },
     // This lane is derived from calculatedAssignments reason data
     apiSource: {

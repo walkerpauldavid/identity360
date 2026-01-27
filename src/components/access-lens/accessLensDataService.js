@@ -1600,6 +1600,9 @@ function buildAccountsLane(assignments, filters) {
   }
 
   const items = Array.from(accountsMap.values()).map((acc, index) => {
+    // Convert Sets to arrays once (M-08 fix)
+    const identityIdsArr = Array.from(acc.identityIds || []);
+
     const accountNode = {
       id: acc.id,
       type: NodeTypes.ACCOUNT,
@@ -1617,7 +1620,7 @@ function buildAccountsLane(assignments, filters) {
         // Cross-lane filtering: store identity info
         identityId: acc.identityId,
         identityDisplayName: acc.identityDisplayName,
-        identityIds: Array.from(acc.identityIds || [])  // All identities using this account
+        identityIds: identityIdsArr
       },
       rawData: {
         id: acc.id,
@@ -1630,7 +1633,7 @@ function buildAccountsLane(assignments, filters) {
           id: acc.identityId,
           displayName: acc.identityDisplayName
         },
-        identityIds: Array.from(acc.identityIds || [])
+        identityIds: identityIdsArr
       }
     };
 
@@ -1649,7 +1652,7 @@ function buildAccountsLane(assignments, filters) {
           id: acc.identityId,
           displayName: acc.identityDisplayName
         },
-        identityIds: Array.from(acc.identityIds || [])
+        identityIds: identityIdsArr
       }
     };
   });
@@ -1733,6 +1736,10 @@ function buildIdentitiesLane(assignments, filters) {
   // console.log('[buildIdentitiesLane] Unique identities:', identitiesMap.size);
 
   const items = Array.from(identitiesMap.values()).map((ident) => {
+    // Convert Sets to arrays once (M-08 fix)
+    const accountIdsArr = Array.from(ident.accountIds || []);
+    const contextIdsArr = Array.from(ident.contextIds || []);
+
     const identityNode = {
       id: ident.id,
       type: NodeTypes.IDENTITY,
@@ -1753,9 +1760,9 @@ function buildIdentitiesLane(assignments, filters) {
         accountCount: ident.accounts?.length || 0,
         resourceCount: ident.resourceCount,
         // Cross-lane filtering: store account IDs
-        accountIds: Array.from(ident.accountIds || []),
+        accountIds: accountIdsArr,
         // Cross-lane filtering: store context UIds for AP Context -> Identity filtering
-        contextIds: Array.from(ident.contextIds || [])
+        contextIds: contextIdsArr
       },
       rawData: {
         id: ident.id,
@@ -1771,8 +1778,8 @@ function buildIdentitiesLane(assignments, filters) {
         accounts: ident.accounts,
         contexts: ident.contexts,
         // Cross-lane filtering: store account IDs and context IDs
-        accountIds: Array.from(ident.accountIds || []),
-        contextIds: Array.from(ident.contextIds || [])
+        accountIds: accountIdsArr,
+        contextIds: contextIdsArr
       }
     };
 
@@ -1783,8 +1790,8 @@ function buildIdentitiesLane(assignments, filters) {
       groupLabel: 'Identities',
       rawData: {
         ...ident,
-        accountIds: Array.from(ident.accountIds || []),
-        contextIds: Array.from(ident.contextIds || [])
+        accountIds: accountIdsArr,
+        contextIds: contextIdsArr
       }
     };
   });
@@ -2048,6 +2055,11 @@ function buildEntitlementsLane(assignments, filters) {
     const resource = entry.resource;
     const firstAssignment = entry.assignments[0]; // Use first assignment for base data
 
+    // Convert Sets to arrays once (M-08 fix)
+    const accountIdsArr = Array.from(entry.accountIds);
+    const identityIdsArr = Array.from(entry.identityIds);
+    const complianceStatusesArr = Array.from(entry.complianceStatuses);
+
     // Determine overall compliance status (prefer "Not Approved" if any exist)
     let overallComplianceStatus = 'Approved';
     if (entry.complianceStatuses.has('Not Approved')) {
@@ -2075,8 +2087,8 @@ function buildEntitlementsLane(assignments, filters) {
         validTo: firstAssignment.validTo || null,
         // Aggregated info for cross-lane filtering
         // Store arrays of all related accounts/identities for proper filtering
-        accountIds: Array.from(entry.accountIds),
-        identityIds: Array.from(entry.identityIds),
+        accountIds: accountIdsArr,
+        identityIds: identityIdsArr,
         assignmentCount: entry.assignments.length,
         // Keep first assignment's account/identity for backward compatibility
         accountName: firstAssignment.account?.accountName,
@@ -2103,7 +2115,7 @@ function buildEntitlementsLane(assignments, filters) {
           assignmentCount: entry.assignments.length,
           identityCount: entry.identityIds.size,
           accountCount: entry.accountIds.size,
-          complianceStatuses: Array.from(entry.complianceStatuses)
+          complianceStatuses: complianceStatusesArr
         }
       }
     };
@@ -3223,6 +3235,9 @@ export function buildAssignmentPoliciesLane(assignments, filters = {}) {
 
   // Convert to lane items
   const items = Array.from(policiesMap.values()).map((policy, index) => {
+    // Convert Sets to arrays once (M-08 fix)
+    const resourceIdsArr = Array.from(policy.resourceIds);
+
     const policyNode = {
       id: policy.causeObjectKey || `policy-${index}-${policy.name.replace(/\s+/g, '-').toLowerCase()}`,
       type: NodeTypes.POLICY,
@@ -3237,12 +3252,12 @@ export function buildAssignmentPoliciesLane(assignments, filters = {}) {
         resourceCount: policy.resourceIds.size,
         assignmentCount: policy.assignmentCount,
         // Cross-lane filtering: store resource IDs this policy assigns
-        resourceIds: Array.from(policy.resourceIds)
+        resourceIds: resourceIdsArr
       },
       rawData: {
         name: policy.name,
         description: policy.description,
-        resourceIds: Array.from(policy.resourceIds),
+        resourceIds: resourceIdsArr,
         assignmentCount: policy.assignmentCount,
         causeObjectKey: policy.causeObjectKey
       }
@@ -3255,7 +3270,7 @@ export function buildAssignmentPoliciesLane(assignments, filters = {}) {
       groupLabel: 'Assignment Policies',
       rawData: {
         ...policy,
-        resourceIds: Array.from(policy.resourceIds)
+        resourceIds: resourceIdsArr
       }
     };
   });
@@ -3433,6 +3448,13 @@ export function buildViolationsLane(assignments, filters = {}) {
     const conflictMatch = violation.description?.match(/In violation with "([^"]+)"/);
     const conflictingEntitlement = conflictMatch ? conflictMatch[1] : null;
 
+    // Convert Sets to arrays once (M-08 fix)
+    const resourceIdsArr = Array.from(violation.resourceIds);
+    const resourceNamesArr = Array.from(violation.resourceNames);
+    const accountIdsArr = Array.from(violation.accountIds);
+    const systemIdsArr = Array.from(violation.systemIds);
+    const identityIdsArr = Array.from(violation.identityIds);
+
     const violationNode = {
       id: `violation-${index}-${violation.description?.replace(/\s+/g, '-').substring(0, 30).toLowerCase()}`,
       type: NodeTypes.VIOLATION,
@@ -3450,21 +3472,21 @@ export function buildViolationsLane(assignments, filters = {}) {
         conflictingEntitlement: conflictingEntitlement,
         resourceCount: violation.resourceIds.size,
         // Cross-lane filtering: store IDs involved in this violation
-        resourceIds: Array.from(violation.resourceIds),
-        resourceNames: Array.from(violation.resourceNames),
-        accountIds: Array.from(violation.accountIds),
-        systemIds: Array.from(violation.systemIds),
-        identityIds: Array.from(violation.identityIds)
+        resourceIds: resourceIdsArr,
+        resourceNames: resourceNamesArr,
+        accountIds: accountIdsArr,
+        systemIds: systemIdsArr,
+        identityIds: identityIdsArr
       },
       rawData: {
         description: violation.description,
         violationStatus: violation.violationStatus,
         conflictingEntitlement: conflictingEntitlement,
-        resourceIds: Array.from(violation.resourceIds),
-        resourceNames: Array.from(violation.resourceNames),
-        accountIds: Array.from(violation.accountIds),
-        systemIds: Array.from(violation.systemIds),
-        identityIds: Array.from(violation.identityIds)
+        resourceIds: resourceIdsArr,
+        resourceNames: resourceNamesArr,
+        accountIds: accountIdsArr,
+        systemIds: systemIdsArr,
+        identityIds: identityIdsArr
       }
     };
 
@@ -3475,10 +3497,10 @@ export function buildViolationsLane(assignments, filters = {}) {
       groupLabel: 'Violations',
       rawData: {
         ...violation,
-        resourceIds: Array.from(violation.resourceIds),
-        resourceNames: Array.from(violation.resourceNames),
-        accountIds: Array.from(violation.accountIds),
-        systemIds: Array.from(violation.systemIds)
+        resourceIds: resourceIdsArr,
+        resourceNames: resourceNamesArr,
+        accountIds: accountIdsArr,
+        systemIds: systemIdsArr
       }
     };
   });

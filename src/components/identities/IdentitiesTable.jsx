@@ -3,7 +3,7 @@
  * Displays identities in a paginated table
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePreferences } from '../../contexts/PreferencesContext';
@@ -349,28 +349,34 @@ const IdentitiesTable = ({ identities, categoryColor }) => {
   const currentIdentities = sortedIdentities.slice(startIndex, endIndex);
 
   // Fetch contexts for visible identities
+  // Use refs to read current data without including them in the dependency array (avoids re-fetch loop
+  // and avoids re-triggering when currentIdentities array reference changes on every render)
+  const contextsMapRef = useRef(contextsMap);
+  contextsMapRef.current = contextsMap;
+  const currentIdentitiesRef = useRef(currentIdentities);
+  currentIdentitiesRef.current = currentIdentities;
+
+  // Stable identity for the current page — changes only when page content actually differs
+  const currentPageIdentityKey = currentIdentities.map(i => i.UId || i.Id).join(',');
+
   useEffect(() => {
     const fetchContextsForVisibleIdentities = async () => {
       const bearerToken = getBearerToken();
       const impersonateUser = user?.email;
+      const visibleIdentities = currentIdentitiesRef.current;
 
-      if (!bearerToken || currentIdentities.length === 0) {
+      if (!bearerToken || visibleIdentities.length === 0) {
         return;
       }
 
-      // Get list of identities that need contexts fetched
-      const identitiesToFetch = currentIdentities.filter(identity => {
+      // Get list of identities that need contexts fetched (read from ref to avoid dep cycle)
+      const currentMap = contextsMapRef.current;
+      const identitiesToFetch = visibleIdentities.filter(identity => {
         const identityUId = identity.UId;
-        return identityUId && !contextsMap[identityUId];
+        return identityUId && !currentMap[identityUId];
       });
 
-      console.log('=== Fetching Contexts ===');
-      console.log('Current identities:', currentIdentities.length);
-      console.log('Identities to fetch:', identitiesToFetch.length);
-      console.log('Sample identity:', currentIdentities[0]);
-
       if (identitiesToFetch.length === 0) {
-        console.log('No identities need contexts fetched');
         return; // All contexts already loaded
       }
 
@@ -380,7 +386,6 @@ const IdentitiesTable = ({ identities, categoryColor }) => {
         // Fetch contexts for each visible identity that doesn't have them yet
         const contextsPromises = identitiesToFetch.map(async (identity) => {
           const identityUId = identity.UId;
-          console.log(`Fetching contexts for identity UId: ${identityUId}`);
 
           try {
             const result = await omadaApi.identity.getIdentityContexts(
@@ -389,11 +394,9 @@ const IdentitiesTable = ({ identities, categoryColor }) => {
               impersonateUser // May be null, which is OK
             );
 
-            console.log(`Context result for ${identityUId}:`, result);
             if (result.status === 'success' && result.data) {
               // Extract context display names
               const contextNames = result.data.map(ctx => ctx.displayName || ctx.name || ctx.id).filter(Boolean);
-              console.log(`Context names for ${identityUId}:`, contextNames);
               return { identityUId, contexts: contextNames };
             }
             return { identityUId, contexts: [] };
@@ -421,7 +424,7 @@ const IdentitiesTable = ({ identities, categoryColor }) => {
     };
 
     fetchContextsForVisibleIdentities();
-  }, [currentPage, pageSize, getBearerToken, user?.email, currentIdentities, contextsMap]); // Re-fetch when page or identities change
+  }, [currentPageIdentityKey, getBearerToken, user?.email]); // Stable key: only re-fetch when visible identities actually change
 
   // Clear individual column filter
   const clearColumnFilter = (column) => {

@@ -61,11 +61,14 @@ let DEBUG_CACHE_LOGGING = getDebugLoggingSetting();
  */
 export function withApiCache(namespace, fnName, fn, cacheKeyFn) {
   return async function (...args) {
-    // 1. Build the cache key
+    // 1. Build the cache key (fast-path for primitives, fallback to JSON.stringify)
     let cacheKey;
     try {
       const keyData = cacheKeyFn(...args);
-      cacheKey = `${namespace}.${fnName}|${JSON.stringify(keyData)}`;
+      const keyStr = typeof keyData === 'string' || typeof keyData === 'number'
+        ? String(keyData)
+        : JSON.stringify(keyData);
+      cacheKey = `${namespace}.${fnName}|${keyStr}`;
     } catch (e) {
       // If key generation fails, skip caching entirely
       return fn(...args);
@@ -204,10 +207,13 @@ export async function purgeExpiredEntries() {
   }
 }
 
-// Periodic cleanup — purge expired entries every 10 minutes
+// Periodic cleanup — purge expired entries every 10 minutes with jitter
+// Random jitter (0-2 min) prevents all tabs from purging simultaneously
+const CLEANUP_BASE_MS = 10 * 60 * 1000;
+const CLEANUP_JITTER_MS = Math.floor(Math.random() * 2 * 60 * 1000);
 setInterval(() => {
   purgeExpiredEntries().catch(() => {});
-}, 10 * 60 * 1000);
+}, CLEANUP_BASE_MS + CLEANUP_JITTER_MS);
 
 // ============================================================================
 // DEBUG HELPERS — window.__omadaApiCache
@@ -224,25 +230,24 @@ if (typeof window !== 'undefined') {
     /** Remove expired entries */
     purge: purgeExpiredEntries,
 
-    /** Get cache statistics */
+    /** Get cache statistics (uses count + cursor to avoid loading all data into memory) */
     stats: async () => {
       try {
-        const allEntries = await db.apiResponses.toArray();
-        const total = allEntries.length;
-        const byNamespace = {};
-        let fresh = 0;
-        let expired = 0;
+        const total = await db.apiResponses.count();
+        const cutoff = Date.now() - CACHE_TTL_MS;
+        const expired = await db.apiResponses.where('timestamp').below(cutoff).count();
+        const fresh = total - expired;
 
-        allEntries.forEach(entry => {
+        // Only load namespace breakdown (lightweight: key + namespace + timestamp only)
+        const byNamespace = {};
+        await db.apiResponses.each(entry => {
           const ns = entry.namespace;
           if (!byNamespace[ns]) byNamespace[ns] = { total: 0, fresh: 0, expired: 0 };
           byNamespace[ns].total++;
-          if ((Date.now() - entry.timestamp) < CACHE_TTL_MS) {
+          if (entry.timestamp >= cutoff) {
             byNamespace[ns].fresh++;
-            fresh++;
           } else {
             byNamespace[ns].expired++;
-            expired++;
           }
         });
 
@@ -255,16 +260,19 @@ if (typeof window !== 'undefined') {
       }
     },
 
-    /** List all cache keys with age */
+    /** List all cache keys with age (loads only key/namespace/timestamp, not data) */
     keys: async () => {
       try {
-        const entries = await db.apiResponses.toArray();
-        return entries.map(e => ({
-          key: e.key,
-          namespace: e.namespace,
-          age: `${Math.round((Date.now() - e.timestamp) / 1000)}s`,
-          fresh: (Date.now() - e.timestamp) < CACHE_TTL_MS
-        }));
+        const keys = [];
+        await db.apiResponses.each(entry => {
+          keys.push({
+            key: entry.key,
+            namespace: entry.namespace,
+            age: `${Math.round((Date.now() - entry.timestamp) / 1000)}s`,
+            fresh: (Date.now() - entry.timestamp) < CACHE_TTL_MS
+          });
+        });
+        return keys;
       } catch (e) {
         console.warn('[ApiCache] Failed to list keys:', e.message);
         return [];
