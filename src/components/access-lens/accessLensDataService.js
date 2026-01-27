@@ -768,16 +768,17 @@ export function buildContextsLaneFromAPData(apContexts) {
 }
 
 /**
- * Build Effective Entitlements lane from OData Resource data.
- * Used for AP focus node where entitlements come from AP_RESOURCES + OData enrichment
- * rather than from calculated assignments.
+ * Build Effective Entitlements lane from AP_RESOURCES list.
+ * Used for AP focus node where entitlements come from the Assignment Policy's
+ * AP_RESOURCES array. System and cross-lane filter data is derived from the
+ * calculated assignments (no extra OData call needed).
  *
- * @param {Array} odataResources - Array of OData Resource objects (with DISPLAYNAME, SYSTEMREF, RESOURCETYPE, etc.)
- * @param {Array} assignments - Optional array of assignments for cross-lane filter data (identityIds, accountIds)
+ * @param {Array} apResources - Array of AP_RESOURCES objects { Id, UId, KeyValue, KeyProperty, DisplayName }
+ * @param {Array} assignments - Array of assignments for system info and cross-lane filter data
  * @returns {Object} Lane object with entitlement items
  */
-export function buildEntitlementsLaneFromOData(odataResources, assignments = []) {
-  if (!odataResources || !Array.isArray(odataResources) || odataResources.length === 0) {
+export function buildEntitlementsLaneFromAPResources(apResources, assignments = []) {
+  if (!apResources || !Array.isArray(apResources) || apResources.length === 0) {
     return {
       laneType: LaneTypes.EFFECTIVE_ENTITLEMENTS,
       totalCount: 0,
@@ -787,7 +788,8 @@ export function buildEntitlementsLaneFromOData(odataResources, assignments = [])
     };
   }
 
-  // Build a map from resourceId to aggregated assignment data for cross-lane filtering
+  // Build a map from resourceId to aggregated assignment data
+  // This gives us system info and cross-lane filter data (identityIds, accountIds)
   const resourceAssignmentMap = new Map();
   if (assignments && assignments.length > 0) {
     assignments.forEach(assignment => {
@@ -798,7 +800,9 @@ export function buildEntitlementsLaneFromOData(odataResources, assignments = [])
         resourceAssignmentMap.set(resourceId, {
           identityIds: new Set(),
           accountIds: new Set(),
-          systemIds: new Set(),
+          systemName: assignment.resource?.system?.name || null,
+          systemId: assignment.resource?.system?.id || null,
+          resourceTypeName: assignment.resource?.resourceType?.name || null,
           complianceStatuses: new Set(),
           reasons: [],
           assignmentCount: 0
@@ -809,28 +813,31 @@ export function buildEntitlementsLaneFromOData(odataResources, assignments = [])
       entry.assignmentCount++;
       if (assignment.identity?.id) entry.identityIds.add(assignment.identity.id);
       if (assignment.account?.id) entry.accountIds.add(assignment.account.id);
-      if (assignment.resource?.system?.id) entry.systemIds.add(assignment.resource.system.id);
+      // Capture system info from first assignment that has it
+      if (!entry.systemName && assignment.resource?.system?.name) {
+        entry.systemName = assignment.resource.system.name;
+        entry.systemId = assignment.resource.system.id;
+      }
+      if (!entry.resourceTypeName && assignment.resource?.resourceType?.name) {
+        entry.resourceTypeName = assignment.resource.resourceType.name;
+      }
       if (assignment.complianceStatus) entry.complianceStatuses.add(assignment.complianceStatus);
       if (assignment.reason) entry.reasons.push(assignment.reason);
     });
   }
 
-  const items = odataResources.map((resource, index) => {
+  const items = apResources.map((resource, index) => {
     const resourceUId = resource.UId || resource.Id || resource.id;
-    const displayName = resource.DISPLAYNAME || resource.DisplayName || resource.Name || 'Unknown';
-    const systemName = resource.SYSTEMREF?.DisplayName || resource.SYSTEMREF?.Name ||
-                       resource.SYSTEM?.DisplayName || resource.SYSTEM?.Name || null;
-    const systemId = resource.SYSTEMREF?.UId || resource.SYSTEMREF?.Id ||
-                     resource.SYSTEM?.UId || resource.SYSTEM?.Id || null;
-    const resourceTypeName = resource.RESOURCETYPE?.DisplayName || resource.RESOURCETYPE?.Name ||
-                             resource.RESOURCETYPE?.DISPLAYNAME || null;
-    const description = resource.DESCRIPTION || resource.Description || '';
+    const displayName = resource.DisplayName || resource.Name || resource.displayName || 'Unknown';
 
-    // Look up assignment data for cross-lane filtering
-    // Try matching by UId first, then by other ID forms
+    // Look up assignment data for system info and cross-lane filtering
     const assignmentData = resourceAssignmentMap.get(resourceUId) ||
                            resourceAssignmentMap.get(resource.Id) ||
                            resourceAssignmentMap.get(resource.id) || null;
+
+    const systemName = assignmentData?.systemName || null;
+    const systemId = assignmentData?.systemId || null;
+    const resourceTypeName = assignmentData?.resourceTypeName || null;
 
     const entitlementNode = {
       id: resourceUId,
@@ -845,8 +852,7 @@ export function buildEntitlementsLaneFromOData(odataResources, assignments = [])
         system: systemName,
         systemId: systemId,
         type: resourceTypeName,
-        description: description,
-        // Cross-lane filter data from assignments (if available)
+        // Cross-lane filter data from assignments
         identityIds: assignmentData ? Array.from(assignmentData.identityIds) : [],
         accountIds: assignmentData ? Array.from(assignmentData.accountIds) : [],
         assignmentCount: assignmentData?.assignmentCount || 0,
@@ -861,7 +867,7 @@ export function buildEntitlementsLaneFromOData(odataResources, assignments = [])
     return {
       node: entitlementNode,
       reasons: [{
-        id: `reason-odata-${index}`,
+        id: `reason-ap-${index}`,
         type: 'Policy',
         reasonType: 'Policy',
         title: 'Policy',
@@ -882,7 +888,7 @@ export function buildEntitlementsLaneFromOData(odataResources, assignments = [])
   );
 
   if (shouldLog('ENTITLEMENTS')) {
-    console.log(`[buildEntitlementsLaneFromOData] Built ${items.length} entitlement items from OData resources`);
+    console.log(`[buildEntitlementsLaneFromAPResources] Built ${items.length} entitlement items from AP_RESOURCES`);
   }
 
   return {
@@ -3536,7 +3542,7 @@ export default {
   transformReason,
   buildContextsLane,
   buildSystemsLane,
-  buildEntitlementsLaneFromOData,
+  buildEntitlementsLaneFromAPResources,
   buildLanesFromAssignments,
   buildLanesForEntitlement,
   buildAssignmentPoliciesLane,

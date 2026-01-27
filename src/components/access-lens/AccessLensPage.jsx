@@ -1443,40 +1443,8 @@ const AccessLensPage = () => {
 
           if (shouldLog('PIVOT')) console.log(`[AP Pivot] Total assignments collected: ${allAssignments.length}`);
 
-          // Step 4: Query OData for resource details (name, system) for Effective Entitlements lane
-          const RESOURCE_BATCH_SIZE = 15;
-          let odataResourceDetails = [];
-
-          if (apResources.length > 0) {
-            if (shouldLog('PIVOT')) console.log(`[AP Pivot] Querying OData for ${apResources.length} resource details`);
-
-            for (let i = 0; i < apResources.length; i += RESOURCE_BATCH_SIZE) {
-              const batch = apResources.slice(i, i + RESOURCE_BATCH_SIZE);
-              const uidFilters = batch
-                .map(r => r.UId || r.Id || r.id)
-                .filter(Boolean)
-                .map(uid => `UId eq '${uid}'`)
-                .join(' or ');
-
-              if (!uidFilters) continue;
-
-              try {
-                const result = await omadaApi.odata.query('Resource', bearerToken, impersonateUser, {
-                  filter: uidFilters
-                });
-                if (result.status === 'success' && result.data) {
-                  odataResourceDetails.push(...result.data);
-                }
-              } catch (err) {
-                if (shouldLog('PIVOT')) console.warn('[AP Pivot] Failed to fetch resource details batch:', err.message);
-              }
-            }
-
-            if (shouldLog('PIVOT')) console.log(`[AP Pivot] OData returned ${odataResourceDetails.length} resource details`);
-          }
-
-          // Step 5: Build lanes from collected assignments
-          const { buildContextsLaneFromAPData, buildSystemsLane, buildEntitlementsLaneFromOData, extractUniqueComplianceStatuses: extractCompStatuses } =
+          // Step 4: Build lanes from collected assignments
+          const { buildContextsLaneFromAPData, buildSystemsLane, buildEntitlementsLaneFromAPResources, extractUniqueComplianceStatuses: extractCompStatuses } =
             await import('./accessLensDataService');
 
           let lanes = [];
@@ -1499,15 +1467,16 @@ const AccessLensPage = () => {
             complianceStatuses = extractCompStatuses(allAssignments);
           }
 
-          // Step 5b: Replace Entitlements lane with OData-sourced one (authoritative from AP_RESOURCES)
-          if (odataResourceDetails.length > 0) {
-            const odataEntitlementsLane = buildEntitlementsLaneFromOData(odataResourceDetails, allAssignments);
-            // Remove assignment-derived Entitlements lane and use OData one instead
+          // Step 4b: Replace Entitlements lane with one built from AP_RESOURCES
+          // AP_RESOURCES provides the authoritative list; assignments provide system info
+          if (apResources.length > 0) {
+            const apEntitlementsLane = buildEntitlementsLaneFromAPResources(apResources, allAssignments);
+            // Remove assignment-derived Entitlements lane and use AP_RESOURCES one instead
             lanes = lanes.filter(l => l.laneType !== LaneTypes.EFFECTIVE_ENTITLEMENTS);
-            if (odataEntitlementsLane && odataEntitlementsLane.items.length > 0) {
-              lanes.push(odataEntitlementsLane);
+            if (apEntitlementsLane && apEntitlementsLane.items.length > 0) {
+              lanes.push(apEntitlementsLane);
             }
-            if (shouldLog('PIVOT')) console.log(`[AP Pivot] Replaced Entitlements lane with ${odataEntitlementsLane.items.length} OData-sourced items`);
+            if (shouldLog('PIVOT')) console.log(`[AP Pivot] Built Entitlements lane with ${apEntitlementsLane.items.length} items from AP_RESOURCES`);
           }
 
           // Step 6a: Add Contexts lane from AP_CONTEXTS (not derived from assignments)

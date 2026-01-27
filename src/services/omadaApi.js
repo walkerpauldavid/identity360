@@ -12,6 +12,7 @@ import {
   executeGraphQL
 } from '../utils/queryBuilder';
 import { apiLogger } from './apiLogger';
+import { withApiCache, withCacheInvalidation } from './apiCache';
 
 /**
  * Identity API Methods
@@ -1312,15 +1313,108 @@ export const odataApi = {
 };
 
 /**
- * Combined API export
+ * Combined API export — all read functions wrapped with IndexedDB caching (5-min TTL).
+ * Mutations are wrapped with cache invalidation instead.
+ * Cache key = namespace.fnName | JSON.stringify([impersonateUser, ...semanticParams])
+ * Debug: window.__omadaApiCache.help()
  */
 export const omadaApi = {
-  identity: identityApi,
-  accessRequest: accessRequestApi,
-  approval: approvalApi,
-  assignment: assignmentApi,
-  assignmentPolicy: assignmentPolicyApi,
-  odata: odataApi
+  identity: {
+    searchIdentities: withApiCache('identity', 'searchIdentities',
+      identityApi.searchIdentities,
+      (filters, _token, impersonateUser, options) => [impersonateUser, filters, options]
+    ),
+    getIdentityById: withApiCache('identity', 'getIdentityById',
+      identityApi.getIdentityById,
+      (identityId, _token, impersonateUser) => [impersonateUser, identityId]
+    ),
+    getIdentityCountByCategoryId: withApiCache('identity', 'getIdentityCountByCategoryId',
+      identityApi.getIdentityCountByCategoryId,
+      (categoryId, _token, impersonateUser) => [impersonateUser, categoryId]
+    ),
+    getIdentityCategoryCounts: withApiCache('identity', 'getIdentityCategoryCounts',
+      identityApi.getIdentityCategoryCounts,
+      (_token, impersonateUser) => [impersonateUser]
+    ),
+    getIdentitiesByCategoryId: withApiCache('identity', 'getIdentitiesByCategoryId',
+      identityApi.getIdentitiesByCategoryId,
+      (categoryId, _token, impersonateUser, options) => [impersonateUser, categoryId, options]
+    ),
+    getIdentityContexts: withApiCache('identity', 'getIdentityContexts',
+      identityApi.getIdentityContexts,
+      (identityUId, _token, impersonateUser) => [impersonateUser, identityUId]
+    ),
+  },
+
+  accessRequest: {
+    getAccessRequestsTotal: withApiCache('accessRequest', 'getAccessRequestsTotal',
+      accessRequestApi.getAccessRequestsTotal,
+      (_token, impersonateUser) => [impersonateUser]
+    ),
+    getAccessRequests: withApiCache('accessRequest', 'getAccessRequests',
+      accessRequestApi.getAccessRequests,
+      (_token, impersonateUser) => [impersonateUser]
+    ),
+    getResourcesForBeneficiary: withApiCache('accessRequest', 'getResourcesForBeneficiary',
+      accessRequestApi.getResourcesForBeneficiary,
+      (identityUId, _token, impersonateUser, filters) => [impersonateUser, identityUId, filters]
+    ),
+    // MUTATION — not cached, triggers invalidation on success
+    createAccessRequest: withCacheInvalidation(
+      accessRequestApi.createAccessRequest,
+      ['accessRequest', 'assignment']
+    ),
+  },
+
+  approval: {
+    getPendingApprovals: withApiCache('approval', 'getPendingApprovals',
+      approvalApi.getPendingApprovals,
+      (_token, impersonateUser, workflowStep, summaryMode) => [impersonateUser, workflowStep, summaryMode]
+    ),
+    // MUTATION — not cached, triggers invalidation on success
+    makeApprovalDecision: withCacheInvalidation(
+      approvalApi.makeApprovalDecision,
+      ['approval', 'accessRequest', 'assignment']
+    ),
+  },
+
+  assignment: {
+    getCalculatedAssignmentsDetailed: withApiCache('assignment', 'getCalculatedAssignmentsDetailed',
+      assignmentApi.getCalculatedAssignmentsDetailed,
+      (identityUIds, _token, impersonateUser, filters, pagination) => [impersonateUser, identityUIds, filters, pagination]
+    ),
+    getIdentitiesHavingResource: withApiCache('assignment', 'getIdentitiesHavingResource',
+      assignmentApi.getIdentitiesHavingResource,
+      (resourceId, resourceName, _token, impersonateUser, pagination, systemId, complianceStatus, includeDisabled) =>
+        [impersonateUser, resourceId, resourceName, pagination, systemId, complianceStatus, includeDisabled]
+    ),
+  },
+
+  assignmentPolicy: {
+    getAssignmentPolicies: withApiCache('assignmentPolicy', 'getAssignmentPolicies',
+      assignmentPolicyApi.getAssignmentPolicies,
+      (_token, impersonateUser, options) => [impersonateUser, options]
+    ),
+    getAssignmentPolicyById: withApiCache('assignmentPolicy', 'getAssignmentPolicyById',
+      assignmentPolicyApi.getAssignmentPolicyById,
+      (policyId, _token, impersonateUser) => [impersonateUser, policyId]
+    ),
+    getAssignmentPoliciesByContext: withApiCache('assignmentPolicy', 'getAssignmentPoliciesByContext',
+      assignmentPolicyApi.getAssignmentPoliciesByContext,
+      (contextId, _token, impersonateUser) => [impersonateUser, contextId]
+    ),
+    buildContextToPolicyMap: withApiCache('assignmentPolicy', 'buildContextToPolicyMap',
+      assignmentPolicyApi.buildContextToPolicyMap,
+      (_token, impersonateUser) => [impersonateUser]
+    ),
+  },
+
+  odata: {
+    query: withApiCache('odata', 'query',
+      odataApi.query,
+      (entityType, _token, impersonateUser, options) => [impersonateUser, entityType, options]
+    ),
+  },
 };
 
 export default omadaApi;
