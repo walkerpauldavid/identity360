@@ -82,6 +82,12 @@ export function withApiCache(namespace, fnName, fn, cacheKeyFn) {
             `(age: ${Math.round((Date.now() - cached.timestamp) / 1000)}s)`
           );
         }
+        // Notify UI of cache hit (spinner green flash)
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('omada-cache-hit', {
+            detail: { namespace, fnName }
+          }));
+        }
         return cached.data;
       }
     } catch (e) {

@@ -4,7 +4,7 @@
  * Prompts for identity selection when opened from toolbar
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePreferences } from '../../contexts/PreferencesContext';
@@ -44,7 +44,23 @@ const AccessLensPage = () => {
   const [systemReasonTypes, setSystemReasonTypes] = useState([]);
   const [systemComplianceStatuses, setSystemComplianceStatuses] = useState([]);
 
-  // Debug logging removed for performance
+  // Cache hit visual feedback — spinner flashes green on IndexedDB cache hits
+  const [cacheHitFlash, setCacheHitFlash] = useState(false);
+  const cacheHitTimer = useRef(null);
+
+  useEffect(() => {
+    const handler = () => {
+      setCacheHitFlash(true);
+      // Clear any pending timer so rapid hits extend the flash
+      if (cacheHitTimer.current) clearTimeout(cacheHitTimer.current);
+      cacheHitTimer.current = setTimeout(() => setCacheHitFlash(false), 300);
+    };
+    window.addEventListener('omada-cache-hit', handler);
+    return () => {
+      window.removeEventListener('omada-cache-hit', handler);
+      if (cacheHitTimer.current) clearTimeout(cacheHitTimer.current);
+    };
+  }, []);
 
   // On mount: Check URL for identity or system parameter
   useEffect(() => {
@@ -1567,7 +1583,7 @@ const AccessLensPage = () => {
           <>
             {isLoadingData ? (
               <div className="data-loading-overlay">
-                <div className="data-loading-spinner"></div>
+                <div className={`data-loading-spinner ${cacheHitFlash ? 'cache-hit' : ''}`}></div>
                 <h3 className="loading-title">Populating Identity360</h3>
                 <p className="loading-status">{loadingStatus || 'Initializing...'}</p>
                 <div className="loading-details">
@@ -1602,7 +1618,7 @@ const AccessLensPage = () => {
             {/* Show loading overlay while fetching data - don't render AccessLens until we have full identity data */}
             {isLoadingData ? (
               <div className="data-loading-overlay">
-                <div className="data-loading-spinner"></div>
+                <div className={`data-loading-spinner ${cacheHitFlash ? 'cache-hit' : ''}`}></div>
                 <h3 className="loading-title">Populating Identity360</h3>
                 <p className="loading-status">{loadingStatus || 'Initializing...'}</p>
                 <div className="loading-details">

@@ -525,7 +525,8 @@
 .access-lens-content {
   display: flex;
   flex: 1;
-  overflow: auto;  /* Enable scrolling on the content container */
+  overflow-x: scroll;  /* Permanent horizontal scrollbar */
+  overflow-y: auto;
 }
 
 /* Custom scrollbar styling for content area */
