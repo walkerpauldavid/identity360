@@ -6,6 +6,7 @@
 
 import { memo } from 'react';
 import { getNodeIcon, getNodeColor, getRiskColor, getStatusColor } from './accessLensTypes';
+import { sanitizeAPDescription } from './accessLensUtils';
 import ReasonChips from './ReasonChips';
 
 /**
@@ -172,7 +173,8 @@ const LaneItemRow = ({
 
   // Build hover text from description - check multiple sources
   // For systems, build a more comprehensive tooltip
-  let hoverDescription = systemDescription;
+  // Apply AP description substitution for policy nodes
+  let hoverDescription = sanitizeAPDescription(systemDescription);
 
   // Build enhanced hover tooltip for system nodes
   if (isSystemNode) {

@@ -5,6 +5,7 @@
  */
 
 import { getNodeIcon, getNodeColor, getReasonColor, FocusNodeSchema, extractFieldValue, NodeTypes, LaneTypes, LaneSchema } from './accessLensTypes';
+import { sanitizeAPDescription } from './accessLensUtils';
 
 /**
  * Fields to hide in Object Inspector by node type
@@ -575,7 +576,7 @@ const ExplanationPanel = ({
 
         {/* Summary / Description */}
         {summaryText && (
-          <p className="explanation-summary">{summaryText}</p>
+          <p className="explanation-summary">{sanitizeAPDescription(summaryText)}</p>
         )}
 
         {/* Risk Notes */}
@@ -662,7 +663,7 @@ const ExplanationPanel = ({
                   </div>
                   <span className="reason-title">{reason.title}</span>
                   {reason.description && (
-                    <p className="reason-description">{reason.description}</p>
+                    <p className="reason-description">{sanitizeAPDescription(reason.description)}</p>
                   )}
                 </button>
               ))}

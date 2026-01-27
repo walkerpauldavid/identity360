@@ -229,7 +229,7 @@ export const LaneSchema = {
     collapsible: true,
     exclusionList: [],
     defaultPosition: {
-      compass: CompassOrientation.SW,  // South-West
+      compass: CompassOrientation.S,  // South — reveals before Assignment Policies (SW) in clockwise order
       priority: 1
     },
     apiSource: {
@@ -330,7 +330,7 @@ export const LaneSchema = {
     collapsible: true,
     exclusionList: [],
     defaultPosition: {
-      compass: CompassOrientation.S,  // South
+      compass: CompassOrientation.SW,  // South-West — reveals after Contexts (S) in clockwise order
       priority: 2
     },
     // This lane is derived from calculatedAssignments reason data
@@ -350,7 +350,7 @@ export const LaneSchema = {
   },
   [LaneTypes.EFFECTIVE_ENTITLEMENTS]: {
     dataType: NodeTypes.ENTITLEMENT,
-    displayRule: 'THREE_COLUMN',
+    displayRule: 'MULTI_COLUMN',
     minColumns: 2,  // Minimum columns for entitlements (enforced in LaneCard)
     icon: '🔑',
     color: '#ebcb8b',
@@ -1804,18 +1804,85 @@ export const LaneConfigSchema = {
    * Assignment Policy as Focus Node
    *
    * When an Assignment Policy is the central focus, show:
+   * - IDENTITIES: Identities who receive resources from this policy
+   * - SYSTEMS: Systems hosting the resources this policy assigns
    * - CONTEXTS: Contexts that trigger this policy (identities in these contexts get assigned)
+   * - ACCOUNTS: Accounts related to the identities affected by this policy
    * - ENTITLEMENTS: Resources/entitlements assigned by this policy
-   * - ACCOUNTS: Account resources assigned by this policy (if any)
+   *
+   * EXCLUDED LANES (not shown when Assignment Policy is focus node):
+   * - ASSIGNMENT_POLICIES: The policy itself is the focus node
+   *
+   * API Flow: OData fetches full policy (AP_CONTEXTS, AP_RESOURCES), then
+   * getIdentitiesHavingResource (per resource, max 10) provides assignment data
+   * for building Identities, Accounts, Systems, and Entitlements lanes.
    *
    * This view helps answer:
-   * - "What does this policy grant?"
-   * - "Who is affected by this policy?" (via contexts)
-   * - "What resources are automatically assigned?"
+   * - "Who is affected by this policy?"
+   * - "What systems are targeted by this policy?"
+   * - "Which contexts trigger this policy?"
+   * - "What accounts are involved?"
+   * - "What resources does this policy assign?"
    */
   [NodeTypes.ASSIGNMENT_POLICY]: {
     excludedLanes: [LaneTypes.ASSIGNMENT_POLICIES],
     lanes: [
+      {
+        laneType: LaneTypes.IDENTITIES,
+        title: 'Affected Identities',
+        description: 'Identities who receive resources from this policy',
+        required: false,
+        apiSource: {
+          type: 'derived',
+          from: 'calculatedAssignments',
+          extract: 'identities'
+        },
+        position: { x: -850, y: -300 },
+        crossLaneFilters: {
+          filtersLanes: [LaneTypes.ACCOUNTS, LaneTypes.EFFECTIVE_ENTITLEMENTS],
+          filteredByLanes: [LaneTypes.CONTEXTS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS],
+          filterMappings: {
+            [LaneTypes.ACCOUNTS]: {
+              type: CrossLaneFilterType.ARRAY_CONTAINS,
+              sourceField: 'id',
+              targetField: 'metadata.identityIds'
+            },
+            [LaneTypes.EFFECTIVE_ENTITLEMENTS]: {
+              type: CrossLaneFilterType.ARRAY_CONTAINS,
+              sourceField: 'id',
+              targetField: 'metadata.identityIds'
+            }
+          }
+        }
+      },
+      {
+        laneType: LaneTypes.SYSTEMS,
+        title: 'Target Systems',
+        description: 'Systems hosting the resources assigned by this policy',
+        required: false,
+        apiSource: {
+          type: 'derived',
+          from: 'calculatedAssignments',
+          extract: 'systems'
+        },
+        position: { x: 850, y: -300 },
+        crossLaneFilters: {
+          filtersLanes: [LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.ACCOUNTS],
+          filteredByLanes: [LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.ACCOUNTS],
+          filterMappings: {
+            [LaneTypes.EFFECTIVE_ENTITLEMENTS]: {
+              type: CrossLaneFilterType.MULTI_FIELD_MATCH,
+              sourceFields: ['id', 'displayName'],
+              targetFields: ['metadata.systemId', 'metadata.system']
+            },
+            [LaneTypes.ACCOUNTS]: {
+              type: CrossLaneFilterType.MULTI_FIELD_MATCH,
+              sourceFields: ['id', 'displayName'],
+              targetFields: ['metadata.systemId', 'metadata.system']
+            }
+          }
+        }
+      },
       {
         laneType: LaneTypes.CONTEXTS,
         title: 'Triggering Contexts',
@@ -1827,15 +1894,44 @@ export const LaneConfigSchema = {
           extract: 'AP_CONTEXTS',
           transformTo: NodeTypes.CONTEXT
         },
-        position: { x: -380, y: 0 },
+        position: { x: -850, y: 300 },
         crossLaneFilters: {
           filtersLanes: [LaneTypes.IDENTITIES],
           filteredByLanes: [],
           filterType: CrossLaneFilterType.ARRAY_CONTAINS,
           filterMappings: {
             [LaneTypes.IDENTITIES]: {
+              type: CrossLaneFilterType.ARRAY_CONTAINS,
               sourceField: 'id',
               targetField: 'contextIds'
+            }
+          }
+        }
+      },
+      {
+        laneType: LaneTypes.ACCOUNTS,
+        title: 'Accounts',
+        description: 'Accounts through which the policy-assigned resources are accessed',
+        required: false,
+        apiSource: {
+          type: 'derived',
+          from: 'calculatedAssignments',
+          extract: 'accounts'
+        },
+        position: { x: 850, y: 300 },
+        crossLaneFilters: {
+          filtersLanes: [LaneTypes.IDENTITIES, LaneTypes.EFFECTIVE_ENTITLEMENTS],
+          filteredByLanes: [LaneTypes.IDENTITIES, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.SYSTEMS],
+          filterMappings: {
+            [LaneTypes.IDENTITIES]: {
+              type: CrossLaneFilterType.ARRAY_CONTAINS,
+              sourceField: 'metadata.identityIds',
+              targetField: 'id'
+            },
+            [LaneTypes.EFFECTIVE_ENTITLEMENTS]: {
+              type: CrossLaneFilterType.ARRAY_CONTAINS,
+              sourceField: 'id',
+              targetField: 'metadata.accountIds'
             }
           }
         }
@@ -1847,46 +1943,30 @@ export const LaneConfigSchema = {
         required: true,
         apiSource: {
           type: 'derived',
-          from: 'focusNode',
-          extract: 'AP_RESOURCES',
-          transformTo: NodeTypes.ENTITLEMENT
+          from: 'calculatedAssignments',
+          extract: 'entitlements'
         },
-        position: { x: 380, y: 0 },
+        position: { x: 0, y: 350 },
         crossLaneFilters: {
-          filtersLanes: [],
-          filteredByLanes: [LaneTypes.CONTEXTS],
-          filterMappings: {}
-        }
-      },
-      {
-        laneType: LaneTypes.ACCOUNTS,
-        title: 'Assigned Account Resources',
-        description: 'Account resources automatically assigned by this policy',
-        required: false,  // Only show if policy has account resources
-        apiSource: {
-          type: 'derived',
-          from: 'focusNode',
-          extract: 'AP_ACCOUNTRESOURCES',
-          transformTo: NodeTypes.ACCOUNT
-        },
-        position: { x: 0, y: 300 },
-        crossLaneFilters: null
-      },
-      {
-        laneType: LaneTypes.IDENTITIES,
-        title: 'Affected Identities',
-        description: 'Identities who receive resources from this policy (via context membership)',
-        required: false,  // Optional - may require additional API call
-        apiSource: {
-          type: 'computed',
-          from: 'contexts',
-          query: 'getIdentitiesInContexts'  // Would need to fetch identities in the triggering contexts
-        },
-        position: { x: 0, y: -300 },
-        crossLaneFilters: {
-          filtersLanes: [],
-          filteredByLanes: [LaneTypes.CONTEXTS],
-          filterMappings: {}
+          filtersLanes: [LaneTypes.IDENTITIES, LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS],
+          filteredByLanes: [LaneTypes.IDENTITIES, LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS],
+          filterMappings: {
+            [LaneTypes.IDENTITIES]: {
+              type: CrossLaneFilterType.ARRAY_CONTAINS,
+              sourceField: 'metadata.identityIds',
+              targetField: 'id'
+            },
+            [LaneTypes.ACCOUNTS]: {
+              type: CrossLaneFilterType.ARRAY_CONTAINS,
+              sourceField: 'metadata.accountIds',
+              targetField: 'id'
+            },
+            [LaneTypes.SYSTEMS]: {
+              type: CrossLaneFilterType.MULTI_FIELD_MATCH,
+              sourceFields: ['metadata.systemId', 'metadata.system'],
+              targetFields: ['id', 'displayName']
+            }
+          }
         }
       }
     ]
@@ -2074,7 +2154,7 @@ export const getLanesForNodeType = (nodeType) => {
     case NodeTypes.ACCOUNT:
       return [LaneTypes.IDENTITIES, LaneTypes.SYSTEMS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.LOGICAL_APPLICATIONS];
     case NodeTypes.ASSIGNMENT_POLICY:
-      return [LaneTypes.CONTEXTS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.ACCOUNTS, LaneTypes.IDENTITIES];
+      return [LaneTypes.IDENTITIES, LaneTypes.SYSTEMS, LaneTypes.CONTEXTS, LaneTypes.ACCOUNTS, LaneTypes.EFFECTIVE_ENTITLEMENTS];
     default:
       return [LaneTypes.IDENTITIES];
   }

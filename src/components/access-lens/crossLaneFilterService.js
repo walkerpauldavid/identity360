@@ -464,7 +464,8 @@ export const applyCrossLaneFilters = (
     [selections.logicalAppId, LaneTypes.LOGICAL_APPLICATIONS],
     [selections.policyId, LaneTypes.ASSIGNMENT_POLICIES],
     [selections.entitlementId, LaneTypes.EFFECTIVE_ENTITLEMENTS],
-    [selections.violationId, LaneTypes.VIOLATIONS]
+    [selections.violationId, LaneTypes.VIOLATIONS],
+    [selections.contextId, LaneTypes.CONTEXTS]
   ];
 
   for (const [selectionId, laneType] of selectionLaneTypes) {
@@ -532,6 +533,14 @@ export const applyCrossLaneFilters = (
     const selectedItem = findItemById(violationsLane, selections.violationId, itemIdMaps.get(LaneTypes.VIOLATIONS));
     if (selectedItem) {
       selectionMap[LaneTypes.VIOLATIONS] = selectedItem.node;
+    }
+  }
+
+  if (selections.contextId) {
+    const contextsLane = laneMap.get(LaneTypes.CONTEXTS);
+    const selectedItem = findItemById(contextsLane, selections.contextId, itemIdMaps.get(LaneTypes.CONTEXTS));
+    if (selectedItem) {
+      selectionMap[LaneTypes.CONTEXTS] = selectedItem.node;
     }
   }
 
@@ -651,6 +660,7 @@ export const getFilterSourceLaneType = (selections) => {
   if (selections.policyId) return LaneTypes.ASSIGNMENT_POLICIES;
   if (selections.entitlementId) return LaneTypes.EFFECTIVE_ENTITLEMENTS;
   if (selections.violationId) return LaneTypes.VIOLATIONS;
+  if (selections.contextId) return LaneTypes.CONTEXTS;
   return null;
 };
 
@@ -675,6 +685,7 @@ export const isLaneFiltered = (laneType, focusNodeType, selections) => {
       case LaneTypes.ASSIGNMENT_POLICIES: return !!selections.policyId;
       case LaneTypes.EFFECTIVE_ENTITLEMENTS: return !!selections.entitlementId;
       case LaneTypes.VIOLATIONS: return !!selections.violationId;
+      case LaneTypes.CONTEXTS: return !!selections.contextId;
       default: return false;
     }
   });
@@ -696,6 +707,7 @@ export const isLaneFilterSource = (laneType, selections) => {
     case LaneTypes.ASSIGNMENT_POLICIES: return !!selections.policyId;
     case LaneTypes.EFFECTIVE_ENTITLEMENTS: return !!selections.entitlementId;
     case LaneTypes.VIOLATIONS: return !!selections.violationId;
+    case LaneTypes.CONTEXTS: return !!selections.contextId;
     default: return false;
   }
 };

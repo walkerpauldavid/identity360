@@ -13,6 +13,7 @@ import {
   extractFieldValue,
   NodeTypes
 } from './accessLensTypes';
+import { sanitizeAPDescription } from './accessLensUtils';
 
 /**
  * Format a date value for display
@@ -57,7 +58,8 @@ const getDisplayValue = (value, type = null) => {
     if (/^\d{4}-\d{2}-\d{2}/.test(value)) {
       return formatDateValue(value);
     }
-    return value;
+    // Apply AP description substitution (e.g., [BOT - 9999-12-31...] → user-friendly text)
+    return sanitizeAPDescription(value);
   }
   if (typeof value === 'object') {
     return value.DisplayName || value.Name || value.Value || value.displayName || value.name || null;
@@ -154,7 +156,9 @@ const FocusCard = ({ node, onNavigateBack, isLoading = false, selectedIdentityCo
             ? 'Logical Application'
             : node.type === NodeTypes.SYSTEM && (node.metadata?.isLogical || node.rawData?.isLogical)
               ? 'Logical Application'
-              : node.type}
+              : node.type === NodeTypes.ASSIGNMENT_POLICY
+                ? 'Assignment Policy'
+                : node.type}
         </span>
       </div>
 

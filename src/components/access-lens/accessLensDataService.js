@@ -717,6 +717,184 @@ export function buildContextsLane(contexts, filters = {}) {
 }
 
 /**
+ * Build Contexts lane from Assignment Policy AP_CONTEXTS array
+ * Used when an Assignment Policy is the focus node - converts OData AP_CONTEXTS
+ * into a Contexts lane with proper node structure for cross-lane filtering.
+ * @param {Array} apContexts - Array of AP_CONTEXTS objects { Id, UId, DisplayName }
+ * @returns {Object} Lane object with context items
+ */
+export function buildContextsLaneFromAPData(apContexts) {
+  if (!apContexts || !Array.isArray(apContexts) || apContexts.length === 0) {
+    return {
+      laneType: LaneTypes.CONTEXTS,
+      totalCount: 0,
+      items: [],
+      allItemsData: [],
+      canLoadMore: false
+    };
+  }
+
+  const items = apContexts.map(ctx => ({
+    node: {
+      id: ctx.UId || ctx.Id || ctx.id,
+      type: NodeTypes.CONTEXT,
+      displayName: ctx.DisplayName || ctx.Name || ctx.displayName || 'Unknown Context',
+      status: 'active',
+      badges: [],
+      metadata: {
+        ...ctx,
+        uId: ctx.UId || ctx.uId || ctx.Id || ctx.id
+      }
+    },
+    reasons: [],
+    groupKey: 'contexts',
+    groupLabel: 'Triggering Contexts',
+    rawData: ctx
+  }));
+
+  items.sort((a, b) =>
+    (a.node.displayName || '').toLowerCase().localeCompare(
+      (b.node.displayName || '').toLowerCase()
+    )
+  );
+
+  return {
+    laneType: LaneTypes.CONTEXTS,
+    totalCount: items.length,
+    items,
+    allItemsData: items,
+    canLoadMore: false
+  };
+}
+
+/**
+ * Build Effective Entitlements lane from OData Resource data.
+ * Used for AP focus node where entitlements come from AP_RESOURCES + OData enrichment
+ * rather than from calculated assignments.
+ *
+ * @param {Array} odataResources - Array of OData Resource objects (with DISPLAYNAME, SYSTEMREF, RESOURCETYPE, etc.)
+ * @param {Array} assignments - Optional array of assignments for cross-lane filter data (identityIds, accountIds)
+ * @returns {Object} Lane object with entitlement items
+ */
+export function buildEntitlementsLaneFromOData(odataResources, assignments = []) {
+  if (!odataResources || !Array.isArray(odataResources) || odataResources.length === 0) {
+    return {
+      laneType: LaneTypes.EFFECTIVE_ENTITLEMENTS,
+      totalCount: 0,
+      items: [],
+      allItemsData: [],
+      canLoadMore: false
+    };
+  }
+
+  // Build a map from resourceId to aggregated assignment data for cross-lane filtering
+  const resourceAssignmentMap = new Map();
+  if (assignments && assignments.length > 0) {
+    assignments.forEach(assignment => {
+      const resourceId = assignment.resource?.id;
+      if (!resourceId) return;
+
+      if (!resourceAssignmentMap.has(resourceId)) {
+        resourceAssignmentMap.set(resourceId, {
+          identityIds: new Set(),
+          accountIds: new Set(),
+          systemIds: new Set(),
+          complianceStatuses: new Set(),
+          reasons: [],
+          assignmentCount: 0
+        });
+      }
+
+      const entry = resourceAssignmentMap.get(resourceId);
+      entry.assignmentCount++;
+      if (assignment.identity?.id) entry.identityIds.add(assignment.identity.id);
+      if (assignment.account?.id) entry.accountIds.add(assignment.account.id);
+      if (assignment.resource?.system?.id) entry.systemIds.add(assignment.resource.system.id);
+      if (assignment.complianceStatus) entry.complianceStatuses.add(assignment.complianceStatus);
+      if (assignment.reason) entry.reasons.push(assignment.reason);
+    });
+  }
+
+  const items = odataResources.map((resource, index) => {
+    const resourceUId = resource.UId || resource.Id || resource.id;
+    const displayName = resource.DISPLAYNAME || resource.DisplayName || resource.Name || 'Unknown';
+    const systemName = resource.SYSTEMREF?.DisplayName || resource.SYSTEMREF?.Name ||
+                       resource.SYSTEM?.DisplayName || resource.SYSTEM?.Name || null;
+    const systemId = resource.SYSTEMREF?.UId || resource.SYSTEMREF?.Id ||
+                     resource.SYSTEM?.UId || resource.SYSTEM?.Id || null;
+    const resourceTypeName = resource.RESOURCETYPE?.DisplayName || resource.RESOURCETYPE?.Name ||
+                             resource.RESOURCETYPE?.DISPLAYNAME || null;
+    const description = resource.DESCRIPTION || resource.Description || '';
+
+    // Look up assignment data for cross-lane filtering
+    // Try matching by UId first, then by other ID forms
+    const assignmentData = resourceAssignmentMap.get(resourceUId) ||
+                           resourceAssignmentMap.get(resource.Id) ||
+                           resourceAssignmentMap.get(resource.id) || null;
+
+    const entitlementNode = {
+      id: resourceUId,
+      type: NodeTypes.ENTITLEMENT,
+      displayName: displayName,
+      status: 'active',
+      badges: [
+        systemName,
+        resourceTypeName
+      ].filter(Boolean),
+      metadata: {
+        system: systemName,
+        systemId: systemId,
+        type: resourceTypeName,
+        description: description,
+        // Cross-lane filter data from assignments (if available)
+        identityIds: assignmentData ? Array.from(assignmentData.identityIds) : [],
+        accountIds: assignmentData ? Array.from(assignmentData.accountIds) : [],
+        assignmentCount: assignmentData?.assignmentCount || 0,
+        complianceStatus: assignmentData?.complianceStatuses?.has('Not Approved')
+          ? 'Not Approved'
+          : assignmentData?.complianceStatuses?.has('Pending')
+            ? 'Pending' : 'Approved'
+      },
+      rawData: resource
+    };
+
+    return {
+      node: entitlementNode,
+      reasons: [{
+        id: `reason-odata-${index}`,
+        type: 'Policy',
+        reasonType: 'Policy',
+        title: 'Policy',
+        description: 'Assigned via Assignment Policy',
+        confidence: 'high'
+      }],
+      groupKey: systemId || 'unknown-system',
+      groupLabel: systemName || 'Unknown System',
+      rawData: resource
+    };
+  });
+
+  // Sort by display name
+  items.sort((a, b) =>
+    (a.node.displayName || '').toLowerCase().localeCompare(
+      (b.node.displayName || '').toLowerCase()
+    )
+  );
+
+  if (shouldLog('ENTITLEMENTS')) {
+    console.log(`[buildEntitlementsLaneFromOData] Built ${items.length} entitlement items from OData resources`);
+  }
+
+  return {
+    laneType: LaneTypes.EFFECTIVE_ENTITLEMENTS,
+    totalCount: items.length,
+    items,
+    allItemsData: items,
+    canLoadMore: items.length > 10
+  };
+}
+
+/**
  * Build all lanes from calculated assignments data
  * This is the main function to transform API response into Identity360 lanes
  * @param {Array} assignments - Array of assignment data from API
@@ -882,7 +1060,7 @@ export function buildLanesFromAssignments(assignments, filters = {}, options = {
  * @param {Object} filters - Active filters
  * @param {Object} systemDetailsMap - Map of systemId -> OData system details
  */
-function buildSystemsLane(assignments, filters, systemDetailsMap = {}) {
+export function buildSystemsLane(assignments, filters, systemDetailsMap = {}) {
   if (shouldLog('SYSTEMS')) {
     console.log('=== buildSystemsLane ===');
     console.log('Assignments:', assignments.length, '| System details:', Object.keys(systemDetailsMap).length);
@@ -1524,7 +1702,13 @@ function buildIdentitiesLane(assignments, filters) {
         contexts: identity.contexts || [],
         resourceCount: 0,
         // Cross-lane filtering: track all account IDs associated with this identity
-        accountIds: new Set([account?.id].filter(Boolean))
+        accountIds: new Set([account?.id].filter(Boolean)),
+        // Cross-lane filtering: track context UIds for Assignment Policy -> Context -> Identity filtering
+        contextIds: new Set(
+          (identity.contexts || [])
+            .map(ctx => ctx.id || ctx.UId || ctx.uId)
+            .filter(Boolean)
+        )
       });
     } else if (identity && identity.id && identitiesMap.has(identity.id)) {
       // Identity already exists - add this account to the set of accounts for this identity
@@ -1563,7 +1747,9 @@ function buildIdentitiesLane(assignments, filters) {
         accountCount: ident.accounts?.length || 0,
         resourceCount: ident.resourceCount,
         // Cross-lane filtering: store account IDs
-        accountIds: Array.from(ident.accountIds || [])
+        accountIds: Array.from(ident.accountIds || []),
+        // Cross-lane filtering: store context UIds for AP Context -> Identity filtering
+        contextIds: Array.from(ident.contextIds || [])
       },
       rawData: {
         id: ident.id,
@@ -1578,8 +1764,9 @@ function buildIdentitiesLane(assignments, filters) {
         riskLevel: ident.riskLevel,
         accounts: ident.accounts,
         contexts: ident.contexts,
-        // Cross-lane filtering: store account IDs
-        accountIds: Array.from(ident.accountIds || [])
+        // Cross-lane filtering: store account IDs and context IDs
+        accountIds: Array.from(ident.accountIds || []),
+        contextIds: Array.from(ident.contextIds || [])
       }
     };
 
@@ -1590,7 +1777,8 @@ function buildIdentitiesLane(assignments, filters) {
       groupLabel: 'Identities',
       rawData: {
         ...ident,
-        accountIds: Array.from(ident.accountIds || [])
+        accountIds: Array.from(ident.accountIds || []),
+        contextIds: Array.from(ident.contextIds || [])
       }
     };
   });
@@ -3347,6 +3535,8 @@ export default {
   transformContextToNode,
   transformReason,
   buildContextsLane,
+  buildSystemsLane,
+  buildEntitlementsLaneFromOData,
   buildLanesFromAssignments,
   buildLanesForEntitlement,
   buildAssignmentPoliciesLane,

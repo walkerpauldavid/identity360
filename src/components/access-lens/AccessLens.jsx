@@ -687,6 +687,7 @@ const AccessLens = ({
   const [selectedPolicyId, setSelectedPolicyId] = useState(null);  // For filtering entitlements by assignment policy
   const [selectedEntitlementId, setSelectedEntitlementId] = useState(null);  // For filtering identities/accounts by entitlement (System-centric view)
   const [selectedViolationId, setSelectedViolationId] = useState(null);  // For filtering by violation
+  const [selectedContextId, setSelectedContextId] = useState(null);  // For filtering identities by context (AP-centric view)
   const [pendingNodeType, setPendingNodeType] = useState(null);  // Track target node type during pivot for correct loading placeholders
   const [currentAssignments, setCurrentAssignments] = useState(null);  // Track current assignments for violation count (updated on pivot)
 
@@ -1174,7 +1175,8 @@ const AccessLens = ({
       [LaneTypes.IDENTITIES]: { setter: setSelectedIdentityId, current: selectedIdentityId },
       [LaneTypes.ASSIGNMENT_POLICIES]: { setter: setSelectedPolicyId, current: selectedPolicyId },
       [LaneTypes.EFFECTIVE_ENTITLEMENTS]: { setter: setSelectedEntitlementId, current: selectedEntitlementId },
-      [LaneTypes.VIOLATIONS]: { setter: setSelectedViolationId, current: selectedViolationId }
+      [LaneTypes.VIOLATIONS]: { setter: setSelectedViolationId, current: selectedViolationId },
+      [LaneTypes.CONTEXTS]: { setter: setSelectedContextId, current: selectedContextId }
     };
 
     // Clear ALL other lane selections - the clicked lane becomes the master filter
@@ -1270,7 +1272,7 @@ const AccessLens = ({
     }
 
     setExplanationLoading(false);
-  }, [showObjectInspector, inspectorCollapsed, onFetchObjectDetails, focusNode?.type, selectedAccountId, selectedSystemId, selectedLogicalAppId, selectedIdentityId, selectedPolicyId, selectedEntitlementId]);
+  }, [showObjectInspector, inspectorCollapsed, onFetchObjectDetails, focusNode?.type, selectedAccountId, selectedSystemId, selectedLogicalAppId, selectedIdentityId, selectedPolicyId, selectedEntitlementId, selectedContextId]);
 
   // Handle central node (Identity) click - show all attributes in Object Inspector
   const handleCentralNodeClick = useCallback(() => {
@@ -1621,7 +1623,8 @@ const AccessLens = ({
     selectedIdentityId ||
     selectedPolicyId ||
     selectedEntitlementId ||
-    selectedViolationId
+    selectedViolationId ||
+    selectedContextId
   );
 
   // Handler to clear all lane selections (cross-lane filters)
@@ -1633,6 +1636,7 @@ const AccessLens = ({
     setSelectedPolicyId(null);
     setSelectedEntitlementId(null);
     setSelectedViolationId(null);
+    setSelectedContextId(null);
     setSelectedItem(null);
     setExplanation(null);
   }, []);
@@ -1652,7 +1656,8 @@ const AccessLens = ({
         logicalAppId: selectedLogicalAppId,
         policyId: selectedPolicyId,
         entitlementId: selectedEntitlementId,
-        violationId: selectedViolationId
+        violationId: selectedViolationId,
+        contextId: selectedContextId
       };
 
       // Additional filters from toolbar
@@ -2626,6 +2631,7 @@ const AccessLens = ({
     selectedPolicyId,
     selectedEntitlementId,
     selectedViolationId,
+    selectedContextId,
     focusNode
   ]);
 
@@ -2798,6 +2804,23 @@ const AccessLens = ({
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
           >
+            {/* Center - Focus Card (Fulcrum) - rendered FIRST so lanes paint on top when dragged */}
+            <div
+              className={`fulcrum-wrapper ${centralNodeRevealed ? 'revealed' : 'hidden'}`}
+              ref={fulcrumRef}
+              onClick={handleCentralNodeClick}
+              style={{ cursor: 'pointer', zIndex: activeDragId ? 1 : 10 }}
+              title="Click to inspect identity details"
+            >
+              <FocusCard
+                node={focusNode}
+                isLoading={isLoading || lanesLoading}
+                onNavigateBack={() => history.length > 1 && handleBreadcrumbNavigate(history[history.length - 2], history.length - 2)}
+                selectedIdentityCompliance={selectedIdentityComplianceStatus}
+                violationCount={violationCount}
+              />
+            </div>
+
             {/* Loading Placeholders - shown while lanes are being loaded or waiting for data */}
             {/* Uses pendingNodeType during pivot, otherwise focusNode.type */}
             {(lanesLoading || (!calculatedAssignments && lanes.length === 0)) && visibleLanes.length === 0 &&
@@ -2813,7 +2836,7 @@ const AccessLens = ({
               })
             }
 
-            {/* Draggable Lanes - appear in clockwise order after central node */}
+            {/* Draggable Lanes - rendered AFTER fulcrum so they paint on top when dragged over it */}
             {visibleLanes
               .filter(lane => revealedLanes.has(lane.laneType))
               .map((lane) => (
@@ -2839,6 +2862,7 @@ const AccessLens = ({
                                   lane.laneType === LaneTypes.ASSIGNMENT_POLICIES ? selectedPolicyId !== null :
                                   lane.laneType === LaneTypes.EFFECTIVE_ENTITLEMENTS ? selectedEntitlementId !== null :
                                   lane.laneType === LaneTypes.VIOLATIONS ? selectedViolationId !== null :
+                                  lane.laneType === LaneTypes.CONTEXTS ? selectedContextId !== null :
                                   lane.isFiltered}
                   activeFilterId={lane.laneType === LaneTypes.ACCOUNTS ? selectedAccountId :
                                   lane.laneType === LaneTypes.SYSTEMS ? selectedSystemId :
@@ -2846,7 +2870,8 @@ const AccessLens = ({
                                   lane.laneType === LaneTypes.IDENTITIES ? selectedIdentityId :
                                   lane.laneType === LaneTypes.ASSIGNMENT_POLICIES ? selectedPolicyId :
                                   lane.laneType === LaneTypes.EFFECTIVE_ENTITLEMENTS ? selectedEntitlementId :
-                                  lane.laneType === LaneTypes.VIOLATIONS ? selectedViolationId : null}
+                                  lane.laneType === LaneTypes.VIOLATIONS ? selectedViolationId :
+                                  lane.laneType === LaneTypes.CONTEXTS ? selectedContextId : null}
                   forceCollapsed={lanesForceCollapsed}
                   forceExpanded={lanesForceExpanded}
                   isFilterSource={
@@ -2858,7 +2883,8 @@ const AccessLens = ({
                     (lane.laneType === LaneTypes.IDENTITIES && selectedIdentityId !== null) ||
                     (lane.laneType === LaneTypes.ASSIGNMENT_POLICIES && selectedPolicyId !== null) ||
                     (lane.laneType === LaneTypes.EFFECTIVE_ENTITLEMENTS && selectedEntitlementId !== null) ||
-                    (lane.laneType === LaneTypes.VIOLATIONS && selectedViolationId !== null)
+                    (lane.laneType === LaneTypes.VIOLATIONS && selectedViolationId !== null) ||
+                    (lane.laneType === LaneTypes.CONTEXTS && selectedContextId !== null)
                   }
                   isFiltered={
                     // A lane is "filtered" (shows "Filtered") if it's being filtered BY another lane
@@ -2870,29 +2896,13 @@ const AccessLens = ({
                       (lane.laneType === LaneTypes.IDENTITIES && selectedIdentityId !== null) ||
                       (lane.laneType === LaneTypes.ASSIGNMENT_POLICIES && selectedPolicyId !== null) ||
                       (lane.laneType === LaneTypes.EFFECTIVE_ENTITLEMENTS && selectedEntitlementId !== null) ||
-                      (lane.laneType === LaneTypes.VIOLATIONS && selectedViolationId !== null)
+                      (lane.laneType === LaneTypes.VIOLATIONS && selectedViolationId !== null) ||
+                      (lane.laneType === LaneTypes.CONTEXTS && selectedContextId !== null)
                     )
                   }
                 />
               </DraggableLane>
             ))}
-
-            {/* Center - Focus Card (Fulcrum) - appears first in animation */}
-            <div
-              className={`fulcrum-wrapper ${centralNodeRevealed ? 'revealed' : 'hidden'}`}
-              ref={fulcrumRef}
-              onClick={handleCentralNodeClick}
-              style={{ cursor: 'pointer', zIndex: activeDragId ? 1 : 10 }}
-              title="Click to inspect identity details"
-            >
-              <FocusCard
-                node={focusNode}
-                isLoading={isLoading || lanesLoading}
-                onNavigateBack={() => history.length > 1 && handleBreadcrumbNavigate(history[history.length - 2], history.length - 2)}
-                selectedIdentityCompliance={selectedIdentityComplianceStatus}
-                violationCount={violationCount}
-              />
-            </div>
           </DndContext>
         </div>
 

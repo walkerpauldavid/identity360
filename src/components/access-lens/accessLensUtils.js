@@ -103,6 +103,25 @@ export const getItemResourceType = (item) => {
 };
 
 // ============================================================================
+// DISPLAY TEXT SUBSTITUTIONS
+// ============================================================================
+
+/**
+ * Sanitize Assignment Policy description text for display.
+ * Replaces known API-internal markers with user-friendly text.
+ *
+ * @param {string} text - The raw description text
+ * @returns {string} The sanitized text
+ */
+export const sanitizeAPDescription = (text) => {
+  if (!text || typeof text !== 'string') return text;
+  return text.replace(
+    /\[BOT\s*-\s*9999-12-31\s*22:59:59Z?\s*\(UTC\)\]/gi,
+    '(Immediate assigned and never expires)'
+  );
+};
+
+// ============================================================================
 // STRING MANIPULATION UTILITIES
 // ============================================================================
 

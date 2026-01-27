@@ -1348,6 +1348,231 @@ const AccessLensPage = () => {
           };
         }
 
+        case 'Policy':
+        case 'AssignmentPolicy': {
+          // ============================================================
+          // Assignment Policy Pivot
+          // Handles both NodeTypes.POLICY ('Policy') from lane items and
+          // NodeTypes.ASSIGNMENT_POLICY ('AssignmentPolicy') from schemas
+          // Fetches policy OData details, then uses AP_RESOURCES to find
+          // affected identities/accounts/systems via getIdentitiesHavingResource
+          // ============================================================
+          const policyId = node.id || node.rawData?.causeObjectKey || node.rawData?.UId || node.rawData?.Id || node.metadata?.id;
+          const policyName = node.displayName || node.rawData?.DISPLAYNAME || node.rawData?.name || 'Unknown Policy';
+
+          if (!policyId) {
+            console.error('[AP Pivot] No policy ID found in node');
+            return { focusNode: node, lanes: [], reasonTypes: [] };
+          }
+
+          if (shouldLog('PIVOT')) console.log('[AP Pivot] Policy ID:', policyId, 'Name:', policyName);
+
+          // Step 1: Fetch full Assignment Policy details via OData
+          let policyDetails = null;
+          try {
+            const policyResult = await omadaApi.assignmentPolicy.getAssignmentPolicyById(
+              policyId,
+              bearerToken,
+              impersonateUser
+            );
+            if (policyResult.status === 'success' && policyResult.data) {
+              policyDetails = policyResult.data;
+              if (shouldLog('PIVOT')) console.log('[AP Pivot] OData policy loaded:', policyDetails.DISPLAYNAME || policyDetails.DisplayName);
+            }
+          } catch (err) {
+            console.error('[AP Pivot] Failed to fetch policy details:', err.message);
+          }
+
+          // Step 2: Build enriched focus node
+          const apContexts = policyDetails?.AP_CONTEXTS || node.rawData?.AP_CONTEXTS || [];
+          const apResources = policyDetails?.AP_RESOURCES || node.rawData?.AP_RESOURCES || [];
+          const apAccountResources = policyDetails?.AP_ACCOUNTRESOURCES || node.rawData?.AP_ACCOUNTRESOURCES || [];
+
+          const enrichedPolicyNode = {
+            id: policyId,
+            type: 'AssignmentPolicy',
+            displayName: policyDetails?.DISPLAYNAME || policyDetails?.DisplayName || policyName,
+            status: (policyDetails?.ISACTIVE === false) ? 'disabled' : 'active',
+            badges: node.badges || [],
+            metadata: {
+              description: policyDetails?.DESCRIPTION || node.metadata?.description || '',
+              isActive: policyDetails?.ISACTIVE ?? true,
+              validFrom: policyDetails?.VALIDFROM || null,
+              validTo: policyDetails?.VALIDTO || null,
+              owner: policyDetails?.OWNERREF?.DisplayName || policyDetails?.OWNERREF?.DisplayNameValue || null,
+              contextCount: apContexts.length,
+              resourceCount: apResources.length,
+              accountResourceCount: apAccountResources.length,
+              contextUIds: apContexts.map(ctx => ctx.UId || ctx.uId).filter(Boolean),
+              apContexts: apContexts,
+              resourceIds: apResources.map(r => r.UId || r.Id || r.id).filter(Boolean)
+            },
+            rawData: policyDetails || node.rawData || { id: policyId }
+          };
+
+          // Step 3: Fetch assignments via getIdentitiesHavingResource for each AP_RESOURCE
+          const MAX_RESOURCES_TO_QUERY = 10;
+          const resourcesToQuery = apResources.slice(0, MAX_RESOURCES_TO_QUERY);
+          let allAssignments = [];
+
+          if (shouldLog('PIVOT')) console.log(`[AP Pivot] Querying ${resourcesToQuery.length} of ${apResources.length} resources for identities`);
+
+          for (const resource of resourcesToQuery) {
+            const resourceId = resource.UId || resource.Id || resource.id;
+            const resourceName = resource.DisplayName || resource.Name;
+            if (!resourceId) continue;
+
+            try {
+              const result = await omadaApi.assignment.getIdentitiesHavingResource(
+                resourceId,
+                resourceName,
+                bearerToken,
+                impersonateUser,
+                { page: 1, rows: 200 },
+                null,   // systemId
+                null,   // complianceStatus
+                includeDisabledAssignments
+              );
+              if (result.status === 'success' && result.data) {
+                allAssignments = allAssignments.concat(result.data);
+              }
+            } catch (err) {
+              if (shouldLog('PIVOT')) console.warn(`[AP Pivot] Failed to fetch identities for resource ${resourceName}:`, err.message);
+            }
+          }
+
+          if (shouldLog('PIVOT')) console.log(`[AP Pivot] Total assignments collected: ${allAssignments.length}`);
+
+          // Step 4: Query OData for resource details (name, system) for Effective Entitlements lane
+          const RESOURCE_BATCH_SIZE = 15;
+          let odataResourceDetails = [];
+
+          if (apResources.length > 0) {
+            if (shouldLog('PIVOT')) console.log(`[AP Pivot] Querying OData for ${apResources.length} resource details`);
+
+            for (let i = 0; i < apResources.length; i += RESOURCE_BATCH_SIZE) {
+              const batch = apResources.slice(i, i + RESOURCE_BATCH_SIZE);
+              const uidFilters = batch
+                .map(r => r.UId || r.Id || r.id)
+                .filter(Boolean)
+                .map(uid => `UId eq '${uid}'`)
+                .join(' or ');
+
+              if (!uidFilters) continue;
+
+              try {
+                const result = await omadaApi.odata.query('Resource', bearerToken, impersonateUser, {
+                  filter: uidFilters
+                });
+                if (result.status === 'success' && result.data) {
+                  odataResourceDetails.push(...result.data);
+                }
+              } catch (err) {
+                if (shouldLog('PIVOT')) console.warn('[AP Pivot] Failed to fetch resource details batch:', err.message);
+              }
+            }
+
+            if (shouldLog('PIVOT')) console.log(`[AP Pivot] OData returned ${odataResourceDetails.length} resource details`);
+          }
+
+          // Step 5: Build lanes from collected assignments
+          const { buildContextsLaneFromAPData, buildSystemsLane, buildEntitlementsLaneFromOData, extractUniqueComplianceStatuses: extractCompStatuses } =
+            await import('./accessLensDataService');
+
+          let lanes = [];
+          let reasonTypes = [];
+          let complianceStatuses = [];
+
+          if (allAssignments.length > 0) {
+            lanes = buildLanesFromAssignments(allAssignments, {}, {
+              includeIdentities: true
+            });
+
+            // buildLanesFromAssignments with includeIdentities skips Systems lane (designed for System-centric view).
+            // For AP pivot we need the Systems lane, so build it explicitly.
+            const systemsLane = buildSystemsLane(allAssignments, {});
+            if (systemsLane && systemsLane.items.length > 0) {
+              lanes.push(systemsLane);
+            }
+
+            reasonTypes = extractUniqueReasonTypes(allAssignments);
+            complianceStatuses = extractCompStatuses(allAssignments);
+          }
+
+          // Step 5b: Replace Entitlements lane with OData-sourced one (authoritative from AP_RESOURCES)
+          if (odataResourceDetails.length > 0) {
+            const odataEntitlementsLane = buildEntitlementsLaneFromOData(odataResourceDetails, allAssignments);
+            // Remove assignment-derived Entitlements lane and use OData one instead
+            lanes = lanes.filter(l => l.laneType !== LaneTypes.EFFECTIVE_ENTITLEMENTS);
+            if (odataEntitlementsLane && odataEntitlementsLane.items.length > 0) {
+              lanes.push(odataEntitlementsLane);
+            }
+            if (shouldLog('PIVOT')) console.log(`[AP Pivot] Replaced Entitlements lane with ${odataEntitlementsLane.items.length} OData-sourced items`);
+          }
+
+          // Step 6a: Add Contexts lane from AP_CONTEXTS (not derived from assignments)
+          if (apContexts.length > 0) {
+            const contextsLane = buildContextsLaneFromAPData(apContexts);
+            if (contextsLane && contextsLane.items.length > 0) {
+              lanes.push(contextsLane);
+            }
+          }
+
+          // Step 6b: Enrich identities with OData details
+          const apIdentitiesLane = lanes.find(l => l.laneType === 'Identities');
+          if (apIdentitiesLane && apIdentitiesLane.items.length > 0 && allAssignments.length > 0) {
+            try {
+              const identityDetailsMap = await fetchAllIdentityDetails(allAssignments, bearerToken, impersonateUser);
+              if (Object.keys(identityDetailsMap).length > 0) {
+                lanes = lanes.map(lane => {
+                  if (lane.laneType !== 'Identities') return lane;
+                  const enrichedItems = lane.items.map((item) => {
+                    const identityId = String(item.node.id);
+                    let odataDetails = identityDetailsMap[identityId];
+                    if (!odataDetails) {
+                      odataDetails = Object.values(identityDetailsMap).find(d =>
+                        String(d.UId) === identityId || String(d.Id) === identityId
+                      );
+                    }
+                    if (odataDetails) {
+                      return {
+                        ...item,
+                        node: {
+                          ...item.node,
+                          metadata: {
+                            ...item.node.metadata,
+                            email: odataDetails.EMAIL,
+                            title: odataDetails.JOBTITLE,
+                            employeeId: odataDetails.EMPLOYEEID || odataDetails.IDENTITYID,
+                            department: odataDetails.DEPARTMENT,
+                            category: odataDetails.IDENTITYCATEGORY?.DisplayName,
+                            status: odataDetails.IDENTITYSTATUS?.DisplayName
+                          },
+                          rawData: { ...item.node.rawData, ...odataDetails }
+                        },
+                        rawData: { ...item.rawData, ...odataDetails }
+                      };
+                    }
+                    return item;
+                  });
+                  return { ...lane, items: enrichedItems, allItemsData: enrichedItems };
+                });
+              }
+            } catch (enrichError) {
+              console.error('[AP Pivot] Identity enrichment error:', enrichError.message);
+            }
+          }
+
+          if (shouldLog('PIVOT')) console.log(`[AP Pivot] Built ${lanes.length} lanes:`, lanes.map(l => `${l.laneType}(${l.items?.length || 0})`).join(', '));
+
+          return {
+            focusNode: enrichedPolicyNode,
+            lanes,
+            reasonTypes,
+            complianceStatuses
+          };
+        }
+
         default: {
           return {
             focusNode: node,

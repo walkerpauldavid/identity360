@@ -51,7 +51,7 @@ const Dashboard = () => {
 
   // Individual heatmap minimize state
   const [minimizedHeatmaps, setMinimizedHeatmaps] = useState({
-    statusDistribution: false,
+    statusDistribution: true,
     systemCompliance: false
   });
 

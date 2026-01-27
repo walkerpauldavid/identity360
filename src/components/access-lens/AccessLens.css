@@ -587,7 +587,7 @@
   left: 50%;
   top: 40%;
   transform: translate(-50%, -50%);
-  z-index: 10;
+  /* z-index is controlled inline via activeDragId: 10 normally, 1 during lane drag (BR-053) */
 }
 
 /* Staggered reveal animation for central node */
