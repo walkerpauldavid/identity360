@@ -209,12 +209,14 @@ As a user, I want a "Multi-Path" filter toggle in the toolbar that shows only en
 **US-122: Multi-Path Cascaded Filtering**
 As a user, when I enable the Multi-Path filter, I want all related lanes (Identities, Accounts, Systems, etc.) to cascade-filter to show only items related to the multi-path entitlements, so that I can understand the full context.
 
-**US-123: Multi-Path in Compliance Heatmap**
-As a user, I want to see multi-path assignment counts in the System Compliance Heatmap, including:
-- A "Multi-Path" count in the header stats showing total across all systems
-- A "Multi-Path" row in each system tile showing count and percentage
-- A "Show only multi-path systems" filter toggle
-So that I can identify which systems have the most overlapping access assignments.
+**US-123: Multi-Path in Compliance Heatmap** *(Removed in v1.18)*
+~~As a user, I want to see multi-path assignment counts in the System Compliance Heatmap, including:~~
+~~- A "Multi-Path" count in the header stats showing total across all systems~~
+~~- A "Multi-Path" row in each system tile showing count and percentage~~
+~~- A "Show only multi-path systems" filter toggle~~
+~~So that I can identify which systems have the most overlapping access assignments.~~
+
+*Note: Multi-path capability was removed from the Compliance Heatmap in v1.18. Multi-path filtering remains available in the toolbar for the main Access Lens view.*
 
 ### Inherited Resource Display
 
@@ -231,6 +233,35 @@ As a user, I want entitlements expiring within 90 days to be visually highlighte
 
 **US-127: Permanent vs Time-Limited Distinction**
 As a user, I want permanent assignments ("Never expires") to be visually distinct from time-limited assignments, so that I can quickly identify which entitlements have expiration dates that may need attention.
+
+### Unified Toolbar
+
+**US-131: Consolidated Toolbar**
+As a user, I want all toolbar actions (Expand All, Reset Layout, lane toggles, filters, search, breadcrumbs) consolidated into a single toolbar row, so that the UI is compact and I have more vertical space for the visualization canvas.
+
+**US-132: Toolbar Layout Actions**
+As a user, I want the "Expand All" and "Reset Layout" buttons grouped together on the left side of the toolbar with adequate spacing, so that layout actions are visually distinct from filter actions.
+
+**US-133: Compact Filter Buttons**
+As a user, I want the Multi-Path, Reason Types, and Compliance filter buttons tightly spaced together, so that related filter controls are grouped as a cohesive unit without excessive whitespace.
+
+**US-134: Search and Breadcrumbs Group**
+As a user, I want the search input and breadcrumb navigation grouped together at the end of the toolbar, so that navigation and search are co-located.
+
+### Lane Card Sizing
+
+**US-135: Single-Column Lane Card Sizing**
+As a user, I want single-column lane cards (Accounts, Systems, Assignment Policies, Roles, Identities, Contexts, Violations, Logical Applications) to display 4 visible items with a vertical scroll bar for overflow, so that I can see a consistent number of items at a glance while retaining access to the full list.
+
+### Canvas Positioning
+
+**US-136: Canvas Vertical Position**
+As a user, I want the focus node and surrounding lanes to appear near the top of the visible viewport without requiring scrolling, so that I can immediately see the access graph when loading the page.
+
+### Drag Z-Index Behavior
+
+**US-137: Focus Node Behind Dragged Lane**
+As a user, when I drag an access card over the focus node, I want the focus node to appear behind the dragged card, so that I can freely reposition lanes without the focus node visually obstructing them.
 
 ### Assignment Policy to Context Cross-Lane Filtering
 
@@ -494,12 +525,54 @@ When the Multi-Path toolbar filter is active:
 2. All other lanes shall cascade-filter based on their relationships to the filtered multi-path entitlements
 3. The filter cascading follows the same rules as compliance filter cascading (BR-019 through BR-025)
 
-**BR-036: Multi-Path Heatmap Integration**
-The Compliance Heatmap shall track and display multi-path statistics:
-- `multiPath.multiPathCount`: Number of assignments with multiple paths per system
-- `multiPath.multiPathRate`: Percentage of multi-path assignments per system
-- Systems shall be filterable by "Show only multi-path systems" toggle
-- When multi-path filter is active and non-compliant filter is not, tiles shall be sized by multi-path count
+**BR-036: Multi-Path Heatmap Integration** *(Removed in v1.18)*
+~~The Compliance Heatmap shall track and display multi-path statistics:~~
+~~- `multiPath.multiPathCount`: Number of assignments with multiple paths per system~~
+~~- `multiPath.multiPathRate`: Percentage of multi-path assignments per system~~
+~~- Systems shall be filterable by "Show only multi-path systems" toggle~~
+~~- When multi-path filter is active and non-compliant filter is not, tiles shall be sized by multi-path count~~
+
+*Note: Multi-path capability was removed from the Compliance Heatmap in v1.18. The heatmap now focuses solely on compliance status.*
+
+### Unified Toolbar Rules
+
+**BR-047: Consolidated Toolbar Layout**
+The FilterBar component shall combine all toolbar elements into a single row:
+1. Layout actions (Expand All, Reset Layout) - left side with 0.75rem gap
+2. Filter divider
+3. Lane toggles (Roles, Accounts, Entitlements, Policies, Systems, Identities, Object Inspector)
+4. Filter divider
+5. Multi-Path toggle, Reason Types dropdown, Compliance dropdown - tightly spaced (2px gap)
+6. Search input and Breadcrumbs - grouped at end
+
+**BR-048: Entitlement Type Dropdown Removed**
+The "All Entitlements" dropdown filter (entitlement type: all/direct/inherited) has been removed from the toolbar. Entitlement filtering is now handled exclusively through Reason Type and Compliance filters.
+
+### Single-Column Lane Card Rules
+
+**BR-049: Single-Column Visible Items**
+Single-column lane cards shall display a maximum visible height of 4 items (272px max-height). All items are rendered in the DOM, with overflow handled by `overflow-y: auto` scrolling. The "Show all X items" button is hidden for single-column lanes since scrolling provides access to all items.
+
+**BR-050: Single-Column Display Configuration**
+The `LaneDisplayRules.SINGLE_COLUMN` configuration shall be: `{ columns: 1, rows: 4, width: 350, maxVisibleItems: 4 }`.
+
+### Canvas Positioning Rules
+
+**BR-051: Canvas Vertical Anchor**
+The canvas center point (focus node, lane positions, loading placeholders) shall use `top: 40%` instead of `top: 50%` to position content within the initial viewport without requiring vertical scrolling. The canvas minimum height is 1600px, placing the center at approximately 640px.
+
+**BR-052: Consistent Canvas Center**
+A shared constant `CANVAS_CENTER_Y = '40%'` shall be used by all positioned elements (fulcrum-wrapper CSS, DraggableLane inline style, LoadingLanePlaceholder inline style) to ensure consistent vertical alignment.
+
+### Drag Z-Index Rules
+
+**BR-053: Focus Node Z-Index During Drag**
+When any lane card is being dragged (`activeDragId !== null`), the focus node (fulcrum-wrapper) z-index shall drop from 10 to 1, ensuring the dragged lane card (z-index: 100) always renders above the focus node. When no drag is active, the focus node returns to z-index: 10.
+
+### Loading Bug Fix Rules
+
+**BR-054: Lane Loading State Cleanup**
+The `lanesLoading` state must be cleared in both success and error paths. Specifically, `setLanesLoading(false)` must be called in the `finally` block of the `handlePivot` function, as well as in any fallback path where `handlePivotToNode` returns null or is not called. Failure to clear this state causes permanent loading spinners and prevents lane reveal animations.
 
 ### Layout Rules
 
@@ -513,7 +586,7 @@ The lane positioning algorithm shall detect and prevent overlaps between lane ca
 Dragged lane cards shall remain within the visible canvas area.
 
 **BR-029: Z-Index Management**
-- Central node (fulcrum): z-index 10
+- Central node (fulcrum): z-index 10 (drops to 1 during any lane drag - see BR-053)
 - Lane cards (normal): z-index 1
 - Lane cards (hovered): z-index 50
 - Lane cards (dragging): z-index 100
@@ -605,13 +678,13 @@ Two feature flags control the transition to schema-driven architecture:
 
 ```javascript
 // In AccessLens.jsx
-const USE_SCHEMA_DRIVEN_FILTERING = false;  // Enable schema-driven cross-lane filtering
+const USE_SCHEMA_DRIVEN_FILTERING = true;  // Enabled for CASCADED_THROUGH policy filtering
 
 // In accessLensDataService.js
 const USE_SCHEMA_DRIVEN_LANE_BUILDING = false;  // Enable schema-driven lane building
 ```
 
-When disabled (default), the legacy hardcoded logic is used. When enabled, the schema-driven services handle filtering and lane building.
+Schema-driven filtering is now enabled (`true`) for cross-lane filtering, including CASCADED_THROUGH policy filtering. Schema-driven lane building remains disabled pending migration.
 
 ### Logical Applications Architecture
 
@@ -1095,6 +1168,9 @@ API logs show:
 | causeObjectKey | Field in the reason object containing the policy ID when reasonType is "Policy". Used to fetch full policy details from OData. |
 | Policy Enrichment | The async process of fetching Assignment Policy details from OData to get AP_CONTEXTS for cross-lane filtering with Contexts. |
 | Context UId | The unique identifier (UUID) of an organizational context, used for matching between AP_CONTEXTS and Context lane items. |
+| CANVAS_CENTER_Y | JavaScript constant ('40%') used as the vertical anchor point for the focus node and all lane positions, ensuring consistent vertical alignment across components. |
+| Unified Toolbar | The consolidated FilterBar component combining layout actions, lane toggles, filters, search, and breadcrumbs into a single toolbar row (introduced v1.18). |
+| lanesLoading | React state controlling lane loading animation. Must be cleared in both success and error paths to prevent permanent loading spinners. |
 
 ---
 
@@ -1119,3 +1195,6 @@ API logs show:
 | 1.14 | 2025-01 | Enhanced Inherited Reason Display (US-124, BR-031b): "Inherited" reason pills now show parent resource name in tooltip (e.g., "Inherited from: AD Security Group"). Multiple reason type pills now display for each unique reasonType in the API response (BR-031a) - e.g., an entitlement with both Direct and Policy reasons shows both pills. |
 | 1.15 | 2025-01 | Added Assignment Policy to Context Cross-Lane Filtering (US-128 through US-130, BR-042 through BR-046): Selecting an Assignment Policy now filters the Contexts lane to show only contexts that trigger that policy. Policy data is enriched via OData API call to `/OData/DataObjects/Assignmentpolicy/{policyId}` which returns `AP_CONTEXTS` array. Context UIds are stored in `metadata.contextUIds` for ARRAY_CONTAINS filtering against context `metadata.uId`. |
 | 1.16 | 2025-01 | Fixed violation count mismatch: `extractViolationCount` now deduplicates violations by description (matching `buildViolationsLane` logic) to prevent duplicate counting when same violation appears on multiple assignments. Added default ascending sort by resource name to Effective Entitlements lane in both `accessLensDataService.js` and `laneBuilderService.js`. |
+| 1.17 | 2025-01 | UI cleanup: Removed exit button and view mode buttons from Access Lens. Replaced identity inspector panel with direct Access Lens navigation on identity table click. |
+| 1.18 | 2025-01 | **Toolbar consolidation & UI improvements** (US-131 through US-137, BR-047 through BR-054): Merged two-row header (topbar + filter bar) into single unified toolbar (FilterBar). Removed "All Entitlements" dropdown filter (BR-048). Removed multi-path capability from ComplianceHeatmap (BR-036 deprecated). Repositioned canvas from `top: 50%` to `top: 40%` with `CANVAS_CENTER_Y` constant and reduced canvas height from 1800px to 1600px (BR-051, BR-052). Single-column lane cards now show 4 visible items with vertical scroll, hiding "Show all" button (BR-049, BR-050). Tightened toolbar spacing: layout actions at 0.75rem gap, filter buttons at 2px gap. Focus node z-index drops from 10 to 1 during lane drag so dragged cards render above it (BR-053). Fixed entitlement focus node infinite loading spinner by clearing `lanesLoading` in `finally` block (BR-054). |
+| 1.19 | 2025-01 | **Schema audit & cleanup**: Added `LaneGridConstraints` to `schemas/index.js` re-exports. Updated `getLanesForNodeType` fallback switch-case to match `LaneConfigSchema` definitions (added missing Violations, Assignment Policies, Logical Applications for Identity/System/Account views). Removed `.env.production` and `.env.development` from git tracking (contained Azure AD credentials); added `.gitignore` entries and `.env.*.template` files with placeholder values; purged sensitive files from entire git history. |

@@ -18,7 +18,8 @@ export {
   ActionTypes,
   CompassOrientation,
   CrossLaneFilterType,
-  LaneDisplayRules
+  LaneDisplayRules,
+  LaneGridConstraints
 } from './baseEnums';
 
 // Note: LaneSchema, FocusNodeSchema, and LaneConfigSchema remain in accessLensTypes.js

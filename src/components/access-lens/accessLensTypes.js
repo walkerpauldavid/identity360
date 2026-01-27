@@ -2059,20 +2059,20 @@ export const getLanesForNodeType = (nodeType) => {
     return config.lanes.map(l => l.laneType);
   }
 
-  // Fallback for undefined types
+  // Fallback for node types not yet defined in LaneConfigSchema
   switch (nodeType) {
     case NodeTypes.IDENTITY:
-      return [LaneTypes.ROLES, LaneTypes.ACCOUNTS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.SYSTEMS, LaneTypes.CONTEXTS];
+      return [LaneTypes.SYSTEMS, LaneTypes.ACCOUNTS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.CONTEXTS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.ROLES, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.VIOLATIONS];
     case NodeTypes.ROLE:
       return [LaneTypes.IDENTITIES, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.POLICIES];
     case NodeTypes.ENTITLEMENT:
       return [LaneTypes.IDENTITIES, LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS];
     case NodeTypes.SYSTEM:
-      return [LaneTypes.ACCOUNTS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.IDENTITIES, LaneTypes.LOGICAL_APPLICATIONS];
+      return [LaneTypes.IDENTITIES, LaneTypes.ACCOUNTS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.VIOLATIONS];
     case NodeTypes.LOGICAL_APPLICATION:
       return [LaneTypes.IDENTITIES, LaneTypes.SYSTEMS, LaneTypes.ACCOUNTS, LaneTypes.EFFECTIVE_ENTITLEMENTS];
     case NodeTypes.ACCOUNT:
-      return [LaneTypes.IDENTITIES, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.SYSTEMS];
+      return [LaneTypes.IDENTITIES, LaneTypes.SYSTEMS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.LOGICAL_APPLICATIONS];
     case NodeTypes.ASSIGNMENT_POLICY:
       return [LaneTypes.CONTEXTS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.ACCOUNTS, LaneTypes.IDENTITIES];
     default:

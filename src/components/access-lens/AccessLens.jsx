@@ -2882,7 +2882,7 @@ const AccessLens = ({
               className={`fulcrum-wrapper ${centralNodeRevealed ? 'revealed' : 'hidden'}`}
               ref={fulcrumRef}
               onClick={handleCentralNodeClick}
-              style={{ cursor: 'pointer' }}
+              style={{ cursor: 'pointer', zIndex: activeDragId ? 1 : 10 }}
               title="Click to inspect identity details"
             >
               <FocusCard
