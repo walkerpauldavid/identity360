@@ -16,7 +16,10 @@ const FilterBar = ({
   showObjectInspector = true, // Whether to show Object Inspector on item click
   onToggleObjectInspector, // Callback to toggle Object Inspector visibility
   hasActiveCrossLaneFilter = false, // Whether any cross-lane filter (lane selection) is active
-  onClearAllSelections // Callback to clear all lane selections
+  onClearAllSelections, // Callback to clear all lane selections
+  onExpandAll, // Callback to expand all lanes
+  onResetLayout, // Callback to reset lane positions and clear filters
+  breadcrumbs // Breadcrumbs element to render on the right
 }) => {
   const {
     visibleLanes = Object.values(LaneTypes),
@@ -49,7 +52,17 @@ const FilterBar = ({
 
   return (
     <div className="filter-bar">
-      {/* View Mode Toggle removed */}
+      {/* Layout Actions */}
+      <div className="filter-group layout-actions">
+        <button className="expand-all-btn" onClick={onExpandAll} title="Expand all lanes">
+          ⊞ Expand All
+        </button>
+        <button className="reset-positions-btn" onClick={onResetLayout} title="Reset lane positions and clear filters">
+          ↺ Reset Layout
+        </button>
+      </div>
+
+      <div className="filter-divider"></div>
 
       {/* Lane Toggles */}
       <div className="filter-group lane-toggles">
@@ -99,22 +112,6 @@ const FilterBar = ({
 
       {/* Divider */}
       <div className="filter-divider"></div>
-
-      {/* Entitlement Type Filter */}
-      <div className="filter-group">
-        <select
-          id="entitlement-type-filter"
-          name="entitlement-type-filter"
-          className="filter-select"
-          value={entitlementType}
-          onChange={(e) => onFilterChange({ ...filters, entitlementType: e.target.value })}
-          autoComplete="off"
-        >
-          <option value="all">All Entitlements</option>
-          <option value="direct">Direct Only</option>
-          <option value="inherited">Inherited Only</option>
-        </select>
-      </div>
 
       {/* Multi-Path Filter Toggle */}
       <div className={`filter-group multi-path-filter ${multiPathOnly ? 'filter-active' : ''}`}>
@@ -249,8 +246,8 @@ const FilterBar = ({
         </div>
       )}
 
-      {/* Search */}
-      <div className="filter-group search-group">
+      {/* Search + Breadcrumbs (right-aligned) */}
+      <div className="filter-group toolbar-right">
         <input
           type="text"
           id="access-lens-search"
@@ -260,6 +257,12 @@ const FilterBar = ({
           autoComplete="off"
           onChange={(e) => onSearch?.(e.target.value)}
         />
+        {breadcrumbs && (
+          <>
+            <div className="filter-divider"></div>
+            {breadcrumbs}
+          </>
+        )}
       </div>
     </div>
   );

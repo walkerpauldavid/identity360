@@ -443,17 +443,17 @@ const LaneCard = ({
             gridTemplateColumns: isMultiColumn ? `repeat(${effectiveColumns}, 1fr)` : undefined,
             gap: '0.5rem',
             maxHeight: isMaximized && calculatedMaxHeight ? `${calculatedMaxHeight}px` : undefined,
-            overflowY: isMaximized ? 'auto' : undefined,
+            overflowY: (isMaximized || !isMultiColumn) ? 'auto' : undefined,
             overflowX: 'hidden',
-            paddingBottom: isMaximized ? '1rem' : undefined
+            paddingBottom: (isMaximized || !isMultiColumn) ? '0.5rem' : undefined
           }}
         >
           {displayItems.length === 0 ? (
             <div className="lane-empty">No items</div>
           ) : (
             <>
-              {/* Limit items to maxVisibleItems when not maximized */}
-              {(isMaximized ? displayItems : displayItems.slice(0, maxVisibleItems)).map((item, index) => (
+              {/* Single-column: render all items (scroll handles visibility). Multi-column: limit to maxVisibleItems unless maximized */}
+              {(isMaximized || !isMultiColumn ? displayItems : displayItems.slice(0, maxVisibleItems)).map((item, index) => (
                 <LaneItemRow
                   key={item.node.id || index}
                   item={item}
@@ -468,8 +468,8 @@ const LaneCard = ({
                 />
               ))}
 
-              {/* Load More - only show when not maximized and there are more items than visible */}
-              {!isMaximized && (displayItems.length > maxVisibleItems || canLoadMore) && (
+              {/* Load More - only show for multi-column lanes when not maximized */}
+              {!isMaximized && isMultiColumn && (displayItems.length > maxVisibleItems || canLoadMore) && (
                 <button
                   className="lane-load-more"
                   onClick={handleMaximize}

@@ -286,16 +286,6 @@ const HeatmapTile = ({ system, onClick }) => {
                 </span>
               </div>
             )}
-            {system.multiPath?.multiPathCount > 0 && (
-              <div className="stat-row multi-path">
-                <span className="stat-icon multi-path">&#x26A1;</span>
-                <span className="stat-label">Multi-Path:</span>
-                <span className="stat-value">{formatNumber(system.multiPath.multiPathCount)}</span>
-                <span className="stat-percent">
-                  ({system.multiPath.multiPathRate}%)
-                </span>
-              </div>
-            )}
           </div>
         )}
 
@@ -324,7 +314,7 @@ const ComplianceHeatmap = ({ bearerToken, impersonateUser }) => {
   const [containerSize, setContainerSize] = useState({ width: 800, height: 400 });
   const [selectedStatuses, setSelectedStatuses] = useState([]); // Empty = show all
   const [showOnlyNonCompliant, setShowOnlyNonCompliant] = useState(false);
-  const [showOnlyMultiPath, setShowOnlyMultiPath] = useState(false); // Filter for multi-path systems
+
   const containerRef = useRef(null);
   const hasInitializedSize = useRef(false);
 
@@ -367,22 +357,6 @@ const ComplianceHeatmap = ({ bearerToken, impersonateUser }) => {
       }));
     }
 
-    // Filter by "show only multi-path" toggle - systems with overlapping assignment paths
-    if (showOnlyMultiPath) {
-      filtered = filtered.filter(system => {
-        const multiPathCount = system.multiPath?.multiPathCount || 0;
-        return multiPathCount > 0; // Show systems that have any multi-path assignments
-      });
-
-      // If not already sizing by non-compliance, size by multi-path count
-      if (!showOnlyNonCompliant) {
-        filtered = filtered.map(system => ({
-          ...system,
-          accountCount: Math.max(1, system.multiPath?.multiPathCount || 1)
-        }));
-      }
-    }
-
     // Filter by selected statuses - show systems that have ANY of the selected statuses
     if (selectedStatuses.length > 0) {
       filtered = filtered.filter(system => {
@@ -391,14 +365,8 @@ const ComplianceHeatmap = ({ bearerToken, impersonateUser }) => {
       });
     }
 
-    // Sort by compliance rate (or multi-path rate if that filter is active)
+    // Sort by compliance rate
     filtered = [...filtered].sort((a, b) => {
-      if (showOnlyMultiPath && !showOnlyNonCompliant) {
-        // Sort by multi-path count (highest first)
-        const multiPathA = a.multiPath?.multiPathCount || 0;
-        const multiPathB = b.multiPath?.multiPathCount || 0;
-        return multiPathB - multiPathA;
-      }
       const complianceA = a.compliance?.complianceRate || 0;
       const complianceB = b.compliance?.complianceRate || 0;
       if (showOnlyNonCompliant) {
@@ -409,7 +377,7 @@ const ComplianceHeatmap = ({ bearerToken, impersonateUser }) => {
     });
 
     return filtered;
-  }, [systems, selectedStatuses, showOnlyNonCompliant, showOnlyMultiPath]);
+  }, [systems, selectedStatuses, showOnlyNonCompliant]);
 
   // Calculate layout when filtered systems or container size changes
   const tilesWithLayout = useMemo(() => {
@@ -420,19 +388,18 @@ const ComplianceHeatmap = ({ bearerToken, impersonateUser }) => {
   // Calculate overall statistics (from filtered systems)
   const overallStats = useMemo(() => {
     if (!filteredSystems || filteredSystems.length === 0) {
-      return { totalSystems: 0, totalAccounts: 0, totalAssignments: 0, avgCompliance: 0, totalMultiPath: 0, isFiltered: false };
+      return { totalSystems: 0, totalAccounts: 0, totalAssignments: 0, avgCompliance: 0, isFiltered: false };
     }
 
     const totalSystems = filteredSystems.length;
     const totalAccounts = filteredSystems.reduce((sum, s) => sum + s.accountCount, 0);
     const totalAssignments = filteredSystems.reduce((sum, s) => sum + (s.compliance?.total || 0), 0);
     const totalCompliant = filteredSystems.reduce((sum, s) => sum + (s.compliance?.compliant || 0), 0);
-    const totalMultiPath = filteredSystems.reduce((sum, s) => sum + (s.multiPath?.multiPathCount || 0), 0);
     const avgCompliance = totalAssignments > 0 ? Math.round((totalCompliant / totalAssignments) * 100) : 0;
-    const isFiltered = selectedStatuses.length > 0 || showOnlyNonCompliant || showOnlyMultiPath;
+    const isFiltered = selectedStatuses.length > 0 || showOnlyNonCompliant;
 
-    return { totalSystems, totalAccounts, totalAssignments, avgCompliance, totalMultiPath, isFiltered };
-  }, [filteredSystems, selectedStatuses.length, showOnlyNonCompliant, showOnlyMultiPath]);
+    return { totalSystems, totalAccounts, totalAssignments, avgCompliance, isFiltered };
+  }, [filteredSystems, selectedStatuses.length, showOnlyNonCompliant]);
 
   // Toggle a status in the filter
   const toggleStatus = (status) => {
@@ -449,7 +416,6 @@ const ComplianceHeatmap = ({ bearerToken, impersonateUser }) => {
   const clearFilters = () => {
     setSelectedStatuses([]);
     setShowOnlyNonCompliant(false);
-    setShowOnlyMultiPath(false);
   };
 
   // Handle container resize - measure once when systems load
@@ -564,14 +530,6 @@ const ComplianceHeatmap = ({ bearerToken, impersonateUser }) => {
             </span>
             <span className="stat-label">Overall Compliant</span>
           </div>
-          {overallStats.totalMultiPath > 0 && (
-            <div className="header-stat multi-path" title="Entitlements with multiple overlapping assignment paths">
-              <span className="stat-value" style={{ color: '#d08770' }}>
-                {formatNumber(overallStats.totalMultiPath)}
-              </span>
-              <span className="stat-label">⚡ Multi-Path</span>
-            </div>
-          )}
           <button className="refresh-btn" onClick={refetch} title="Refresh data">
             &#x21BB;
           </button>
@@ -608,15 +566,7 @@ const ComplianceHeatmap = ({ bearerToken, impersonateUser }) => {
             />
             <span>Show only non-compliant systems</span>
           </label>
-          <label className="filter-toggle multi-path-toggle">
-            <input
-              type="checkbox"
-              checked={showOnlyMultiPath}
-              onChange={(e) => setShowOnlyMultiPath(e.target.checked)}
-            />
-            <span>⚡ Show only multi-path systems</span>
-          </label>
-          {(selectedStatuses.length > 0 || showOnlyNonCompliant || showOnlyMultiPath) && (
+          {(selectedStatuses.length > 0 || showOnlyNonCompliant) && (
             <button className="clear-filters-btn" onClick={clearFilters}>
               Clear filters
             </button>

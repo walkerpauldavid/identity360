@@ -108,9 +108,9 @@ export const CrossLaneFilterType = {
 export const LaneDisplayRules = {
   SINGLE_COLUMN: {
     columns: 1,
-    rows: 5,
+    rows: 4,
     width: 350,
-    maxVisibleItems: 10
+    maxVisibleItems: 4
   },
   MULTI_COLUMN: {
     columns: 2,

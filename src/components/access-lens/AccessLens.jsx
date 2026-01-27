@@ -98,6 +98,10 @@ const FULCRUM_DIMENSIONS = {
   height: 220   // Fulcrum card height
 };
 
+// Vertical anchor point for the canvas center (percentage of canvas height)
+// 40% positions the focus node higher so it's visible without scrolling
+const CANVAS_CENTER_Y = '40%';
+
 /**
  * Compass-to-position mapping
  * Maps compass orientations (from LaneSchema) to x,y coordinates relative to central node
@@ -158,7 +162,7 @@ const LoadingLanePlaceholder = ({ laneType, position }) => {
       style={{
         position: 'absolute',
         left: '50%',
-        top: '50%',
+        top: CANVAS_CENTER_Y,
         transform: `translate(calc(-50% + ${position.x}px), calc(-50% + ${position.y}px))`,
         width: `${width}px`,
         minHeight: '120px',
@@ -385,7 +389,7 @@ const DraggableLane = ({ id, position, children, onPositionChange }) => {
   const style = {
     position: 'absolute',
     left: `calc(50% + ${position.x}px)`,
-    top: `calc(50% + ${position.y}px)`,
+    top: `calc(${CANVAS_CENTER_Y} + ${position.y}px)`,
     // Combine centering transform with drag offset using translate3d for GPU acceleration
     // The -50%, -50% centers the element on its anchor point
     // The dragX, dragY adds the drag offset during active dragging
@@ -1422,10 +1426,12 @@ const AccessLens = ({
         setPendingNodeType(null);  // Clear pending type on error
       } finally {
         setIsLoading(false);
+        setLanesLoading(false);
         setPivotLoadingStatus('');
       }
     } else {
       // No callback, just change the focus node (lanes may be empty)
+      setLanesLoading(false);
       loadFocus(node);
     }
   }, [loadFocus, onPivotToNode, focusNode?.type]);
@@ -2740,30 +2746,7 @@ const AccessLens = ({
 
   return (
     <div className={`access-lens ${isFullscreen ? 'fullscreen' : ''}`}>
-      {/* Top Bar */}
-      <div className="access-lens-topbar">
-        <div className="topbar-left">
-          <h2 className="access-lens-title">
-            <span className="title-icon">🔍</span>
-            Identity360
-          </h2>
-          <button className="expand-all-btn" onClick={handleExpandAll} title="Expand all lanes">
-            ⊞ Expand All
-          </button>
-          <button className="reset-positions-btn" onClick={handleResetPositions} title="Reset lane positions and clear filters">
-            ↺ Reset Layout
-          </button>
-          {/* Exit button removed */}
-        </div>
-        <Breadcrumbs
-          history={history}
-          currentIndex={historyIndex}
-          onNavigate={handleBreadcrumbNavigate}
-          onRemove={handleRemoveBreadcrumb}
-        />
-      </div>
-
-      {/* Filter Bar */}
+      {/* Unified Toolbar */}
       <FilterBar
         filters={filters}
         onFilterChange={setFilters}
@@ -2776,6 +2759,16 @@ const AccessLens = ({
         onToggleObjectInspector={() => setShowObjectInspector(!showObjectInspector)}
         hasActiveCrossLaneFilter={hasActiveCrossLaneFilter}
         onClearAllSelections={handleClearAllSelections}
+        onExpandAll={handleExpandAll}
+        onResetLayout={handleResetPositions}
+        breadcrumbs={
+          <Breadcrumbs
+            history={history}
+            currentIndex={historyIndex}
+            onNavigate={handleBreadcrumbNavigate}
+            onRemove={handleRemoveBreadcrumb}
+          />
+        }
       />
 
       {/* Main Content */}
