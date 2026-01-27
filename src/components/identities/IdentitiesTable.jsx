@@ -8,7 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePreferences } from '../../contexts/PreferencesContext';
 import { omadaApi } from '../../services/omadaApi';
-import IdentityDetail from './IdentityDetail';
+// IdentityDetail panel disabled - row click now navigates directly to Access Lens
 import './IdentitiesList.css';
 
 // Identity360 icon SVG component - matches the toolbar icon
@@ -120,7 +120,7 @@ const IdentitiesTable = ({ identities, categoryColor }) => {
   const [contextsFilter, setContextsFilter] = useState('');
 
   // Selected identity for detail view
-  const [selectedIdentity, setSelectedIdentity] = useState(null);
+  // selectedIdentity state removed - row click now navigates directly to Access Lens
 
   // Context menu state
   const [contextMenu, setContextMenu] = useState({
@@ -862,7 +862,12 @@ const IdentitiesTable = ({ identities, categoryColor }) => {
             return (
               <tr
                 key={identity.Id || identity.UId}
-                onClick={() => setSelectedIdentity(identity)}
+                onClick={() => {
+                  const identityUId = identity.UId;
+                  if (identityUId) {
+                    navigate(`/identity360?identity=${identityUId}`);
+                  }
+                }}
                 className="clickable-row"
               >
                 <td
@@ -993,13 +998,7 @@ const IdentitiesTable = ({ identities, categoryColor }) => {
         </div>
       </div>
 
-      {/* Identity Detail Panel */}
-      {selectedIdentity && (
-        <IdentityDetail
-          identity={selectedIdentity}
-          onClose={() => setSelectedIdentity(null)}
-        />
-      )}
+      {/* Identity Detail Panel - Disabled: row click now navigates to Access Lens */}
     </div>
   );
 };
