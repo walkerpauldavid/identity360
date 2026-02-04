@@ -15,6 +15,71 @@ import { apiLogger } from './apiLogger';
 import { withApiCache, withCacheInvalidation } from './apiCache';
 
 /**
+ * H-04 Fix: AbortController Manager
+ * Tracks active requests by key and allows cancellation of stale requests
+ */
+const activeRequests = new Map();
+
+/**
+ * Create an abort controller for a request, cancelling any existing request with the same key
+ * @param {string} requestKey - Unique key for the request (e.g., 'searchIdentities:filters')
+ * @returns {AbortController} New abort controller for this request
+ */
+export const createAbortController = (requestKey) => {
+  // Cancel any existing request with this key
+  if (activeRequests.has(requestKey)) {
+    const existingController = activeRequests.get(requestKey);
+    existingController.abort();
+  }
+
+  // Create new controller and store it
+  const controller = new AbortController();
+  activeRequests.set(requestKey, controller);
+
+  return controller;
+};
+
+/**
+ * Remove an abort controller from tracking (call after request completes)
+ * @param {string} requestKey - Key of the completed request
+ */
+export const clearAbortController = (requestKey) => {
+  activeRequests.delete(requestKey);
+};
+
+/**
+ * Cancel all active requests (useful for component unmount)
+ */
+export const cancelAllRequests = () => {
+  for (const controller of activeRequests.values()) {
+    controller.abort();
+  }
+  activeRequests.clear();
+};
+
+/**
+ * Cancel requests matching a prefix (e.g., 'identity:' cancels all identity requests)
+ * @param {string} prefix - Prefix to match
+ */
+export const cancelRequestsByPrefix = (prefix) => {
+  for (const [key, controller] of activeRequests.entries()) {
+    if (key.startsWith(prefix)) {
+      controller.abort();
+      activeRequests.delete(key);
+    }
+  }
+};
+
+/**
+ * Check if an error is an AbortError (request was cancelled)
+ * @param {Error} error - Error to check
+ * @returns {boolean} True if the error is due to request cancellation
+ */
+export const isAbortError = (error) => {
+  return error?.name === 'AbortError' || error?.message?.includes('aborted');
+};
+
+/**
  * Identity API Methods
  */
 export const identityApi = {
@@ -23,12 +88,14 @@ export const identityApi = {
    * @param {Object} filters - Filter criteria (EMAIL, FIRSTNAME, LASTNAME, etc.)
    * @param {string} bearerToken - OAuth bearer token
    * @param {string} impersonateUser - User email for impersonation
-   * @param {Object} options - Additional query options
+   * @param {Object} options - Additional query options (including optional 'signal' for AbortController)
    * @returns {Promise<Object>} Search results
    */
   searchIdentities: async (filters, bearerToken, impersonateUser, options = {}) => {
     let requestId;
     let url;
+    // H-04 fix: Extract signal from options for request cancellation
+    const { signal } = options;
     try {
       // Use defaults only if not explicitly provided (including null)
       const top = 'top' in options ? options.top : 50;
@@ -73,10 +140,12 @@ export const identityApi = {
         count: true
       }, requestHeaders);
 
+      // H-04 fix: Include signal for request cancellation
       const response = await fetch(url, {
         method: 'GET',
         headers: requestHeaders,
-        referrerPolicy: 'no-referrer'
+        referrerPolicy: 'no-referrer',
+        signal
       });
 
       const responseHeaders = Object.fromEntries(response.headers.entries());
@@ -105,6 +174,10 @@ export const identityApi = {
 
       return result;
     } catch (error) {
+      // H-04 fix: Don't log abort errors as failures
+      if (isAbortError(error)) {
+        return { status: 'aborted', data: [], total: 0 };
+      }
       // Log error response for network/CORS errors
       if (requestId) {
         apiLogger.logResponse(requestId, 'OData', url || 'searchIdentities', null, false, error, {}, null, null);
@@ -118,19 +191,23 @@ export const identityApi = {
    * @param {string} identityId - Identity ID (integer)
    * @param {string} bearerToken - OAuth bearer token
    * @param {string} impersonateUser - User email
+   * @param {Object} options - Optional { signal } for AbortController
    * @returns {Promise<Object>} Identity details
    */
-  getIdentityById: async (identityId, bearerToken, impersonateUser) => {
+  getIdentityById: async (identityId, bearerToken, impersonateUser, options = {}) => {
+    const { signal } = options;
     try {
       const url = `${API_CONFIG.baseUrl}${API_CONFIG.endpoints.odata.dataObjects}/Identity(${identityId})`;
 
       const requestHeaders = await getHeaders(bearerToken, impersonateUser);
       const requestId = apiLogger.logRequest('OData', url, { method: 'GET', identityId }, requestHeaders);
 
+      // H-04 fix: Include signal for request cancellation
       const response = await fetch(url, {
         method: 'GET',
         headers: requestHeaders,
-        referrerPolicy: 'no-referrer'
+        referrerPolicy: 'no-referrer',
+        signal
       });
 
       const responseHeaders = Object.fromEntries(response.headers.entries());
@@ -157,6 +234,10 @@ export const identityApi = {
 
       return result;
     } catch (error) {
+      // H-04 fix: Handle abort errors gracefully
+      if (isAbortError(error)) {
+        return { status: 'aborted', data: null };
+      }
       return handleApiError(error, 'getIdentityById');
     }
   },
@@ -166,9 +247,11 @@ export const identityApi = {
    * @param {number} categoryId - Category ID (e.g., 561)
    * @param {string} bearerToken - OAuth bearer token
    * @param {string} impersonateUser - User email
+   * @param {Object} options - Optional { signal } for AbortController
    * @returns {Promise<Object>} Count result
    */
-  getIdentityCountByCategoryId: async (categoryId, bearerToken, impersonateUser) => {
+  getIdentityCountByCategoryId: async (categoryId, bearerToken, impersonateUser, options = {}) => {
+    const { signal } = options;
     let requestId;
     let url;
     try {
@@ -190,10 +273,12 @@ export const identityApi = {
         countOnly: true
       }, requestHeaders);
 
+      // H-04 fix: Include signal for request cancellation
       const response = await fetch(url, {
         method: 'GET',
         headers: requestHeaders,
-        referrerPolicy: 'no-referrer'
+        referrerPolicy: 'no-referrer',
+        signal
       });
 
       const responseHeaders = Object.fromEntries(response.headers.entries());
@@ -222,6 +307,10 @@ export const identityApi = {
 
       return result;
     } catch (error) {
+      // H-04 fix: Handle abort errors gracefully
+      if (isAbortError(error)) {
+        return { status: 'aborted', categoryId, count: 0 };
+      }
       if (requestId) {
         apiLogger.logResponse(requestId, 'OData', url || 'getIdentityCountByCategoryId', null, false, error, {}, null, null);
       }
@@ -270,10 +359,12 @@ export const identityApi = {
    * @param {number} categoryId - Category ID
    * @param {string} bearerToken - OAuth bearer token
    * @param {string} impersonateUser - User email
-   * @param {Object} options - Additional query options
+   * @param {Object} options - Additional query options (including optional 'signal' for AbortController)
    * @returns {Promise<Object>} Identities in category
    */
   getIdentitiesByCategoryId: async (categoryId, bearerToken, impersonateUser, options = {}) => {
+    // H-04 fix: Extract signal from options for request cancellation
+    const { signal } = options;
     let requestId;
     let url;
     try {
@@ -301,10 +392,12 @@ export const identityApi = {
         skip
       }, requestHeaders);
 
+      // H-04 fix: Include signal for request cancellation
       const response = await fetch(url, {
         method: 'GET',
         headers: requestHeaders,
-        referrerPolicy: 'no-referrer'
+        referrerPolicy: 'no-referrer',
+        signal
       });
 
       const responseHeaders = Object.fromEntries(response.headers.entries());
@@ -333,6 +426,10 @@ export const identityApi = {
 
       return result;
     } catch (error) {
+      // H-04 fix: Handle abort errors gracefully
+      if (isAbortError(error)) {
+        return { status: 'aborted', data: [], total: 0 };
+      }
       if (requestId) {
         apiLogger.logResponse(requestId, 'OData', url || 'getIdentitiesByCategoryId', null, false, error, {}, null, null);
       }
@@ -345,9 +442,11 @@ export const identityApi = {
    * @param {string} identityUId - Identity UId (32-char GUID, not integer Id!)
    * @param {string} bearerToken - OAuth bearer token
    * @param {string} impersonateUser - User email
+   * @param {Object} options - Optional { signal } for AbortController
    * @returns {Promise<Object>} Identity contexts
    */
-  getIdentityContexts: async (identityUId, bearerToken, impersonateUser) => {
+  getIdentityContexts: async (identityUId, bearerToken, impersonateUser, options = {}) => {
+    const { signal } = options;
     let requestId;
     let endpoint;
     try {
@@ -362,10 +461,12 @@ export const identityApi = {
         variables: queryObject.variables || {}
       }, requestHeaders);
 
+      // H-04 fix: Pass signal for request cancellation
       const result = await executeGraphQL(
         endpoint,
         queryObject,
-        requestHeaders
+        requestHeaders,
+        { signal }
       );
 
       // Handle both standard GraphQL response { data: { ... } } and direct response
@@ -385,6 +486,10 @@ export const identityApi = {
 
       return response;
     } catch (error) {
+      // H-04 fix: Handle abort errors gracefully
+      if (isAbortError(error)) {
+        return { status: 'aborted', data: [], contexts_count: 0 };
+      }
       const responseHeaders = error.responseHeaders || {};
       const statusCode = error.statusCode || null;
       const rawResponse = error.rawResponse || null;
@@ -774,7 +879,7 @@ export const assignmentApi = {
    * @param {string} bearerToken - OAuth bearer token
    * @param {string} impersonateUser - User email
    * @param {Object} filters - Optional filters
-   * @param {Object} pagination - Pagination options
+   * @param {Object} pagination - Pagination options (including optional 'signal' for AbortController)
    * @returns {Promise<Object>} Assignments
    */
   getCalculatedAssignmentsDetailed: async (
@@ -784,6 +889,8 @@ export const assignmentApi = {
     filters = {},
     pagination = {}
   ) => {
+    // H-04 fix: Extract signal from pagination options
+    const { signal, ...paginationParams } = pagination;
     let requestId;
     let endpoint;
     try {
@@ -791,7 +898,7 @@ export const assignmentApi = {
       const queryObject = GraphQLQueries.getCalculatedAssignmentsDetailed(
         identityUIds,
         filters,
-        pagination
+        paginationParams
       );
       const requestHeaders = await getGraphQLHeaders(bearerToken, impersonateUser);
 
@@ -799,15 +906,17 @@ export const assignmentApi = {
         functionName: 'getCalculatedAssignmentsDetailed',
         identityUIds,
         filters,
-        pagination,
+        pagination: paginationParams,
         graphqlQuery: queryObject.query,
         variables: queryObject.variables || {}
       }, requestHeaders);
 
+      // H-04 fix: Pass signal for request cancellation
       const result = await executeGraphQL(
         endpoint,
         queryObject,
-        requestHeaders
+        requestHeaders,
+        { signal }
       );
 
       // Handle both standard GraphQL response { data: { ... } } and direct response
@@ -829,6 +938,10 @@ export const assignmentApi = {
 
       return response;
     } catch (error) {
+      // H-04 fix: Handle abort errors gracefully
+      if (isAbortError(error)) {
+        return { status: 'aborted', data: [], total: 0, pages: 0 };
+      }
       const responseHeaders = error.responseHeaders || {};
       const statusCode = error.statusCode || null;
       const rawResponse = error.rawResponse || null;
@@ -848,7 +961,7 @@ export const assignmentApi = {
    * @param {string} resourceName - Resource name (optional, not used in query)
    * @param {string} bearerToken - OAuth bearer token
    * @param {string} impersonateUser - User email
-   * @param {Object} pagination - Pagination options
+   * @param {Object} pagination - Pagination options (including optional 'signal' for AbortController)
    * @param {string} systemId - Optional system ID filter
    * @param {string} complianceStatus - Optional compliance status filter (e.g., 'Not Approved', 'Approved')
    * @param {boolean} includeDisabled - Include disabled assignments (default: true)
@@ -864,6 +977,8 @@ export const assignmentApi = {
     complianceStatus = null,
     includeDisabled = true
   ) => {
+    // H-04 fix: Extract signal from pagination options
+    const { signal, ...paginationParams } = pagination;
     let requestId;
     let endpoint;
     try {
@@ -873,7 +988,7 @@ export const assignmentApi = {
         resourceId,
         resourceName,
         systemId,
-        pagination,
+        paginationParams,
         complianceStatus,
         includeDisabled
       );
@@ -883,15 +998,17 @@ export const assignmentApi = {
         functionName: 'getIdentitiesHavingResource',
         resourceId,
         resourceName,
-        pagination,
+        pagination: paginationParams,
         complianceStatus,
         graphqlQuery: queryObject.query
       }, requestHeaders);
 
+      // H-04 fix: Pass signal for request cancellation
       const result = await executeGraphQL(
         endpoint,
         queryObject,
-        requestHeaders
+        requestHeaders,
+        { signal }
       );
 
       // Handle both standard GraphQL response { data: { ... } } and direct response
@@ -913,6 +1030,10 @@ export const assignmentApi = {
 
       return response;
     } catch (error) {
+      // H-04 fix: Handle abort errors gracefully
+      if (isAbortError(error)) {
+        return { status: 'aborted', data: [], total: 0, pages: 0 };
+      }
       const responseHeaders = error.responseHeaders || {};
       const statusCode = error.statusCode || null;
       const rawResponse = error.rawResponse || null;
@@ -945,15 +1066,15 @@ export const assignmentPolicyApi = {
    * Get all assignment policies
    * @param {string} bearerToken - OAuth bearer token
    * @param {string} impersonateUser - User email for impersonation
-   * @param {Object} options - Query options (filter, select, top, skip, orderBy)
+   * @param {Object} options - Query options (filter, select, top, skip, orderBy, signal)
    * @returns {Promise<Object>} Assignment policies list
    */
   getAssignmentPolicies: async (bearerToken, impersonateUser, options = {}) => {
+    // H-04 fix: Extract signal from options
+    const { signal, filter, top = 100, skip, orderBy = 'DISPLAYNAME' } = options;
     let requestId;
     let url;
     try {
-      const { filter, top = 100, skip, orderBy = 'DISPLAYNAME' } = options;
-
       // Build the OData URL for Assignmentpolicy entity
       url = `${API_CONFIG.baseUrl}${API_CONFIG.endpoints.odata.dataObjects}/Assignmentpolicy`;
 
@@ -974,12 +1095,14 @@ export const assignmentPolicyApi = {
       requestId = apiLogger.logRequest('OData', url, {
         method: 'GET',
         entityType: 'Assignmentpolicy',
-        ...options
+        filter, top, skip, orderBy
       }, requestHeaders);
 
+      // H-04 fix: Include signal for request cancellation
       const response = await fetch(url, {
         method: 'GET',
-        headers: requestHeaders
+        headers: requestHeaders,
+        signal
       });
 
       const responseHeaders = Object.fromEntries(response.headers.entries());
@@ -1005,6 +1128,10 @@ export const assignmentPolicyApi = {
 
       return result;
     } catch (error) {
+      // H-04 fix: Handle abort errors gracefully
+      if (isAbortError(error)) {
+        return { status: 'aborted', data: [], total: 0 };
+      }
       if (requestId) {
         apiLogger.logResponse(requestId, 'OData', url || 'getAssignmentPolicies', null, false, error, {}, null, null);
       }
@@ -1017,9 +1144,11 @@ export const assignmentPolicyApi = {
    * @param {string} policyId - Policy ID (integer or UId)
    * @param {string} bearerToken - OAuth bearer token
    * @param {string} impersonateUser - User email for impersonation
+   * @param {Object} options - Optional { signal } for AbortController
    * @returns {Promise<Object>} Assignment policy details with contexts and resources
    */
-  getAssignmentPolicyById: async (policyId, bearerToken, impersonateUser) => {
+  getAssignmentPolicyById: async (policyId, bearerToken, impersonateUser, options = {}) => {
+    const { signal } = options;
     let requestId;
     let url;
     try {
@@ -1040,9 +1169,11 @@ export const assignmentPolicyApi = {
         policyId
       }, requestHeaders);
 
+      // H-04 fix: Include signal for request cancellation
       const response = await fetch(url, {
         method: 'GET',
-        headers: requestHeaders
+        headers: requestHeaders,
+        signal
       });
 
       const responseHeaders = Object.fromEntries(response.headers.entries());
@@ -1072,6 +1203,10 @@ export const assignmentPolicyApi = {
 
       return result;
     } catch (error) {
+      // H-04 fix: Handle abort errors gracefully
+      if (isAbortError(error)) {
+        return { status: 'aborted', data: null };
+      }
       if (requestId) {
         apiLogger.logResponse(requestId, 'OData', url || 'getAssignmentPolicyById', null, false, error, {}, null, null);
       }
@@ -1085,9 +1220,11 @@ export const assignmentPolicyApi = {
    * @param {string} contextId - Context ID (UId)
    * @param {string} bearerToken - OAuth bearer token
    * @param {string} impersonateUser - User email for impersonation
+   * @param {Object} options - Optional { signal } for AbortController
    * @returns {Promise<Object>} Assignment policies linked to this context
    */
-  getAssignmentPoliciesByContext: async (contextId, bearerToken, impersonateUser) => {
+  getAssignmentPoliciesByContext: async (contextId, bearerToken, impersonateUser, options = {}) => {
+    const { signal } = options;
     let requestId;
     let url;
     try {
@@ -1106,9 +1243,11 @@ export const assignmentPolicyApi = {
         contextId
       }, requestHeaders);
 
+      // H-04 fix: Include signal for request cancellation
       const response = await fetch(url, {
         method: 'GET',
-        headers: requestHeaders
+        headers: requestHeaders,
+        signal
       });
 
       const responseHeaders = Object.fromEntries(response.headers.entries());
@@ -1145,6 +1284,10 @@ export const assignmentPolicyApi = {
 
       return result;
     } catch (error) {
+      // H-04 fix: Handle abort errors gracefully
+      if (isAbortError(error)) {
+        return { status: 'aborted', data: [], total: 0 };
+      }
       if (requestId) {
         apiLogger.logResponse(requestId, 'OData', url || 'getAssignmentPoliciesByContext', null, false, error, {}, null, null);
       }
@@ -1242,15 +1385,15 @@ export const odataApi = {
    * @param {string} entityType - Entity type name (e.g., 'System', 'Account', 'Resource')
    * @param {string} bearerToken - OAuth bearer token
    * @param {string} impersonateUser - User email for impersonation
-   * @param {Object} options - Query options (filter, select, top, skip, orderBy)
+   * @param {Object} options - Query options (filter, select, top, skip, orderBy, signal)
    * @returns {Promise<Object>} Query results
    */
   query: async (entityType, bearerToken, impersonateUser, options = {}) => {
+    // H-04 fix: Extract signal from options
+    const { signal, filter, select, top, skip, orderBy, expand } = options;
     let requestId;
     let url;
     try {
-      const { filter, select, top, skip, orderBy, expand } = options;
-
       // Build the OData URL
       url = `${API_CONFIG.baseUrl}${API_CONFIG.endpoints.odata.dataObjects}/${entityType}`;
 
@@ -1273,12 +1416,14 @@ export const odataApi = {
       requestId = apiLogger.logRequest('OData', url, {
         method: 'GET',
         entityType,
-        ...options
+        filter, select, top, skip, orderBy, expand
       }, requestHeaders);
 
+      // H-04 fix: Include signal for request cancellation
       const response = await fetch(url, {
         method: 'GET',
-        headers: requestHeaders
+        headers: requestHeaders,
+        signal
       });
 
       const responseHeaders = Object.fromEntries(response.headers.entries());
@@ -1304,6 +1449,10 @@ export const odataApi = {
 
       return result;
     } catch (error) {
+      // H-04 fix: Handle abort errors gracefully
+      if (isAbortError(error)) {
+        return { status: 'aborted', data: [], total: 0 };
+      }
       if (requestId) {
         apiLogger.logResponse(requestId, 'OData', url || `query:${entityType}`, null, false, error, {}, null, null);
       }

@@ -9,9 +9,11 @@
   flex-direction: column;
   height: 100%;
   min-height: 500px;
-  background: #0d0d0d;
+  background: var(--al-bg-primary);
   border-radius: 8px;
   overflow: hidden;
+  color: var(--al-text-primary);
+  transition: background 0.3s ease, color 0.3s ease;
 }
 
 .access-lens.fullscreen {
@@ -41,7 +43,7 @@
 }
 
 .breadcrumb-label {
-  color: #606070;
+  color: var(--al-text-dimmed);
   margin-right: 0.5rem;
 }
 
@@ -51,7 +53,7 @@
 }
 
 .breadcrumb-separator {
-  color: #4a4a5a;
+  color: var(--al-text-dimmed);
   margin: 0 0.25rem;
 }
 
@@ -63,19 +65,19 @@
   background: transparent;
   border: 1px solid transparent;
   border-radius: 4px;
-  color: #a0a0b0;
+  color: var(--al-text-secondary);
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .breadcrumb-btn:hover:not(:disabled) {
-  background: rgba(136, 192, 208, 0.1);
-  color: #88c0d0;
+  background: var(--al-bg-hover);
+  color: var(--al-text-accent);
 }
 
 .breadcrumb-btn.current {
-  background: rgba(136, 192, 208, 0.1);
-  color: #88c0d0;
+  background: var(--al-bg-hover);
+  color: var(--al-text-accent);
   cursor: default;
 }
 
@@ -130,8 +132,8 @@
   display: flex;
   align-items: center;
   padding: 0.3rem 0.75rem;
-  background: #121218;
-  border-bottom: 1px solid #2a2a2a;
+  background: var(--al-bg-secondary);
+  border-bottom: 1px solid var(--al-border-primary);
   flex-shrink: 0;
 }
 
@@ -141,8 +143,8 @@
   align-items: center;
   gap: 2px;
   padding: 0.35rem 0.75rem;
-  background: #151515;
-  border-bottom: 1px solid #2a2a2a;
+  background: var(--al-bg-card);
+  border-bottom: 1px solid var(--al-border-primary);
   flex-wrap: wrap;
   flex-shrink: 0;
 }
@@ -154,7 +156,7 @@
 }
 
 .filter-label {
-  color: #606070;
+  color: var(--al-text-dimmed);
   font-size: 0.8rem;
   margin-right: 0.25rem;
 }
@@ -162,7 +164,7 @@
 .filter-divider {
   width: 1px;
   height: 20px;
-  background: #3a3a4a;
+  background: var(--al-border-secondary);
   margin: 0 0.1rem;
 }
 
@@ -174,24 +176,24 @@
 .mode-btn {
   padding: 0.35rem 0.6rem;
   background: transparent;
-  border: 1px solid #3a3a4a;
+  border: 1px solid var(--al-border-secondary);
   border-radius: 4px;
-  color: #808090;
+  color: var(--al-text-muted);
   font-size: 0.75rem;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .mode-btn:hover {
-  background: rgba(136, 192, 208, 0.1);
-  border-color: rgba(136, 192, 208, 0.3);
-  color: #88c0d0;
+  background: var(--al-bg-hover);
+  border-color: var(--al-border-accent);
+  color: var(--al-text-accent);
 }
 
 .mode-btn.active {
-  background: rgba(136, 192, 208, 0.2);
-  border-color: #88c0d0;
-  color: #88c0d0;
+  background: var(--al-bg-active);
+  border-color: var(--al-accent-primary);
+  color: var(--al-text-accent);
 }
 
 /* Lane Toggle Buttons */
@@ -700,6 +702,8 @@
   /* GPU acceleration hints */
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
+  /* M-14 fix: Hint browser to pre-optimize for transforms during drag */
+  will-change: transform;
   /* Staggered reveal animation for lanes - use opacity only to avoid transform conflicts */
   animation: revealLane 0.4s ease-out forwards;
 }
@@ -1245,6 +1249,8 @@
   border: 1px solid #2a2a2a;
   border-radius: 8px;
   overflow: hidden;
+  /* M-14 fix: Paint isolation - changes inside lane don't invalidate parent paint */
+  contain: layout;
 }
 
 .lane-header {

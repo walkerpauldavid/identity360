@@ -4,6 +4,7 @@
  * Collapsible panel with smooth animation
  */
 
+import { useMemo } from 'react';
 import { getNodeIcon, getNodeColor, getReasonColor, FocusNodeSchema, extractFieldValue, NodeTypes, LaneTypes, LaneSchema } from './accessLensTypes';
 import { sanitizeAPDescription } from './accessLensUtils';
 
@@ -555,7 +556,8 @@ const ExplanationPanel = ({
     return items;
   };
 
-  const metadataItems = buildMetadataDisplay();
+  // M-04 fix: Memoize metadata display to prevent recalculation on every render
+  const metadataItems = useMemo(() => buildMetadataDisplay(), [selectedNode, rawData]);
 
   return (
     <div className={`explanation-panel ${isCollapsed ? 'collapsed' : ''}`}>

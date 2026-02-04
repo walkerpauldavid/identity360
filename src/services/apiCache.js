@@ -30,6 +30,8 @@ db.version(1).stores({
 // ============================================================================
 
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const MAX_CACHE_ENTRIES = 500; // H-08 fix: Maximum cache entries before LRU eviction
+const LRU_EVICTION_BATCH = 50; // H-08 fix: Number of oldest entries to evict when cap is reached
 
 /** Read debug logging preference from localStorage */
 const getDebugLoggingSetting = () => {
@@ -118,6 +120,9 @@ export function withApiCache(namespace, fnName, fn, cacheKeyFn) {
             'background: #4caf50; color: white; padding: 2px 6px; border-radius: 3px;'
           );
         }
+        // H-08 fix: Trigger LRU eviction asynchronously (non-blocking)
+        // Don't await — let it run in background to avoid slowing down response
+        evictOldestEntries().catch(() => {});
       } catch (e) {
         // Non-fatal — result is still returned
         if (DEBUG_CACHE_LOGGING) {
@@ -207,12 +212,53 @@ export async function purgeExpiredEntries() {
   }
 }
 
+/**
+ * H-08 fix: Evict oldest entries when cache exceeds MAX_CACHE_ENTRIES.
+ * Uses LRU (Least Recently Used) strategy based on timestamp.
+ * @returns {Promise<number>} Number of entries evicted
+ */
+export async function evictOldestEntries() {
+  try {
+    const count = await db.apiResponses.count();
+    if (count <= MAX_CACHE_ENTRIES) {
+      return 0; // No eviction needed
+    }
+
+    const toEvict = count - MAX_CACHE_ENTRIES + LRU_EVICTION_BATCH;
+
+    // Get the oldest entries by timestamp (LRU)
+    const oldestEntries = await db.apiResponses
+      .orderBy('timestamp')
+      .limit(toEvict)
+      .toArray();
+
+    // Delete by key
+    const keysToDelete = oldestEntries.map(e => e.key);
+    await db.apiResponses.bulkDelete(keysToDelete);
+
+    if (DEBUG_CACHE_LOGGING) {
+      console.log(
+        `%c[API CACHE LRU EVICT] Removed ${keysToDelete.length} oldest entries (was ${count}, now ~${count - keysToDelete.length})`,
+        'background: #9c27b0; color: white; padding: 2px 6px; border-radius: 3px;'
+      );
+    }
+
+    return keysToDelete.length;
+  } catch (e) {
+    if (DEBUG_CACHE_LOGGING) {
+      console.warn('[ApiCache] LRU eviction failed:', e.message);
+    }
+    return 0;
+  }
+}
+
 // Periodic cleanup — purge expired entries every 10 minutes with jitter
 // Random jitter (0-2 min) prevents all tabs from purging simultaneously
 const CLEANUP_BASE_MS = 10 * 60 * 1000;
 const CLEANUP_JITTER_MS = Math.floor(Math.random() * 2 * 60 * 1000);
 setInterval(() => {
   purgeExpiredEntries().catch(() => {});
+  evictOldestEntries().catch(() => {}); // H-08 fix: Also run LRU eviction
 }, CLEANUP_BASE_MS + CLEANUP_JITTER_MS);
 
 // ============================================================================
@@ -229,6 +275,9 @@ if (typeof window !== 'undefined') {
 
     /** Remove expired entries */
     purge: purgeExpiredEntries,
+
+    /** H-08 fix: Manually trigger LRU eviction */
+    evict: evictOldestEntries,
 
     /** Get cache statistics (uses count + cursor to avoid loading all data into memory) */
     stats: async () => {
@@ -296,6 +345,7 @@ if (typeof window !== 'undefined') {
 window.__omadaApiCache.clear()                - Clear ALL cached data
 window.__omadaApiCache.invalidate('identity') - Clear one namespace
 window.__omadaApiCache.purge()                - Remove expired entries
+window.__omadaApiCache.evict()                - Trigger LRU eviction (H-08)
 window.__omadaApiCache.stats()                - Cache statistics
 window.__omadaApiCache.keys()                 - List all cache keys
 window.__omadaApiCache.setLogging(true)       - Enable/disable console logging
@@ -303,6 +353,7 @@ window.__omadaApiCache.db                     - Direct Dexie DB access
 
 Namespaces: identity, accessRequest, approval, assignment, assignmentPolicy, odata
 TTL: ${CACHE_TTL_MS / 60000} minutes
+Max entries: ${MAX_CACHE_ENTRIES} (LRU eviction removes ${LRU_EVICTION_BATCH} oldest when exceeded)
       `);
     }
   };

@@ -20,8 +20,21 @@ const getInitialConsoleLoggingSetting = () => {
   return true; // Default to enabled
 };
 
+// M-15 fix: Check if logging is completely disabled (no console, no storage)
+const getCompletelyDisabledSetting = () => {
+  try {
+    const stored = localStorage.getItem('app_user_preferences');
+    if (stored) {
+      const prefs = JSON.parse(stored);
+      return prefs.debugDisableApiLogging === true;
+    }
+  } catch (e) { /* ignore */ }
+  return false;
+};
+
 // Debug configuration - read from user preferences
 let DEBUG_CONSOLE_LOGGING = getInitialConsoleLoggingSetting();
+let LOGGING_COMPLETELY_DISABLED = getCompletelyDisabledSetting();
 
 // Functions to exclude from console logging (still logged internally)
 const EXCLUDE_FROM_CONSOLE = [
@@ -71,6 +84,11 @@ class ApiLogger {
    * Log an API request
    */
   logRequest(type, endpoint, params = {}, requestHeaders = {}) {
+    // M-15 fix: Early return if logging is completely disabled (avoids object creation)
+    if (LOGGING_COMPLETELY_DISABLED) {
+      return `disabled-${Date.now()}`; // Return dummy ID
+    }
+
     const logEntry = {
       timestamp: new Date().toISOString(),
       type: 'REQUEST',
@@ -107,6 +125,11 @@ class ApiLogger {
    * Log an API response
    */
   logResponse(requestId, type, endpoint, response, success = true, error = null, responseHeaders = {}, statusCode = null, rawResponse = null) {
+    // M-15 fix: Early return if logging is completely disabled (avoids object creation)
+    if (LOGGING_COMPLETELY_DISABLED) {
+      return;
+    }
+
     const logEntry = {
       timestamp: new Date().toISOString(),
       type: 'RESPONSE',
@@ -377,6 +400,23 @@ class ApiLogger {
    */
   isConsoleLoggingEnabled() {
     return DEBUG_CONSOLE_LOGGING;
+  }
+
+  /**
+   * M-15 fix: Completely disable all logging (for performance)
+   * @param {boolean} disabled - Whether to completely disable logging
+   */
+  setLoggingDisabled(disabled) {
+    LOGGING_COMPLETELY_DISABLED = disabled;
+    console.log(`[ApiLogger] Logging completely ${disabled ? 'DISABLED (no overhead)' : 'ENABLED'}`);
+  }
+
+  /**
+   * M-15 fix: Check if logging is completely disabled
+   * @returns {boolean} Whether logging is completely disabled
+   */
+  isLoggingDisabled() {
+    return LOGGING_COMPLETELY_DISABLED;
   }
 
   /**

@@ -16,6 +16,42 @@ import { LaneSchema, LaneTypes, shouldLog } from './accessLensTypes';
 import { usePolicyAnalysis } from '../../hooks/usePolicyAnalysis';
 import './AccessLensPage.css';
 
+/**
+ * Build reverse lookup maps for identity details to avoid O(n×m) fallback scans
+ * (H-03/NEW-1 fix: pre-build lookup maps before enrichment loops)
+ * @param {Object} identityDetailsMap - Map of identity details keyed by some ID
+ * @returns {Object} Object with uIdMap and idMap for O(1) lookups by UId or Id
+ */
+const buildIdentityLookupMaps = (identityDetailsMap) => {
+  const uIdMap = new Map();
+  const idMap = new Map();
+
+  for (const details of Object.values(identityDetailsMap)) {
+    if (details.UId) uIdMap.set(String(details.UId), details);
+    if (details.Id) idMap.set(String(details.Id), details);
+  }
+
+  return { uIdMap, idMap };
+};
+
+/**
+ * Find identity details using pre-built lookup maps (O(1) instead of O(n))
+ * @param {Object} identityDetailsMap - Original map for direct lookup
+ * @param {Map} uIdMap - Pre-built UId lookup map
+ * @param {Map} idMap - Pre-built Id lookup map
+ * @param {string} identityId - The identity ID to look up
+ * @returns {Object|undefined} The identity details or undefined
+ */
+const findIdentityDetails = (identityDetailsMap, uIdMap, idMap, identityId) => {
+  // Try direct lookup first
+  let details = identityDetailsMap[identityId];
+  if (details) return details;
+
+  // Use pre-built maps for O(1) fallback lookups instead of O(n) scan
+  details = uIdMap.get(identityId) || idMap.get(identityId);
+  return details;
+};
+
 const AccessLensPage = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -33,8 +69,9 @@ const AccessLensPage = () => {
   // State for identity selection
   const [selectedIdentity, setSelectedIdentity] = useState(null);
   const [showSearchDialog, setShowSearchDialog] = useState(false);
-  const [isLoadingData, setIsLoadingData] = useState(false);
-  const [loadingStatus, setLoadingStatus] = useState(''); // Current loading step description
+  // Start with loading=true so the loading screen shows immediately (no flash of empty content)
+  const [isLoadingData, setIsLoadingData] = useState(true);
+  const [loadingStatus, setLoadingStatus] = useState('Initializing...'); // Current loading step description
   const [loadError, setLoadError] = useState(null);
   const [initialLoadDone, setInitialLoadDone] = useState(false);
 
@@ -82,6 +119,9 @@ const AccessLensPage = () => {
       // loadIdentityData will be called by the next effect
     } else {
       // No URL params - show search dialog for identity selection
+      // Stop loading state since we're waiting for user input
+      setIsLoadingData(false);
+      setLoadingStatus('');
       setShowSearchDialog(true);
     }
 
@@ -502,18 +542,15 @@ const AccessLensPage = () => {
         const mapKeys = Object.keys(identityDetailsMap);
 
         if (mapKeys.length > 0 && identitiesLane) {
+          // H-03/NEW-1 fix: Pre-build lookup maps for O(1) fallback instead of O(n) scan
+          const { uIdMap, idMap } = buildIdentityLookupMaps(identityDetailsMap);
+
           lanes = lanes.map(lane => {
             if (lane.laneType === 'Identities') {
               const enrichedItems = lane.items.map((item) => {
                 const identityId = String(item.node.id);
-                let odataDetails = identityDetailsMap[identityId];
-
-                // If not found by direct ID, try to find by UId match
-                if (!odataDetails) {
-                  odataDetails = Object.values(identityDetailsMap).find(d =>
-                    String(d.UId) === identityId || String(d.Id) === identityId
-                  );
-                }
+                // Use helper function with pre-built maps for O(1) lookups
+                const odataDetails = findIdentityDetails(identityDetailsMap, uIdMap, idMap, identityId);
 
                 if (odataDetails) {
                   // Enrich the node with OData details
@@ -831,18 +868,15 @@ const AccessLensPage = () => {
               try {
                 const identityDetailsMap = await fetchAllIdentityDetails(assignmentsResult.data, bearerToken, impersonateUser);
                 if (Object.keys(identityDetailsMap).length > 0) {
+                  // H-03/NEW-1 fix: Pre-build lookup maps for O(1) fallback instead of O(n) scan
+                  const { uIdMap, idMap } = buildIdentityLookupMaps(identityDetailsMap);
+
                   lanes = lanes.map(lane => {
                     if (lane.laneType === 'Identities') {
                       const enrichedItems = lane.items.map((item) => {
                         const identityId = String(item.node.id);
-                        let odataDetails = identityDetailsMap[identityId];
-
-                        // If not found by direct ID, try to find by UId match
-                        if (!odataDetails) {
-                          odataDetails = Object.values(identityDetailsMap).find(d =>
-                            String(d.UId) === identityId || String(d.Id) === identityId
-                          );
-                        }
+                        // Use helper function with pre-built maps for O(1) lookups
+                        const odataDetails = findIdentityDetails(identityDetailsMap, uIdMap, idMap, identityId);
 
                         if (odataDetails) {
                           return {
@@ -974,18 +1008,15 @@ const AccessLensPage = () => {
               try {
                 const identityDetailsMap = await fetchAllIdentityDetails(assignmentsResult.data, bearerToken, impersonateUser);
                 if (Object.keys(identityDetailsMap).length > 0) {
+                  // H-03/NEW-1 fix: Pre-build lookup maps for O(1) fallback instead of O(n) scan
+                  const { uIdMap, idMap } = buildIdentityLookupMaps(identityDetailsMap);
+
                   lanes = lanes.map(lane => {
                     if (lane.laneType === 'Identities') {
                       const enrichedItems = lane.items.map((item) => {
                         const identityId = String(item.node.id);
-                        let odataDetails = identityDetailsMap[identityId];
-
-                        // If not found by direct ID, try to find by UId match
-                        if (!odataDetails) {
-                          odataDetails = Object.values(identityDetailsMap).find(d =>
-                            String(d.UId) === identityId || String(d.Id) === identityId
-                          );
-                        }
+                        // Use helper function with pre-built maps for O(1) lookups
+                        const odataDetails = findIdentityDetails(identityDetailsMap, uIdMap, idMap, identityId);
 
                         if (odataDetails) {
                           return {
@@ -1505,16 +1536,16 @@ const AccessLensPage = () => {
             try {
               const identityDetailsMap = await fetchAllIdentityDetails(allAssignments, bearerToken, impersonateUser);
               if (Object.keys(identityDetailsMap).length > 0) {
+                // H-03/NEW-1 fix: Pre-build lookup maps for O(1) fallback instead of O(n) scan
+                const { uIdMap, idMap } = buildIdentityLookupMaps(identityDetailsMap);
+
                 lanes = lanes.map(lane => {
                   if (lane.laneType !== 'Identities') return lane;
                   const enrichedItems = lane.items.map((item) => {
                     const identityId = String(item.node.id);
-                    let odataDetails = identityDetailsMap[identityId];
-                    if (!odataDetails) {
-                      odataDetails = Object.values(identityDetailsMap).find(d =>
-                        String(d.UId) === identityId || String(d.Id) === identityId
-                      );
-                    }
+                    // Use helper function with pre-built maps for O(1) lookups
+                    const odataDetails = findIdentityDetails(identityDetailsMap, uIdMap, idMap, identityId);
+
                     if (odataDetails) {
                       return {
                         ...item,
@@ -1643,6 +1674,16 @@ const AccessLensPage = () => {
               </>
             )}
           </>
+        ) : isLoadingData ? (
+          // Show loading overlay when loading from URL params (before selectedIdentity is set)
+          <div className="data-loading-overlay">
+            <div className={`data-loading-spinner ${cacheHitFlash ? 'cache-hit' : ''}`}></div>
+            <h3 className="loading-title">Populating Identity360</h3>
+            <p className="loading-status">{loadingStatus || 'Initializing...'}</p>
+            <div className="loading-details">
+              <span>Preparing to load identity data...</span>
+            </div>
+          </div>
         ) : (
           <div className="no-identity-selected">
             <div className="empty-state">

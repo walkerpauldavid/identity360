@@ -649,15 +649,18 @@ export const GraphQLQueries = {
  * @param {string} endpoint - GraphQL endpoint URL
  * @param {Object} queryObject - Query object with 'query' property
  * @param {Object} headers - Request headers
+ * @param {Object} options - Optional settings including { signal } for AbortController
  * @returns {Promise<Object>} API response with data, headers, status, and rawResponse
  */
-export const executeGraphQL = async (endpoint, queryObject, headers) => {
+export const executeGraphQL = async (endpoint, queryObject, headers, options = {}) => {
+  const { signal } = options;
   try {
     const response = await fetch(endpoint, {
       method: 'POST',
       headers,
       body: JSON.stringify(queryObject),
-      referrerPolicy: 'no-referrer'  // Don't send Referer header to avoid origin validation issues
+      referrerPolicy: 'no-referrer',  // Don't send Referer header to avoid origin validation issues
+      signal  // H-04 fix: Support request cancellation
     });
 
     // Capture response headers and status

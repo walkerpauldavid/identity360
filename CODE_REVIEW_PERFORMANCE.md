@@ -1,22 +1,48 @@
 # Identity360 / AccessLens — Performance & Code Review
 
-**Date:** 2026-01-27
+**Date:** 2026-01-27 (Initial) | **Updated:** 2026-02-03
 **Scope:** Full codebase review — React components, services, caching, CSS, build config
 **Reviewer:** Claude Code (automated static analysis)
 
 ---
 
+## Current Status Summary (as of 2026-02-03)
+
+| Metric | Initial | Current | Change |
+|--------|---------|---------|--------|
+| Total Issues | 42 | 9 open | 33 resolved (79%) |
+| Initial Bundle | 810KB | 211KB | -74% |
+| Phase 1 (Quick Wins) | 0% | 100% | Complete |
+| Phase 2 (Memoization) | 0% | 100% | Complete |
+| Phase 3 (Architecture) | 0% | 83% | In Progress (C-02, H-03, H-04, H-08 done) |
+
+### Session 2 Accomplishments (2026-02-03)
+- **C-02:** Fixed ConnectorLines layout thrashing (cached refs, batched DOM reads, 30fps throttle)
+- **C-03:** Memoized IdentitiesTable filter/sort with `useMemo`
+- **H-03:** Pre-built identity lookup maps (eliminates O(n×m) scans)
+- **H-04:** AbortController support for 11 API functions + `useAbortController` hook
+- **H-08:** LRU cache eviction for IndexedDB (max 500 entries, evicts 50 oldest when exceeded)
+- **M-01/M-02:** Wrapped LaneCard and DraggableLane with `React.memo`
+- **M-04/M-05:** Memoized ObjectInspector and FocusCard display logic
+- **M-14:** CSS `will-change` and `contain` properties for animation optimization
+- **M-15:** Early return guard in apiLogger when logging completely disabled
+- **NEW-5:** Wrapped IdentitiesTable with `React.memo`
+- **Theme System:** Added light/dark theme toggle with Omada brand colors
+
+---
+
 ## Executive Summary
 
-The codebase has solid architectural foundations (schema-driven design, HOF caching, cross-lane filtering) but contains **42 identified performance issues** across 4 severity levels. The most impactful issues are:
+The codebase has solid architectural foundations (schema-driven design, HOF caching, cross-lane filtering) but originally contained **42 identified performance issues** across 4 severity levels. After two optimization sessions, **28 issues have been resolved** (67%).
 
-1. **Missing React memoization** — expensive computations re-run on every render
-2. **Layout thrashing during drag** — DOM measurements in tight RAF loops
-3. **No code splitting** — monolithic 818KB bundle loaded upfront
-4. **Unnecessary re-renders** — unstable callback references defeat `React.memo`
-5. **Sequential API batch delays** — artificial 50ms pauses between batches
+**Originally identified issues:**
+1. ~~**Missing React memoization**~~ — ✅ Largely resolved (Phase 2 complete)
+2. ~~**Layout thrashing during drag**~~ — ✅ Resolved (C-02: cached refs, batched reads, 30fps throttle)
+3. ~~**No code splitting**~~ — ✅ Resolved (74% bundle reduction)
+4. ~~**Unnecessary re-renders**~~ — ✅ Resolved (stable callbacks, React.memo)
+5. ~~**Sequential API batch delays**~~ — ✅ Resolved (50ms delays removed)
 
-Estimated improvement from addressing HIGH/CRITICAL items: **30-50% faster interactions, 40% smaller initial load**.
+**Remaining work:** H-05 (server-side policy filtering), plus 5 Medium and 2 Low issues.
 
 ---
 
@@ -33,26 +59,31 @@ Estimated improvement from addressing HIGH/CRITICAL items: **30-50% faster inter
 
 ## CRITICAL Issues (Fix First)
 
-### C-01: visibleLanes useMemo Has Too Many Dependencies
+### ~~C-01: visibleLanes useMemo Has Too Many Dependencies~~ — DONE
 - **File:** `src/components/access-lens/AccessLens.jsx` ~line 1655
 - **Problem:** A massive `useMemo` (400+ lines) computes filtered/visible lanes. It depends on 14+ state variables including `selectedAccountId`, `selectedSystemId`, `selectedLogicalAppId`, `selectedIdentityId`, `selectedPolicyId`, `selectedEntitlementId`, `selectedViolationId`, `selectedContextId`, plus 5 filter properties. ANY state change in these triggers a full re-filter of all lanes.
 - **Impact:** CRITICAL — This is the hot path. Every click, every filter toggle, every selection re-runs hundreds of lines of filtering, Set operations, and array transformations.
 - **Risk of Fix:** HIGH — Requires splitting into intermediate memoization layers (separate cross-lane filtering from toolbar filtering).
 - **Recommendation:** Split into 3 stages: (1) `useMemo` for cross-lane filtered lanes, (2) `useMemo` for toolbar-filtered lanes, (3) `useMemo` for visibility-filtered lanes. Each depends only on its relevant inputs.
 
-### C-02: ConnectorLines Layout Thrashing During Drag
+### ~~C-02: ConnectorLines Layout Thrashing During Drag~~ — DONE (Session 2)
 - **File:** `src/components/access-lens/AccessLens.jsx` ~lines 437-540
 - **Problem:** During drag, a `requestAnimationFrame` loop calls `updateLines()` 60 times/second. Each call uses `getBoundingClientRect()` on the fulcrum + all lane elements, then sets state. This is classic **layout thrashing** — reading layout (triggers reflow) then writing (triggers repaint) in rapid succession.
 - **Impact:** CRITICAL — Visible jank during drag with 6+ lanes. Each frame queries DOM for 8+ elements via `document.querySelector()`.
 - **Risk of Fix:** HIGH — Requires caching element refs and batching DOM reads.
-- **Recommendation:** Cache lane refs via `useRef` Map. Read all positions in a single batch before computing lines. Consider debouncing to every 2nd frame.
+- **Fix:**
+  1. Added `laneRefsMap` useRef to cache lane element references (eliminates querySelector)
+  2. Updated `DraggableLane` with `onRefChange` callback and `combinedRef` to register refs
+  3. Updated `ConnectorLines` to accept `laneRefs` Map prop
+  4. Batched ALL `getBoundingClientRect()` calls before any calculations (prevents layout thrashing)
+  5. Added frame throttling during drag (every 2nd frame = 30fps, visually smooth)
+  - Result: Eliminates N querySelector calls per frame + prevents interleaved read/write layout thrashing
 
-### C-03: IdentitiesTable Filter/Sort Not Memoized
+### ~~C-03: IdentitiesTable Filter/Sort Not Memoized~~ — DONE (Session 2)
 - **File:** `src/components/identities/IdentitiesTable.jsx` ~lines 241-343
 - **Problem:** `filteredIdentities` applies 8+ filter conditions to ALL identities, then `sortedIdentities` spreads and sorts with `localeCompare()` — both run on **every render** without `useMemo`.
 - **Impact:** CRITICAL — With 1000+ identities, O(n) filtering + O(n log n) sorting on every keystroke, every state change.
-- **Risk of Fix:** MEDIUM — Add `useMemo` wrappers with correct dependencies.
-- **Recommendation:** Wrap both in `useMemo`. Also cache `.toLowerCase()` results.
+- **Fix:** Wrapped `filteredIdentities` with `useMemo` (11 dependencies) and `sortedIdentities` with `useMemo` (3 dependencies). Also wrapped component export with `memo()`.
 
 ---
 
@@ -69,27 +100,31 @@ Estimated improvement from addressing HIGH/CRITICAL items: **30-50% faster inter
   3. **Removed stale `focusNode?.type` dependency** — was never used inside the callback body.
   - Result: `handleItemClick` is now effectively stable (only recreated if `onFetchObjectDetails` prop changes, which is rare). All 6-8 lane cards that receive `onItemClick` no longer re-render on selection/filter state changes.
 
-### H-02: Sequential API Batch Delays (50ms Fixed Pauses)
+### ~~H-02: Sequential API Batch Delays (50ms Fixed Pauses)~~ — DONE
 - **File:** `src/components/access-lens/AccessLensPage.jsx` ~lines 189-207, 251-268
-- **Problem:** Identity and system detail fetches are batched in groups of 5 with a hardcoded 50ms delay between batches:
-  ```javascript
-  await new Promise(resolve => setTimeout(resolve, 50));
-  ```
-  For 100 identities: 20 batches x 50ms = **1 full second** of artificial delay.
+- **Problem:** Identity and system detail fetches are batched in groups of 5 with a hardcoded 50ms delay between batches.
 - **Impact:** HIGH — Directly adds wall-clock time to every data load.
-- **Risk of Fix:** MEDIUM — Remove the delay or make it adaptive based on response times.
+- **Fix:** Replaced `setTimeout(resolve, 50)` with `setTimeout(resolve, 0)` in both batch loops. Eliminates 1+ second of artificial delay.
 
-### H-03: Identity Enrichment O(n*m) Fallback Lookup
+### ~~H-03: Identity Enrichment O(n*m) Fallback Lookup~~ — DONE (Session 2)
 - **File:** `src/components/access-lens/AccessLensPage.jsx` ~lines 505-554
 - **Problem:** For each identity item, if direct `identityDetailsMap[id]` lookup fails, falls back to `Object.values(identityDetailsMap).find(...)` — iterating ALL identity details for each failed lookup.
 - **Impact:** HIGH — Worst case for 1000 identities is 1M comparisons.
-- **Risk of Fix:** MEDIUM — Pre-build index Map keyed by both `UId` and `Id` before the enrichment loop.
+- **Fix:** Added `buildIdentityLookupMaps()` and `findIdentityDetails()` helper functions. Pre-builds UId and Id Maps for O(1) lookups. Fixed all 4 enrichment locations.
 
-### H-04: No Abort Controllers on API Requests
+### ~~H-04: No Abort Controllers on API Requests~~ — DONE (Session 2)
 - **File:** `src/services/omadaApi.js` — all fetch calls
 - **Problem:** No `AbortController` on any `fetch()` call. Rapid navigation, searches, or pivots fire new requests without cancelling old ones. Stale responses can overwrite fresh data.
 - **Impact:** HIGH — Causes cascading requests, memory bloat, and potential race conditions.
 - **Risk of Fix:** MEDIUM — Requires adding AbortController to all API functions and cleanup in components.
+- **Fix:**
+  1. Added AbortController management functions to `omadaApi.js`: `createAbortController()`, `clearAbortController()`, `cancelAllRequests()`, `cancelRequestsByPrefix()`, `isAbortError()`
+  2. Updated `executeGraphQL` in `queryBuilder.js` to accept optional `{ signal }` options
+  3. Updated 11 API functions with signal support and abort error handling:
+     - OData: `searchIdentities`, `getIdentityById`, `getIdentityCountByCategoryId`, `getIdentitiesByCategoryId`, `getAssignmentPolicies`, `getAssignmentPolicyById`, `getAssignmentPoliciesByContext`, `odataApi.query`
+     - GraphQL: `getIdentityContexts`, `getCalculatedAssignmentsDetailed`, `getIdentitiesHavingResource`
+  4. Created `src/hooks/useAbortController.js` hook for React components with `getSignal()`, `clearRequest()`, `cancelAll()` methods and auto-cleanup on unmount
+  5. All functions return `{ status: 'aborted' }` when cancelled, preventing stale data overwrites
 
 ### H-05: Client-Side Filtering of All Assignment Policies
 - **File:** `src/services/omadaApi.js` ~lines 1127-1134
@@ -97,69 +132,66 @@ Estimated improvement from addressing HIGH/CRITICAL items: **30-50% faster inter
 - **Impact:** HIGH — Large deployments will have slow context-to-policy lookups.
 - **Risk of Fix:** MEDIUM — Use OData server-side `$filter` instead.
 
-### H-06: No Route-Level Code Splitting
+### ~~H-06: No Route-Level Code Splitting~~ — DONE
 - **File:** `src/App.jsx` ~lines 1-18
-- **Problem:** All page components (`Dashboard`, `AccessLensPage`, `Admin`, `Settings`, etc.) are imported at the top level. The entire app loads as a monolithic 818KB bundle.
-- **Impact:** HIGH — Slow initial page load, especially on slower networks.
-- **Risk of Fix:** LOW — Replace imports with `React.lazy()` + `Suspense`.
+- **Problem:** All page components imported at the top level as monolithic 818KB bundle.
+- **Fix:** Converted 10 page components to `React.lazy()` with `Suspense` fallback. Initial load reduced to 211KB (74% reduction).
 
-### H-07: No Vite Code Splitting Configuration
+### ~~H-07: No Vite Code Splitting Configuration~~ — DONE
 - **File:** `vite.config.js`
-- **Problem:** No `rollupOptions.output.manualChunks` configuration. Vite already warns about this in the build output.
-- **Impact:** HIGH — Monolithic bundle. Dexie, DnD kit, and other libraries should be separate chunks.
-- **Risk of Fix:** LOW — Add manual chunk splitting for vendor libraries.
+- **Problem:** No `rollupOptions.output.manualChunks` configuration.
+- **Fix:** Added manual chunk splitting: `vendor-react`, `vendor-dnd`, `vendor-dexie`, `vendor-query`. Vite chunk size warning eliminated.
 
-### H-08: Unbounded IndexedDB Cache Growth
+### ~~H-08: Unbounded IndexedDB Cache Growth~~ — DONE (Session 2)
 - **File:** `src/services/apiCache.js`
 - **Problem:** Cache can grow without limit. Only TTL-based cleanup (5-minute expiry, 10-minute purge). After extended usage, IndexedDB could accumulate thousands of stale entries.
 - **Impact:** HIGH — Storage quota exhaustion, slow IndexedDB queries.
 - **Risk of Fix:** MEDIUM — Add entry count cap with LRU eviction.
+- **Fix:**
+  1. Added `MAX_CACHE_ENTRIES = 500` and `LRU_EVICTION_BATCH = 50` constants
+  2. Added `evictOldestEntries()` function that removes oldest entries by timestamp when cap exceeded
+  3. Triggers LRU eviction asynchronously after each cache store (non-blocking)
+  4. Also runs LRU eviction in periodic cleanup interval
+  5. Added `window.__omadaApiCache.evict()` debug helper
 
 ---
 
 ## MEDIUM Issues
 
-### M-01: LaneCard Not Wrapped in React.memo
+### ~~M-01: LaneCard Not Wrapped in React.memo~~ — DONE (Session 2)
 - **File:** `src/components/access-lens/LaneCard.jsx` ~line 20
-- **Problem:** LaneCard receives many props from AccessLens and re-renders on every parent state change, even if its own props haven't changed.
-- **Impact:** MEDIUM — 6-8 lane cards re-render unnecessarily on every interaction.
-- **Risk of Fix:** MEDIUM — Requires stable callback props (useCallback) to be effective.
+- **Problem:** LaneCard receives many props from AccessLens and re-renders on every parent state change.
+- **Fix:** Wrapped component export with `memo()`. Prevents 6-8 lane cards from re-rendering unnecessarily.
 
-### M-02: DraggableLane Not Memoized
+### ~~M-02: DraggableLane Not Memoized~~ — DONE (Session 2)
 - **File:** `src/components/access-lens/AccessLens.jsx` ~lines 376-431
-- **Problem:** DraggableLane wrapper re-renders on every parent render. All 6-8 lanes re-render during drag even though only positions change.
-- **Impact:** MEDIUM — Amplified with lane content re-renders.
-- **Risk of Fix:** MEDIUM — Add React.memo with custom comparator.
+- **Problem:** DraggableLane wrapper re-renders on every parent render.
+- **Fix:** Wrapped component definition with `memo()`. Prevents lane re-renders during drag.
 
-### M-03: LaneItemRow Custom Memo Always Fails on Callback Check
+### ~~M-03: LaneItemRow Custom Memo Always Fails on Callback Check~~ — DONE
 - **File:** `src/components/access-lens/LaneItemRow.jsx` ~lines 390-392
-- **Problem:** Custom `areEqual` function checks callback identity (`prevProps.onItemClick === nextProps.onItemClick`). Since parent creates inline callbacks, this check always fails, defeating the entire memo.
-- **Impact:** MEDIUM — All lane items re-render on every parent change despite React.memo.
-- **Risk of Fix:** LOW — Use useCallback in parent for stable references.
+- **Problem:** Custom `areEqual` function checks callback identity which always failed.
+- **Fix:** Implemented proper callback identity checks with explicit documentation about stale closure prevention.
 
-### M-04: ObjectInspector Deep Iteration Not Memoized
+### ~~M-04: ObjectInspector Deep Iteration Not Memoized~~ — DONE (Session 2)
 - **File:** `src/components/access-lens/ObjectInspector.jsx` ~lines 420-550
-- **Problem:** `buildMetadataDisplay` iterates through `selectedNode.metadata` and `rawData` using `Object.entries` and nested operations during render, not in `useMemo`.
-- **Impact:** MEDIUM — Large nodes (Systems, Accounts) can have 50+ metadata fields.
-- **Risk of Fix:** MEDIUM — Extract to useMemo with `selectedNode` dependency.
+- **Problem:** `buildMetadataDisplay` iterates through metadata on every render without memoization.
+- **Fix:** Added `useMemo` to memoize the `buildMetadataDisplay()` result with `[selectedNode, rawData]` dependencies.
 
-### M-05: FocusCard Display Logic Not Memoized
+### ~~M-05: FocusCard Display Logic Not Memoized~~ — DONE (Session 2)
 - **File:** `src/components/access-lens/FocusCard.jsx` ~lines 93-121
-- **Problem:** `displayAttributes` array processing runs inline during render. With large metadata objects, this is expensive.
-- **Impact:** MEDIUM — Runs on every parent re-render.
-- **Risk of Fix:** MEDIUM — Extract to useMemo.
+- **Problem:** `displayAttributes` array processing runs inline during render.
+- **Fix:** Wrapped `displayAttributes` calculation with `useMemo` and appropriate dependencies.
 
-### M-06: FilterBar Creates Objects Inside .map() Loop
+### ~~M-06: FilterBar Creates Objects Inside .map() Loop~~ — DONE
 - **File:** `src/components/access-lens/FilterBar.jsx` ~lines 146-151
-- **Problem:** `reasonTypeHelp` dictionary object is created inside the `.map()` callback for every `BaseReasonTypes` entry on every render.
-- **Impact:** MEDIUM — 4-5 identical objects created every render.
-- **Risk of Fix:** LOW — Extract to module-level constant.
+- **Problem:** `reasonTypeHelp` dictionary object created inside `.map()` callback on every render.
+- **Fix:** Extracted to module-level `REASON_TYPE_HELP` constant.
 
-### M-07: Redundant Dynamic Imports in handlePivotToNode
+### ~~M-07: Redundant Dynamic Imports in handlePivotToNode~~ — DONE
 - **File:** `src/components/access-lens/AccessLensPage.jsx` ~lines 467-468, 667, 719
-- **Problem:** Same module (`accessLensDataService`) dynamically imported multiple times in the same function. Each `await import()` has parsing overhead.
-- **Impact:** MEDIUM — Adds 10-50ms per pivot.
-- **Risk of Fix:** LOW — Import once at top of function or at module level.
+- **Problem:** Same module dynamically imported multiple times in the same function.
+- **Fix:** Consolidated 7 redundant imports into single import at function entry.
 
 ### ~~M-08: Repeated Array.from() Conversions~~ — DONE
 - **File:** `src/components/access-lens/accessLensDataService.js` — multiple locations
@@ -199,17 +231,19 @@ Estimated improvement from addressing HIGH/CRITICAL items: **30-50% faster inter
 - **Impact:** MEDIUM — Paint thrashing during interactions, especially on low-end devices.
 - **Risk of Fix:** LOW — Simplify shadows, use `will-change` hints, disable blur on mobile.
 
-### M-14: Missing CSS will-change / contain Properties
+### ~~M-14: Missing CSS will-change / contain Properties~~ — DONE (Session 2)
 - **File:** `src/components/access-lens/AccessLens.css`
 - **Problem:** Draggable lanes and animated elements lack `will-change: transform` and CSS containment hints. Browser can't pre-optimize compositing.
 - **Impact:** MEDIUM — Missed optimization opportunity for animations.
 - **Risk of Fix:** LOW — Add `will-change` to `.draggable-lane` and `contain: layout` to `.lane-card`.
+- **Fix:** Added `will-change: transform` to `.draggable-lane` and `contain: layout` to `.lane-card` for paint isolation.
 
-### M-15: Excessive Console Logging Serialization
-- **File:** `src/services/omadaApi.js` — every API call
+### ~~M-15: Excessive Console Logging Serialization~~ — DONE (Session 2)
+- **File:** `src/services/apiLogger.js` — logRequest/logResponse methods
 - **Problem:** Every request logs full header objects and parameter objects via `apiLogger.logRequest()`. Even when logging is disabled, some serialization happens.
 - **Impact:** MEDIUM — Constant overhead on every API call.
 - **Risk of Fix:** LOW — Guard serialization behind debug check.
+- **Fix:** Added `LOGGING_COMPLETELY_DISABLED` flag with early return in `logRequest()` and `logResponse()`. When set via `debugDisableApiLogging` preference or `apiLogger.setLoggingDisabled(true)`, no log objects are created.
 
 ### M-16: LocalStorage Quota Exhaustion in API Logger
 - **File:** `src/services/apiLogger.js` ~lines 407-418
@@ -321,6 +355,7 @@ Estimated improvement from addressing HIGH/CRITICAL items: **30-50% faster inter
 
 ## Impact Analysis Summary
 
+### Original Issues (42 total)
 | Category | Critical | High | Medium | Low | Total |
 |----------|----------|------|--------|-----|-------|
 | React Rendering | 2 | 1 | 6 | 3 | 12 |
@@ -331,6 +366,17 @@ Estimated improvement from addressing HIGH/CRITICAL items: **30-50% faster inter
 | Build/Bundle | — | 2 | 1 | — | 3 |
 | Auth/State | — | — | 1 | 1 | 2 |
 | **Total** | **3** | **10** | **17** | **12** | **42** |
+
+### Resolution Status (as of 2026-02-03)
+| Severity | Original | Resolved | Remaining |
+|----------|----------|----------|-----------|
+| Critical | 3 | 3 | 0 |
+| High | 10 | 8 | 2 (H-05) |
+| Medium | 17 | 12 | 5 |
+| Low | 12 | 10 | 2 |
+| **Total** | **42** | **33** | **9** |
+
+**Resolution rate: 79%** — All Critical issues resolved!
 
 ---
 
@@ -370,20 +416,46 @@ Estimated improvement from addressing HIGH/CRITICAL items: **30-50% faster inter
 - **Problem:** When the user toggled the Object Inspector off via the toolbar button, clicking any lane item would force `setShowObjectInspector(true)`, overriding the user's preference.
 - **Fix:** Removed the auto-show behavior. When the inspector is hidden, lane clicks still perform selection highlighting and cross-lane filtering but skip the inspector panel update entirely (early return before API fetch). Also gates `setInspectorCollapsed(false)` behind `showObjectInspector` check. `handleCentralNodeClick` already had the correct guard.
 
-### Phase 2: Memoization Pass (Medium Risk, High Impact)
+### Phase 2: Memoization Pass (Medium Risk, High Impact) -- COMPLETED
 6. ~~**C-01:** Split `visibleLanes` useMemo into staged memoization~~ (Completed above)
-7. **C-03:** Add useMemo to IdentitiesTable filter/sort
-8. **H-01:** Consolidate selection state + use useRef for stable callbacks
-9. **M-01 + M-02:** Add React.memo to LaneCard and DraggableLane
-10. **M-03:** Fix LaneItemRow memo comparison (use useCallback in parent)
-11. **M-04 + M-05:** Memoize ObjectInspector and FocusCard display logic
+7. ~~**C-03:** Add useMemo to IdentitiesTable filter/sort~~ **DONE (Session 2)**
+   - Wrapped `filteredIdentities` with `useMemo` (11 dependencies)
+   - Wrapped `sortedIdentities` with `useMemo` (3 dependencies)
+   - Result: Prevents expensive O(n) filtering + O(n log n) sorting on every render
+8. ~~**H-01:** Consolidate selection state + use useRef for stable callbacks~~ **DONE**
+9. ~~**M-01 + M-02:** Add React.memo to LaneCard and DraggableLane~~ **DONE (Session 2)**
+   - Wrapped `LaneCard` export with `memo()` in LaneCard.jsx
+   - Wrapped `DraggableLane` component with `memo()` in AccessLens.jsx
+   - Result: Prevents 6-8 lane cards from re-rendering on every parent state change
+10. ~~**M-03:** Fix LaneItemRow memo comparison~~ **DONE**
+11. ~~**M-04 + M-05:** Memoize ObjectInspector and FocusCard display logic~~ **DONE (Session 2)**
+   - **M-04:** Added `useMemo` to `buildMetadataDisplay()` result in ObjectInspector.jsx
+   - **M-05:** Wrapped `displayAttributes` calculation with `useMemo` in FocusCard.jsx
+   - Result: Prevents expensive metadata iteration on every render
+
+**Additional Session 2 fixes:**
+- ~~**H-03/NEW-1:** Pre-build identity lookup maps~~ **DONE (Session 2)**
+  - Added `buildIdentityLookupMaps()` helper function at top of AccessLensPage.jsx
+  - Added `findIdentityDetails()` helper for O(1) lookups using pre-built Maps
+  - Fixed all 4 O(n×m) fallback locations: system-centric view (~line 543), system pivot (~line 869), logical app pivot (~line 1010), policy pivot (~line 1537)
+  - Result: Eliminates O(n×m) worst-case complexity, now O(n+m) for map building + O(n) for lookups
+- ~~**NEW-5:** IdentitiesTable wrapped in React.memo~~ **DONE (Session 2)**
+  - Added `memo` wrapper to component export
+  - Result: Prevents re-renders when parent changes but props don't
+
+**Theme System Added (Session 2):**
+- Created `AccessLensTheme.css` with CSS variables for light (Omada brand) and dark themes
+- Added theme toggle button to FilterBar toolbar
+- Updated AccessLens.jsx to use PreferencesContext for theme persistence
+- Began converting AccessLens.css to use CSS variables for theme support
+- Light theme uses Omada brand colors: `#58c1a1` (green), `#da5e3c` (orange), `#32445b` (blue)
 
 ### Phase 3: Architecture Improvements (Higher Risk)
-12. **C-02:** Refactor ConnectorLines to cache refs and batch DOM reads
-13. **H-03:** Pre-build identity lookup index before enrichment
-14. **H-04:** Add AbortController to all API calls
+12. ~~**C-02:** Refactor ConnectorLines to cache refs and batch DOM reads~~ **DONE (Session 2)** — Cached lane refs, batched DOM reads, 30fps throttle during drag
+13. ~~**H-03:** Pre-build identity lookup index before enrichment~~ **DONE (Session 2)**
+14. ~~**H-04:** Add AbortController to all API calls~~ **DONE (Session 2)** — 11 API functions updated with signal support, `executeGraphQL` updated, `useAbortController` hook created
 15. **H-05:** Move client-side policy filtering to server-side OData
-16. **H-08:** Add LRU eviction to IndexedDB cache
+16. ~~**H-08:** Add LRU eviction to IndexedDB cache~~ **DONE (Session 2)** — Max 500 entries, evicts 50 oldest when exceeded
 17. ~~**M-10:** Consolidate selection state into single object~~ (Partially done via C-01 `selections` useMemo)
 
 ### Phase 4: Polish

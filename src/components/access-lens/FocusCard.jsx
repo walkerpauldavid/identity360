@@ -4,6 +4,7 @@
  * Uses FocusNodeSchema to determine which attributes to display
  */
 
+import { useMemo } from 'react';
 import {
   getNodeIcon,
   getNodeColor,
@@ -89,59 +90,63 @@ const FocusCard = ({ node, onNavigateBack, isLoading = false, selectedIdentityCo
   // First check node.rawData (full API response), then node.metadata, then node itself
   const sourceData = node.rawData || node.metadata || node;
 
-  // Build the display attributes based on schema
-  const displayAttributes = [];
+  // M-05 fix: Memoize display attributes to prevent recalculation on every render
+  const displayAttributes = useMemo(() => {
+    const attrs = [];
 
-  if (schema?.attributes) {
-    for (const attr of schema.attributes) {
-      // Skip status and risk as they are shown separately
-      if (attr.type === 'status' || attr.type === 'risk') continue;
+    if (schema?.attributes) {
+      for (const attr of schema.attributes) {
+        // Skip status and risk as they are shown separately
+        if (attr.type === 'status' || attr.type === 'risk') continue;
 
-      // Extract value using the field path
-      let value = extractFieldValue(sourceData, attr.field);
+        // Extract value using the field path
+        let value = extractFieldValue(sourceData, attr.field);
 
-      // If not found in sourceData, check node.metadata directly with simple key
-      if ((value === null || value === undefined) && node.metadata) {
-        const simpleKey = attr.field.split('.')[0].split('|')[0];
-        value = node.metadata[simpleKey.toLowerCase()] || node.metadata[simpleKey];
-      }
+        // If not found in sourceData, check node.metadata directly with simple key
+        if ((value === null || value === undefined) && node.metadata) {
+          const simpleKey = attr.field.split('.')[0].split('|')[0];
+          value = node.metadata[simpleKey.toLowerCase()] || node.metadata[simpleKey];
+        }
 
-      // Convert object values to display strings, passing type for proper formatting
-      value = getDisplayValue(value, attr.type);
+        // Convert object values to display strings, passing type for proper formatting
+        value = getDisplayValue(value, attr.type);
 
-      // Only add if we have a value, or if it's a required field
-      if (value) {
-        displayAttributes.push({
-          label: attr.label,
-          value: value,
-          type: attr.type
-        });
+        // Only add if we have a value, or if it's a required field
+        if (value) {
+          attrs.push({
+            label: attr.label,
+            value: value,
+            type: attr.type
+          });
+        }
       }
     }
-  }
 
-  // Get list of attributes to hide from schema inspectorConfig
-  const hideAttributes = schema?.inspectorConfig?.hideAttributes || [];
+    // Get list of attributes to hide from schema inspectorConfig
+    const hideAttributes = schema?.inspectorConfig?.hideAttributes || [];
 
-  // Fallback: if no schema attributes found, use metadata directly
-  if (displayAttributes.length === 0 && node.metadata) {
-    Object.entries(node.metadata).forEach(([key, value]) => {
-      // Skip hidden attributes (check case-insensitive)
-      const keyLower = key.toLowerCase();
-      if (hideAttributes.some(h => h.toLowerCase() === keyLower)) {
-        return;
-      }
+    // Fallback: if no schema attributes found, use metadata directly
+    if (attrs.length === 0 && node.metadata) {
+      Object.entries(node.metadata).forEach(([key, value]) => {
+        // Skip hidden attributes (check case-insensitive)
+        const keyLower = key.toLowerCase();
+        if (hideAttributes.some(h => h.toLowerCase() === keyLower)) {
+          return;
+        }
 
-      const displayVal = getDisplayValue(value);
-      if (displayVal) {
-        displayAttributes.push({
-          label: key.charAt(0).toUpperCase() + key.slice(1).replace(/([A-Z])/g, ' $1'),
-          value: displayVal,
-          type: 'text'
-        });
-      }
-    });
-  }
+        const displayVal = getDisplayValue(value);
+        if (displayVal) {
+          attrs.push({
+            label: key.charAt(0).toUpperCase() + key.slice(1).replace(/([A-Z])/g, ' $1'),
+            value: displayVal,
+            type: 'text'
+          });
+        }
+      });
+    }
+
+    return attrs;
+  }, [schema, sourceData, node.metadata, node.type]);
 
   // Friendly type label
   const typeLabel = node.type === NodeTypes.LOGICAL_APPLICATION

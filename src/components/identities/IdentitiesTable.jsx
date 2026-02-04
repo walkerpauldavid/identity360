@@ -3,13 +3,18 @@
  * Displays identities in a paginated table
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo, memo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePreferences } from '../../contexts/PreferencesContext';
 import { omadaApi } from '../../services/omadaApi';
 // IdentityDetail panel disabled - row click now navigates directly to Access Lens
 import './IdentitiesList.css';
+
+// Preload AccessLensPage chunk on module load so it's ready when user clicks a row
+// This eliminates the multi-second delay from lazy-loading on navigation
+const preloadAccessLensPage = () => import('../access-lens/AccessLensPage');
+preloadAccessLensPage(); // Start loading immediately
 
 // Identity360 icon SVG component - matches the toolbar icon
 const AccessLensIcon = () => (
@@ -91,15 +96,24 @@ const IdentitiesTable = ({ identities, categoryColor }) => {
   const { getBearerToken, user } = useAuth();
   const { preferences, setPreference } = usePreferences();
 
-  // Handler to open Identity360 for an identity
-  const handleOpenAccessLens = (e, identity) => {
+  // Handler to open Identity360 for an identity (memoized to prevent click issues)
+  const handleOpenAccessLens = useCallback((e, identity) => {
     e.stopPropagation(); // Prevent row click from triggering
     const identityUId = identity.UId;
     if (identityUId) {
-      // Navigate to Identity360 page with identity UId as query parameter
-      navigate(`/identity360?identity=${identityUId}`);
+      // Use setTimeout(0) to escape React's batching and navigate immediately
+      // This prevents any pending state updates from delaying the navigation
+      setTimeout(() => navigate(`/identity360?identity=${identityUId}`), 0);
     }
-  };
+  }, [navigate]);
+
+  // Handler for row click - memoized to prevent first-click issues during re-renders
+  // Use setTimeout(0) to escape React's update batching and navigate immediately
+  const handleRowClick = useCallback((identityUId) => {
+    if (identityUId) {
+      setTimeout(() => navigate(`/identity360?identity=${identityUId}`), 0);
+    }
+  }, [navigate]);
 
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(preferences.identitiesTablePageSize);
@@ -237,110 +251,114 @@ const IdentitiesTable = ({ identities, categoryColor }) => {
     setCurrentPage(1);
   };
 
-  // Filter identities by column filters
-  const filteredIdentities = identities.filter((identity) => {
-    // Firstname filter
-    if (firstnameFilter) {
-      const firstname = extractFieldValue(identity.FIRSTNAME).toLowerCase();
-      if (!firstname.includes(firstnameFilter.toLowerCase())) {
-        return false;
+  // Filter identities by column filters (C-03 fix: memoized to prevent recalculation on every render)
+  const filteredIdentities = useMemo(() => {
+    return identities.filter((identity) => {
+      // Firstname filter
+      if (firstnameFilter) {
+        const firstname = extractFieldValue(identity.FIRSTNAME).toLowerCase();
+        if (!firstname.includes(firstnameFilter.toLowerCase())) {
+          return false;
+        }
       }
-    }
 
-    // Lastname filter
-    if (lastnameFilter) {
-      const lastname = extractFieldValue(identity.LASTNAME).toLowerCase();
-      if (!lastname.includes(lastnameFilter.toLowerCase())) {
-        return false;
+      // Lastname filter
+      if (lastnameFilter) {
+        const lastname = extractFieldValue(identity.LASTNAME).toLowerCase();
+        if (!lastname.includes(lastnameFilter.toLowerCase())) {
+          return false;
+        }
       }
-    }
 
-    // Email filter
-    if (emailFilter) {
-      const email = extractFieldValue(identity.EMAIL).toLowerCase();
-      if (!email.includes(emailFilter.toLowerCase())) {
-        return false;
+      // Email filter
+      if (emailFilter) {
+        const email = extractFieldValue(identity.EMAIL).toLowerCase();
+        if (!email.includes(emailFilter.toLowerCase())) {
+          return false;
+        }
       }
-    }
 
-    // Identity ID filter
-    if (identityIdFilter) {
-      const identityId = extractFieldValue(identity.IDENTITYID).toLowerCase();
-      if (!identityId.includes(identityIdFilter.toLowerCase())) {
-        return false;
+      // Identity ID filter
+      if (identityIdFilter) {
+        const identityId = extractFieldValue(identity.IDENTITYID).toLowerCase();
+        if (!identityId.includes(identityIdFilter.toLowerCase())) {
+          return false;
+        }
       }
-    }
 
-    // Employee ID filter
-    if (employeeIdFilter) {
-      const employeeId = extractFieldValue(identity.EMPLOYEEID).toLowerCase();
-      if (!employeeId.includes(employeeIdFilter.toLowerCase())) {
-        return false;
+      // Employee ID filter
+      if (employeeIdFilter) {
+        const employeeId = extractFieldValue(identity.EMPLOYEEID).toLowerCase();
+        if (!employeeId.includes(employeeIdFilter.toLowerCase())) {
+          return false;
+        }
       }
-    }
 
-    // Job Title filter
-    if (jobTitleFilter) {
-      const jobTitle = extractFieldValue(identity.JOBTITLE).toLowerCase();
-      if (!jobTitle.includes(jobTitleFilter.toLowerCase())) {
-        return false;
+      // Job Title filter
+      if (jobTitleFilter) {
+        const jobTitle = extractFieldValue(identity.JOBTITLE).toLowerCase();
+        if (!jobTitle.includes(jobTitleFilter.toLowerCase())) {
+          return false;
+        }
       }
-    }
 
-    // Organization filter
-    if (organizationFilter) {
-      const organization = extractFieldValue(identity.OUREF).toLowerCase();
-      if (!organization.includes(organizationFilter.toLowerCase())) {
-        return false;
+      // Organization filter
+      if (organizationFilter) {
+        const organization = extractFieldValue(identity.OUREF).toLowerCase();
+        if (!organization.includes(organizationFilter.toLowerCase())) {
+          return false;
+        }
       }
-    }
 
-    // Status filter
-    if (statusFilter) {
-      const status = extractFieldValue(identity.IDENTITYSTATUS).toLowerCase();
-      if (!status.includes(statusFilter.toLowerCase())) {
-        return false;
+      // Status filter
+      if (statusFilter) {
+        const status = extractFieldValue(identity.IDENTITYSTATUS).toLowerCase();
+        if (!status.includes(statusFilter.toLowerCase())) {
+          return false;
+        }
       }
-    }
 
-    // Contexts filter (filter based on loaded contexts)
-    if (contextsFilter) {
-      const identityUId = identity.UId;
-      const contexts = contextsMap[identityUId];
-      if (!contexts || contexts.length === 0) {
-        return false; // No contexts loaded yet or empty
+      // Contexts filter (filter based on loaded contexts)
+      if (contextsFilter) {
+        const identityUId = identity.UId;
+        const contexts = contextsMap[identityUId];
+        if (!contexts || contexts.length === 0) {
+          return false; // No contexts loaded yet or empty
+        }
+        const contextsStr = contexts.join(', ').toLowerCase();
+        if (!contextsStr.includes(contextsFilter.toLowerCase())) {
+          return false;
+        }
       }
-      const contextsStr = contexts.join(', ').toLowerCase();
-      if (!contextsStr.includes(contextsFilter.toLowerCase())) {
-        return false;
+
+      return true;
+    });
+  }, [identities, firstnameFilter, lastnameFilter, emailFilter, identityIdFilter, employeeIdFilter, jobTitleFilter, organizationFilter, statusFilter, contextsFilter, contextsMap]);
+
+  // Sort identities (C-03 fix: memoized to prevent O(n log n) sort on every render)
+  const sortedIdentities = useMemo(() => {
+    return [...filteredIdentities].sort((a, b) => {
+      if (!sortColumn) return 0;
+
+      const aValue = extractFieldValue(a[sortColumn]);
+      const bValue = extractFieldValue(b[sortColumn]);
+
+      // Handle empty values
+      if (aValue === '-' && bValue === '-') return 0;
+      if (aValue === '-') return 1;
+      if (bValue === '-') return -1;
+
+      // Compare values
+      let comparison = 0;
+      if (typeof aValue === 'string' && typeof bValue === 'string') {
+        comparison = aValue.toLowerCase().localeCompare(bValue.toLowerCase());
+      } else {
+        comparison = aValue > bValue ? 1 : aValue < bValue ? -1 : 0;
       }
-    }
 
-    return true;
-  });
-
-  // Sort identities
-  const sortedIdentities = [...filteredIdentities].sort((a, b) => {
-    if (!sortColumn) return 0;
-
-    const aValue = extractFieldValue(a[sortColumn]);
-    const bValue = extractFieldValue(b[sortColumn]);
-
-    // Handle empty values
-    if (aValue === '-' && bValue === '-') return 0;
-    if (aValue === '-') return 1;
-    if (bValue === '-') return -1;
-
-    // Compare values
-    let comparison = 0;
-    if (typeof aValue === 'string' && typeof bValue === 'string') {
-      comparison = aValue.toLowerCase().localeCompare(bValue.toLowerCase());
-    } else {
-      comparison = aValue > bValue ? 1 : aValue < bValue ? -1 : 0;
-    }
-
-    return sortDirection === 'asc' ? comparison : -comparison;
-  });
+      return sortDirection === 'asc' ? comparison : -comparison;
+    });
+  }, [filteredIdentities, sortColumn, sortDirection]);
 
   // Calculate pagination (use sorted identities)
   const totalPages = Math.ceil(sortedIdentities.length / pageSize);
@@ -360,6 +378,9 @@ const IdentitiesTable = ({ identities, categoryColor }) => {
   const currentPageIdentityKey = currentIdentities.map(i => i.UId || i.Id).join(',');
 
   useEffect(() => {
+    // AbortController to cancel in-flight requests when navigating away or page changes
+    const abortController = new AbortController();
+
     const fetchContextsForVisibleIdentities = async () => {
       const bearerToken = getBearerToken();
       const impersonateUser = user?.email;
@@ -384,15 +405,26 @@ const IdentitiesTable = ({ identities, categoryColor }) => {
 
       try {
         // Fetch contexts for each visible identity that doesn't have them yet
+        // Pass AbortController signal to allow cancellation on navigation
         const contextsPromises = identitiesToFetch.map(async (identity) => {
           const identityUId = identity.UId;
+
+          // Check if already aborted before starting
+          if (abortController.signal.aborted) {
+            return { identityUId, contexts: [], aborted: true };
+          }
 
           try {
             const result = await omadaApi.identity.getIdentityContexts(
               identityUId,
               bearerToken,
-              impersonateUser // May be null, which is OK
+              impersonateUser, // May be null, which is OK
+              { signal: abortController.signal }
             );
+
+            if (result.status === 'aborted') {
+              return { identityUId, contexts: [], aborted: true };
+            }
 
             if (result.status === 'success' && result.data) {
               // Extract context display names
@@ -401,6 +433,9 @@ const IdentitiesTable = ({ identities, categoryColor }) => {
             }
             return { identityUId, contexts: [] };
           } catch (error) {
+            if (error.name === 'AbortError') {
+              return { identityUId, contexts: [], aborted: true };
+            }
             console.error(`Failed to fetch contexts for ${identityUId}:`, error);
             return { identityUId, contexts: [] };
           }
@@ -408,22 +443,39 @@ const IdentitiesTable = ({ identities, categoryColor }) => {
 
         const contextsResults = await Promise.all(contextsPromises);
 
-        // Update contexts map with new results
-        setContextsMap(prevMap => {
-          const newMap = { ...prevMap };
-          contextsResults.forEach(({ identityUId, contexts }) => {
-            newMap[identityUId] = contexts;
+        // Don't update state if aborted (component unmounting or navigating away)
+        if (abortController.signal.aborted) {
+          return;
+        }
+
+        // Filter out aborted results and update contexts map
+        const validResults = contextsResults.filter(r => !r.aborted);
+        if (validResults.length > 0) {
+          setContextsMap(prevMap => {
+            const newMap = { ...prevMap };
+            validResults.forEach(({ identityUId, contexts }) => {
+              newMap[identityUId] = contexts;
+            });
+            return newMap;
           });
-          return newMap;
-        });
+        }
       } catch (error) {
-        console.error('Error fetching contexts:', error);
+        if (error.name !== 'AbortError') {
+          console.error('Error fetching contexts:', error);
+        }
       } finally {
-        setLoadingContexts(false);
+        if (!abortController.signal.aborted) {
+          setLoadingContexts(false);
+        }
       }
     };
 
     fetchContextsForVisibleIdentities();
+
+    // Cleanup: abort any in-flight requests when component unmounts or deps change
+    return () => {
+      abortController.abort();
+    };
   }, [currentPageIdentityKey, getBearerToken, user?.email]); // Stable key: only re-fetch when visible identities actually change
 
   // Clear individual column filter
@@ -865,10 +917,12 @@ const IdentitiesTable = ({ identities, categoryColor }) => {
             return (
               <tr
                 key={identity.Id || identity.UId}
-                onClick={() => {
-                  const identityUId = identity.UId;
-                  if (identityUId) {
-                    navigate(`/identity360?identity=${identityUId}`);
+                onMouseDown={(e) => {
+                  // Use mousedown for reliable click detection - fires immediately
+                  // before any re-renders can interfere (fixes first-click-not-registering bug)
+                  // Only trigger on left-click (button 0) and not on interactive elements
+                  if (e.button === 0 && !e.target.closest('button, input, a')) {
+                    handleRowClick(identity.UId);
                   }
                 }}
                 className="clickable-row"
@@ -1006,4 +1060,5 @@ const IdentitiesTable = ({ identities, categoryColor }) => {
   );
 };
 
-export default IdentitiesTable;
+// Wrap in React.memo to prevent re-renders when parent changes but props don't (NEW-5 fix)
+export default memo(IdentitiesTable);

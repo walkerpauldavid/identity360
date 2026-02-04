@@ -4,6 +4,7 @@
  */
 
 import { LaneTypes, BaseReasonTypes, ViewModes } from './accessLensTypes';
+import { usePreferences } from '../../contexts/PreferencesContext';
 
 // Help descriptions for each base reason type (module-level constant to avoid re-creation per render)
 const REASON_TYPE_HELP = {
@@ -27,6 +28,8 @@ const FilterBar = ({
   onClearAllSelections, // Callback to clear all lane selections
   onExpandAll, // Callback to expand all lanes
   onResetLayout, // Callback to reset lane positions and clear filters
+  currentTheme = 'dark', // Current theme
+  onThemeChange, // Callback to change theme
 }) => {
   const {
     visibleLanes = Object.values(LaneTypes),
@@ -246,8 +249,18 @@ const FilterBar = ({
         </div>
       )}
 
-      {/* Search (right-aligned) */}
+      {/* Theme Toggle & Search (right-aligned) */}
       <div className="filter-group toolbar-right">
+        {/* Theme Toggle */}
+        <button
+          className="theme-toggle-compact"
+          onClick={() => onThemeChange?.(currentTheme === 'dark' ? 'light' : 'dark')}
+          title={currentTheme === 'dark' ? 'Switch to Light Theme (Omada)' : 'Switch to Dark Theme'}
+        >
+          <span className="theme-icon">{currentTheme === 'dark' ? '🌙' : '☀️'}</span>
+          <span className="theme-label">{currentTheme === 'dark' ? 'Dark' : 'Light'}</span>
+        </button>
+
         <input
           type="text"
           id="access-lens-search"

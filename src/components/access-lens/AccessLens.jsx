@@ -4,7 +4,7 @@
  * Features: Identity integration, draggable lanes, connector lines
  */
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react';
 import { DndContext, useDraggable, DragOverlay, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import {
@@ -39,6 +39,7 @@ import LaneCard from './LaneCard';
 import ObjectInspector from './ObjectInspector';
 import { getStringValue } from './accessLensUtils';
 import './AccessLens.css';
+import './AccessLensTheme.css';
 
 // Convert identity from IdentityDetail to AccessLens node format
 const identityToNode = (identity) => {
@@ -370,13 +371,22 @@ const calculateDynamicLanePositions = (lanesWithData) => {
   return positions;
 };
 
-// Draggable Lane Wrapper Component
+// Draggable Lane Wrapper Component (M-02 fix: wrapped in React.memo)
 // IMPORTANT: Drag listeners are only applied to the drag handle (header area),
 // NOT the entire container, so clicks on lane items can pass through
-const DraggableLane = ({ id, position, children, onPositionChange }) => {
+const DraggableLane = memo(({ id, position, children, onPositionChange, onRefChange }) => {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: id,
   });
+
+  // C-02 fix: Combine dnd-kit ref with our ref callback for caching
+  // This avoids querySelector in ConnectorLines
+  const combinedRef = useCallback((node) => {
+    setNodeRef(node);
+    if (onRefChange) {
+      onRefChange(id, node);
+    }
+  }, [setNodeRef, onRefChange, id]);
 
   // Calculate the total transform including:
   // 1. Centering offset (-50%, -50%) to center the lane on its position point
@@ -400,7 +410,7 @@ const DraggableLane = ({ id, position, children, onPositionChange }) => {
 
   return (
     <div
-      ref={setNodeRef}
+      ref={combinedRef}
       style={style}
       className={`draggable-lane ${isDragging ? 'dragging' : ''}`}
       data-lane-type={id}
@@ -425,35 +435,55 @@ const DraggableLane = ({ id, position, children, onPositionChange }) => {
       {children}
     </div>
   );
-};
+});
 
 // SVG Connector Lines Component - Curved flowing tentacle-like lines
-const ConnectorLines = ({ lanePositions, fulcrumRef, isDragging = false }) => {
+// C-02 fix: Accepts laneRefs Map to avoid querySelector, batches DOM reads, throttles during drag
+const ConnectorLines = ({ lanePositions, fulcrumRef, isDragging = false, laneRefs }) => {
   const [lines, setLines] = useState([]);
+  const frameSkipRef = useRef(0); // C-02 fix: Track frames for throttling
 
   useEffect(() => {
-    const updateLines = () => {
+    const updateLines = (skipThrottle = false) => {
       if (!fulcrumRef.current) return;
 
+      // C-02 fix: Throttle to every 2nd frame during drag (30fps is visually smooth)
+      if (isDragging && !skipThrottle) {
+        frameSkipRef.current++;
+        if (frameSkipRef.current % 2 !== 0) return; // Skip odd frames
+      }
+
+      // C-02 fix: BATCH ALL DOM READS FIRST (prevents layout thrashing)
+      // Read all getBoundingClientRect() calls before any calculations
       const fulcrumRect = fulcrumRef.current.getBoundingClientRect();
       const containerRect = fulcrumRef.current.parentElement?.getBoundingClientRect();
 
       if (!containerRect) return;
+
+      // C-02 fix: Batch read all lane rects using cached refs (no querySelector)
+      const laneTypes = Object.keys(lanePositions);
+      const laneRects = new Map();
+      for (const laneType of laneTypes) {
+        const laneElement = laneRefs?.get(laneType);
+        if (laneElement) {
+          laneRects.set(laneType, laneElement.getBoundingClientRect());
+        }
+      }
+      // END OF DOM READS - now safe to do calculations and state updates
 
       const fulcrumCenter = {
         x: fulcrumRect.left - containerRect.left + fulcrumRect.width / 2,
         y: fulcrumRect.top - containerRect.top + fulcrumRect.height / 2
       };
 
-      const newLines = Object.entries(lanePositions).map(([laneType, pos]) => {
-        // Find the actual lane element by data attribute
-        const targetLane = document.querySelector(`[data-lane-type="${laneType}"]`);
+      const newLines = laneTypes.map((laneType) => {
+        const pos = lanePositions[laneType];
+        const laneRect = laneRects.get(laneType);
 
         let laneX, laneY;
 
-        if (targetLane) {
-          // Use actual lane position and dimensions
-          const laneRect = targetLane.getBoundingClientRect();
+        if (laneRect) {
+          // Use actual lane position and dimensions from cached rect
           laneX = laneRect.left - containerRect.left + laneRect.width / 2;
           laneY = laneRect.top - containerRect.top + laneRect.height / 2;
         } else {
@@ -509,8 +539,9 @@ const ConnectorLines = ({ lanePositions, fulcrumRef, isDragging = false }) => {
       setLines(newLines);
     };
 
-    updateLines();
-    window.addEventListener('resize', updateLines);
+    // Initial update (skip throttle for first render)
+    updateLines(true);
+    window.addEventListener('resize', () => updateLines(true));
 
     // Use requestAnimationFrame for smooth updates during drag
     // Otherwise use a longer interval for normal state
@@ -518,7 +549,8 @@ const ConnectorLines = ({ lanePositions, fulcrumRef, isDragging = false }) => {
     let intervalId = null;
 
     if (isDragging) {
-      // During drag, use requestAnimationFrame for smooth 60fps updates
+      // C-02 fix: During drag, use rAF but throttle internally to 30fps
+      frameSkipRef.current = 0;
       const animate = () => {
         updateLines();
         rafId = requestAnimationFrame(animate);
@@ -526,15 +558,15 @@ const ConnectorLines = ({ lanePositions, fulcrumRef, isDragging = false }) => {
       rafId = requestAnimationFrame(animate);
     } else {
       // When not dragging, update less frequently
-      intervalId = setInterval(updateLines, 200);
+      intervalId = setInterval(() => updateLines(true), 200);
     }
 
     return () => {
-      window.removeEventListener('resize', updateLines);
+      window.removeEventListener('resize', () => updateLines(true));
       if (rafId) cancelAnimationFrame(rafId);
       if (intervalId) clearInterval(intervalId);
     };
-  }, [lanePositions, fulcrumRef, isDragging]);
+  }, [lanePositions, fulcrumRef, isDragging, laneRefs]);
 
   return (
     <svg className="connector-lines-svg">
@@ -628,14 +660,30 @@ const AccessLens = ({
   apiContext = null  // API context for OData calls: { omadaApi, bearerToken, impersonateUser }
 }) => {
   // User preferences for Identity360 display behavior
-  const { preferences } = usePreferences();
+  const { preferences, setPreference } = usePreferences();
   const lanesCollapsedOnLoad = preferences.identity360LanesCollapsedOnLoad ?? true;
   const collapseLanesOnFocusChange = preferences.identity360CollapseLanesOnFocusChange ?? true;
+  const currentTheme = preferences.theme || 'dark';
+
+  // Theme toggle handler
+  const handleThemeChange = useCallback((newTheme) => {
+    setPreference('theme', newTheme);
+  }, [setPreference]);
 
   // Refs
   const fulcrumRef = useRef(null);
   const previousFocusNodeId = useRef(null);  // Track focus node changes
   const previousVisibleLanesRef = useRef([]);  // Store previous visibleLanes to preserve filtered state when lane becomes filter source
+  const laneRefsMap = useRef(new Map());  // C-02 fix: Cache lane element refs to avoid querySelector in ConnectorLines
+
+  // C-02 fix: Callback for DraggableLane to register its ref
+  const handleLaneRefChange = useCallback((laneType, node) => {
+    if (node) {
+      laneRefsMap.current.set(laneType, node);
+    } else {
+      laneRefsMap.current.delete(laneType);
+    }
+  }, []);
 
   // Refs for stable callback access (H-01 fix: avoid recreating handleItemClick on every state change)
   const showObjectInspectorRef = useRef(false);
@@ -2115,7 +2163,7 @@ const AccessLens = ({
   // Render loading state
   if (isLoading && !focusNode) {
     return (
-      <div className={`access-lens ${isFullscreen ? 'fullscreen' : ''}`}>
+      <div className={`access-lens theme-${currentTheme} ${isFullscreen ? 'fullscreen' : ''}`}>
         <div className="access-lens-loading">
           <div className="loading-spinner"></div>
           <p>Loading access graph...</p>
@@ -2127,7 +2175,7 @@ const AccessLens = ({
   // Render error state
   if (error) {
     return (
-      <div className={`access-lens ${isFullscreen ? 'fullscreen' : ''}`}>
+      <div className={`access-lens theme-${currentTheme} ${isFullscreen ? 'fullscreen' : ''}`}>
         <div className="access-lens-error">
           <span className="error-icon">⚠️</span>
           <p>Error: {error}</p>
@@ -2142,7 +2190,7 @@ const AccessLens = ({
   }
 
   return (
-    <div className={`access-lens ${isFullscreen ? 'fullscreen' : ''}`}>
+    <div className={`access-lens theme-${currentTheme} ${isFullscreen ? 'fullscreen' : ''}`}>
       {/* Unified Toolbar */}
       <FilterBar
         filters={filters}
@@ -2158,6 +2206,8 @@ const AccessLens = ({
         onClearAllSelections={handleClearAllSelections}
         onExpandAll={handleExpandAll}
         onResetLayout={handleResetPositions}
+        currentTheme={currentTheme}
+        onThemeChange={handleThemeChange}
       />
 
       {/* Breadcrumb Bar — dedicated row beneath filters, left-aligned */}
@@ -2188,12 +2238,14 @@ const AccessLens = ({
           {/* Canvas with draggable lanes */}
           <div className="access-lens-canvas">
           {/* Connector Lines SVG - only show for revealed lanes */}
+          {/* C-02 fix: Pass laneRefs to avoid querySelector and enable batched DOM reads */}
           <ConnectorLines
             lanePositions={Object.fromEntries(
               Object.entries(visibleLanePositions).filter(([laneType]) => revealedLanes.has(laneType))
             )}
             fulcrumRef={fulcrumRef}
             isDragging={activeDragId !== null}
+            laneRefs={laneRefsMap.current}
           />
 
           <DndContext
@@ -2243,6 +2295,7 @@ const AccessLens = ({
                 key={lane.laneType}
                 id={lane.laneType}
                 position={visibleLanePositions[lane.laneType] || { x: 0, y: 0 }}
+                onRefChange={handleLaneRefChange}
               >
                 <LaneCard
                   lane={lane}

@@ -12,7 +12,7 @@
  * - Maximize/Restore: Show all items in a larger scrollable view
  */
 
-import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef, memo } from 'react';
 import { LaneTypes, getLaneDisplayConfig, LaneGridConstraints } from './accessLensTypes';
 import LaneItemRow from './LaneItemRow';
 import { getItemResourceType } from './accessLensUtils';
@@ -495,4 +495,5 @@ const LaneCard = ({
   );
 };
 
-export default LaneCard;
+// Wrap in React.memo to prevent re-renders when props haven't changed (M-01 fix)
+export default memo(LaneCard);
