@@ -502,7 +502,8 @@ const LaneCard = ({
       )}
 
       {/* Show All button - OUTSIDE scrollable content so it's always visible */}
-      {isExpanded && !isMaximized && isMultiColumn && (displayItems.length > maxVisibleItems || canLoadMore) && (
+      {/* Show when: expanded, not maximized, multi-column, and items exceed or equal visible limit */}
+      {isExpanded && !isMaximized && isMultiColumn && (displayItems.length >= maxVisibleItems || canLoadMore) && (
         <div className="lane-show-all-container">
           <button
             className="lane-load-more"
