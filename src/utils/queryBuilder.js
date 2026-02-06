@@ -686,6 +686,103 @@ export const GraphQLQueries = {
         }
       `
     };
+  },
+
+  /**
+   * Get child resources for identities using reasonType: CHILD_RESOURCE filter
+   * Used to find child entitlements when an Entitlement is the focus node
+   * @param {string[]} identityIds - Array of identity UUIDs to query
+   * @param {Object} pagination - Pagination options
+   * @param {boolean} includeDisabled - Include disabled assignments (default: true)
+   * @returns {Object} GraphQL query object
+   */
+  getChildResourcesForIdentities: (identityIds, pagination = {}, includeDisabled = true) => {
+    const page = pagination.page ?? GRAPHQL_PAGINATION.DEFAULT_PAGE;
+    const rows = pagination.rows ?? 500; // Higher default for child resource queries
+
+    if (!identityIds || !Array.isArray(identityIds) || identityIds.length === 0) {
+      throw new Error('identityIds array is required for getChildResourcesForIdentities');
+    }
+
+    // Format identity IDs as comma-separated string for multipleIdentityIds filter
+    const identityIdsString = identityIds.join(',');
+
+    // Build the filter parts
+    // Filter uses CHILD_RESOURCE (uppercase), response returns "ChildResource" (camelCase)
+    const filterParts = [
+      `multipleIdentityIds: "${identityIdsString}"`,
+      `reasonType: CHILD_RESOURCE`
+    ];
+
+    // Filter disabled assignments only if explicitly requested to exclude them
+    if (!includeDisabled) {
+      filterParts.push('disabled: false');
+    }
+
+    const filterClause = filterParts.join(', ');
+    const paginationClause = `pagination: {page: ${page}, rows: ${rows}}`;
+
+    return {
+      query: `
+        query GetChildResourcesForIdentities {
+          calculatedAssignments(
+            filters: {${filterClause}}
+            sorting: {sortOrder: ASCENDING}
+            ${paginationClause}
+          ) {
+            pages
+            total
+            data {
+              complianceStatus
+              id
+              disabled
+              validFrom
+              validTo
+              resource {
+                id
+                name
+                description
+                childResourceIds
+                system {
+                  name
+                  id
+                }
+                resourceType {
+                  id
+                  name
+                }
+                riskLevel {
+                  name
+                  id
+                }
+              }
+              parentResource {
+                id
+                name
+                description
+                system {
+                  name
+                  id
+                }
+                resourceType {
+                  name
+                  id
+                }
+              }
+              reason {
+                description
+                reasonType
+                causeObjectKey
+              }
+              identity {
+                id
+                displayName
+              }
+            }
+          }
+        }
+      `
+    };
   }
 };
 

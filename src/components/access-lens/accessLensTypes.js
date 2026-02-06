@@ -1333,7 +1333,8 @@ export const LaneConfigSchema = {
 
   [NodeTypes.ENTITLEMENT]: {
     // Entitlement is the focus node
-    // Effective Entitlements lane is reused to show child resources (CHILDROLES from OData)
+    // EFFECTIVE_ENTITLEMENTS lane shows child resources fetched via GraphQL (reasonType: CHILD_RESOURCE filter)
+    // RESOURCE_FOLDERS lane shows the parent folder from OData enrichment
     excludedLanes: [],
     lanes: [
       {
@@ -1397,9 +1398,14 @@ export const LaneConfigSchema = {
       {
         laneType: LaneTypes.EFFECTIVE_ENTITLEMENTS,
         title: 'Child Resources',
-        description: 'Child resources (CHILDROLES) belonging to this entitlement',
+        description: 'Child resources that inherit from this entitlement (via reasonType: CHILD_RESOURCE)',
         required: false,
-        apiSource: { type: 'derived', from: 'focusNode', extract: 'childResources' },
+        apiSource: {
+          type: 'GraphQL',
+          query: 'getChildResources',
+          idParam: 'parentResourceId',
+          filter: 'reasonType: CHILD_RESOURCE'
+        },
         position: { x: 380, y: -250 },
         crossLaneFilters: null  // Child resources are informational in entitlement view
       }
@@ -2272,7 +2278,7 @@ export const getLanesForNodeType = (nodeType) => {
     case NodeTypes.ROLE:
       return [LaneTypes.IDENTITIES, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.POLICIES];
     case NodeTypes.ENTITLEMENT:
-      return [LaneTypes.IDENTITIES, LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS];
+      return [LaneTypes.IDENTITIES, LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS, LaneTypes.RESOURCE_FOLDERS, LaneTypes.EFFECTIVE_ENTITLEMENTS];
     case NodeTypes.SYSTEM:
       return [LaneTypes.IDENTITIES, LaneTypes.ACCOUNTS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.VIOLATIONS];
     case NodeTypes.LOGICAL_APPLICATION:

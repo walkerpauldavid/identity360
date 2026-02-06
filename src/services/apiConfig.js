@@ -171,3 +171,49 @@ export const handleApiError = (error, context) => {
     timestamp: new Date().toISOString()
   };
 };
+
+/**
+ * Handle 401 Unauthorized errors by clearing stale authentication
+ * This function should be called when a 401 response is received from any API
+ * @param {Response|number} response - Fetch response object or status code
+ * @param {string} context - Description of the API call that failed
+ * @returns {boolean} True if this was a 401 error and auth was cleared
+ */
+export const handle401Error = (response, context = 'API call') => {
+  const status = typeof response === 'number' ? response : response?.status;
+
+  if (status === 401) {
+    console.warn(`401 Unauthorized in ${context} - clearing stale authentication`);
+
+    // Clear all auth data to force re-login
+    authService.clearAuth();
+
+    // Dispatch a custom event that components can listen to for handling re-auth
+    window.dispatchEvent(new CustomEvent('auth:unauthorized', {
+      detail: { context, timestamp: new Date().toISOString() }
+    }));
+
+    return true;
+  }
+
+  return false;
+};
+
+/**
+ * Wrapper for fetch that automatically handles 401 errors
+ * Use this instead of raw fetch for API calls to get automatic stale token handling
+ * @param {string} url - The URL to fetch
+ * @param {Object} options - Fetch options (headers, method, body, etc.)
+ * @param {string} context - Description of the API call (for logging)
+ * @returns {Promise<Response>} The fetch response
+ * @throws {Error} Throws an error if 401 is encountered (after clearing auth)
+ */
+export const fetchWithAuthCheck = async (url, options = {}, context = 'API call') => {
+  const response = await fetch(url, options);
+
+  if (handle401Error(response, context)) {
+    throw new Error(`Authentication expired during ${context}. Please log in again.`);
+  }
+
+  return response;
+};

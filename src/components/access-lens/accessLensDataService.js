@@ -2116,16 +2116,51 @@ function buildEntitlementsLane(assignments, filters) {
       overallComplianceStatus = 'Pending';
     }
 
+    // Check for ChildResource reasonType and extract parent name from "Ancestors:" description
+    let isChildResource = false;
+    let parentResourceName = null;
+    const allReasons = entry.reasons.flat().filter(Boolean);
+    for (const reason of allReasons) {
+      if (reason?.reasonType === 'ChildResource') {
+        isChildResource = true;
+        // Extract IMMEDIATE parent name from "Ancestors: Grandparent / Parent" format
+        // The last segment is the immediate parent (what this item inherits from)
+        if (reason.description && reason.description.startsWith('Ancestors:')) {
+          const afterAncestors = reason.description.substring('Ancestors:'.length).trim();
+          const lastSlashIndex = afterAncestors.lastIndexOf('/');
+          // Get the LAST segment (immediate parent), not the first (root ancestor)
+          parentResourceName = lastSlashIndex > 0
+            ? afterAncestors.substring(lastSlashIndex + 1).trim()
+            : afterAncestors.trim();
+        }
+        break;
+      }
+    }
+
+    // Build badges array with CHILD and PARENT pills for inherited entitlements
+    const badges = [];
+    if (isChildResource) {
+      badges.push('CHILD');
+    }
+    if (parentResourceName) {
+      badges.push(`PARENT: ${parentResourceName}`);
+    }
+    if (resource?.system?.name) {
+      badges.push(resource.system.name);
+    }
+    if (resource?.resourceType?.name) {
+      badges.push(resource.resourceType.name);
+    }
+    if (entry.identityIds.size > 1) {
+      badges.push(`${entry.identityIds.size} users`);
+    }
+
     const entitlementNode = {
       id: resourceId,
       type: NodeTypes.ENTITLEMENT,
       displayName: resource?.name || 'Unknown',
       status: 'active',
-      badges: [
-        resource?.system?.name,
-        resource?.resourceType?.name,
-        entry.identityIds.size > 1 ? `${entry.identityIds.size} users` : null
-      ].filter(Boolean),
+      badges,
       metadata: {
         system: resource?.system?.name,
         systemId: resource?.system?.id,
@@ -2161,6 +2196,9 @@ function buildEntitlementsLane(assignments, filters) {
         account: firstAssignment.account,
         identity: firstAssignment.identity,
         violations: firstAssignment.violations,
+        // Parent resource for "Inherited from:" tooltip on ChildResource reasons
+        // Use API parentResource if available, otherwise construct from Ancestors description
+        parentResource: firstAssignment.parentResource || (parentResourceName ? { name: parentResourceName } : null),
         // Aggregated data
         _aggregated: {
           assignmentCount: entry.assignments.length,
@@ -3376,6 +3414,308 @@ function buildChildResourcesLaneForEntitlement(entitlementNode) {
     allItemsData: items,
     canLoadMore: false
   };
+}
+
+/**
+ * Fetch child resources for an entitlement using GraphQL API with reasonType: CHILD_RESOURCE filter
+ *
+ * Approach:
+ * 1. Get identity IDs from the Identities lane (who has this entitlement)
+ * 2. Query those identities with multipleIdentityIds + reasonType: CHILD_RESOURCE filter
+ * 3. Filter results where parentResource.id matches the focus node entitlement ID
+ * 4. These are the child resources that inherit from this entitlement
+ *
+ * @param {Object} entitlementNode - The parent entitlement node (focus node)
+ * @param {string[]} identityIds - Array of identity IDs from the Identities lane
+ * @param {Object} apiContext - API context with { bearerToken, impersonateUser, omadaApi }
+ * @returns {Promise<Object>} Lane object with child resource items
+ */
+export async function fetchChildResourcesForEntitlement(entitlementNode, identityIds, apiContext) {
+  console.log('[DEBUG:fetchChildResources] === FUNCTION CALLED ===');
+  console.log('[DEBUG:fetchChildResources] entitlementNode:', entitlementNode?.id, entitlementNode?.displayName);
+  console.log('[DEBUG:fetchChildResources] identityIds count:', identityIds?.length);
+  console.log('[DEBUG:fetchChildResources] apiContext keys:', apiContext ? Object.keys(apiContext) : 'null');
+
+  const { bearerToken, impersonateUser, omadaApi } = apiContext;
+
+  console.log('[DEBUG:fetchChildResources] bearerToken available:', !!bearerToken);
+  console.log('[DEBUG:fetchChildResources] impersonateUser:', impersonateUser);
+  console.log('[DEBUG:fetchChildResources] omadaApi available:', !!omadaApi);
+  console.log('[DEBUG:fetchChildResources] omadaApi.assignment available:', !!omadaApi?.assignment);
+  console.log('[DEBUG:fetchChildResources] getChildResourcesForIdentities available:', !!omadaApi?.assignment?.getChildResourcesForIdentities);
+
+  // Early return if no entitlement node or no API context
+  if (!entitlementNode || !entitlementNode.id) {
+    console.log('[DEBUG:fetchChildResources] EARLY RETURN: No entitlement node or ID');
+    return {
+      laneType: LaneTypes.EFFECTIVE_ENTITLEMENTS,
+      totalCount: 0,
+      items: [],
+      allItemsData: [],
+      canLoadMore: false
+    };
+  }
+
+  // If no identity IDs provided, fall back to static CHILDROLES data
+  if (!identityIds || !Array.isArray(identityIds) || identityIds.length === 0) {
+    console.log('[DEBUG:fetchChildResources] FALLBACK: No identity IDs, using static CHILDROLES');
+    return buildChildResourcesLaneForEntitlement(entitlementNode);
+  }
+
+  if (!omadaApi) {
+    console.warn('[DEBUG:fetchChildResources] FALLBACK: No omadaApi available');
+    return buildChildResourcesLaneForEntitlement(entitlementNode);
+  }
+
+  try {
+    console.log(`[DEBUG:fetchChildResources] CALLING API: getChildResourcesForIdentities`);
+    console.log(`[DEBUG:fetchChildResources] Identity IDs (first 5):`, identityIds.slice(0, 5));
+    console.log(`[DEBUG:fetchChildResources] Parent entitlement ID: ${entitlementNode.id}`);
+
+    // Call the GraphQL API with multipleIdentityIds and reasonType: CHILD_RESOURCE filter
+    console.log('[DEBUG:fetchChildResources] Making API call...');
+    const result = await omadaApi.assignment.getChildResourcesForIdentities(
+      identityIds,
+      bearerToken,
+      impersonateUser,
+      { page: 1, rows: 500 }
+    );
+
+    console.log('[DEBUG:fetchChildResources] API result status:', result.status);
+    console.log('[DEBUG:fetchChildResources] API result data length:', result.data?.length);
+    console.log('[DEBUG:fetchChildResources] API result total:', result.total);
+
+    if (result.status !== 'success' || !result.data || result.data.length === 0) {
+      // Fallback to static CHILDROLES data if API returns nothing
+      console.log('[DEBUG:fetchChildResources] FALLBACK: No data from API, status:', result.status);
+      return buildChildResourcesLaneForEntitlement(entitlementNode);
+    }
+
+    // Log first few assignments for debugging
+    console.log('[DEBUG:fetchChildResources] First 3 assignments:', result.data.slice(0, 3).map(a => ({
+      resourceId: a.resource?.id,
+      resourceName: a.resource?.name,
+      parentResourceId: a.parentResource?.id,
+      parentResourceName: a.parentResource?.name,
+      reasonType: a.reason?.reasonType || a.reason?.[0]?.reasonType
+    })));
+
+    // Filter results: only keep assignments where the focus node entitlement is the parent
+    // Parent info can be in:
+    // 1. parentResource.id - direct ID match
+    // 2. reason.description - "Ancestors: [parent name] / [child name]" format
+    const focusEntitlementId = entitlementNode.id;
+    const focusEntitlementName = entitlementNode.displayName || entitlementNode.name || '';
+    // Also try rawData name variations
+    const focusEntitlementNameAlt = entitlementNode.rawData?.Name || entitlementNode.rawData?.DisplayName || entitlementNode.rawData?.DISPLAYNAME || '';
+
+    console.log('[DEBUG:fetchChildResources] === FILTERING START ===');
+    console.log('[DEBUG:fetchChildResources] Focus entitlement ID:', focusEntitlementId);
+    console.log('[DEBUG:fetchChildResources] Focus entitlement name:', `"${focusEntitlementName}"`);
+    console.log('[DEBUG:fetchChildResources] Focus entitlement name (alt):', `"${focusEntitlementNameAlt}"`);
+    console.log('[DEBUG:fetchChildResources] Focus node keys:', Object.keys(entitlementNode));
+    console.log('[DEBUG:fetchChildResources] Focus node rawData keys:', entitlementNode.rawData ? Object.keys(entitlementNode.rawData) : 'no rawData');
+    console.log('[DEBUG:fetchChildResources] Total assignments to filter:', result.data.length);
+
+    // Log all unique IMMEDIATE parent names found in the data for comparison
+    const allImmediateParentNames = new Set();
+    result.data.forEach(a => {
+      const reasons = Array.isArray(a.reason) ? a.reason : [a.reason];
+      reasons.filter(Boolean).forEach(r => {
+        if (r.reasonType === 'ChildResource' && r.description?.startsWith('Ancestors:')) {
+          const afterAncestors = r.description.substring('Ancestors:'.length).trim();
+          const lastSlashIndex = afterAncestors.lastIndexOf('/');
+          // Extract IMMEDIATE parent (last segment after final /)
+          const immediateParentName = lastSlashIndex > 0 ? afterAncestors.substring(lastSlashIndex + 1).trim() : afterAncestors.trim();
+          allImmediateParentNames.add(immediateParentName);
+        }
+      });
+    });
+    console.log('[DEBUG:fetchChildResources] All unique IMMEDIATE parent names in response:', Array.from(allImmediateParentNames));
+
+    const matchingAssignments = result.data.filter(assignment => {
+      const resourceName = assignment.resource?.name || 'unknown';
+
+      // Try matching by parentResource.id first
+      const parentId = assignment.parentResource?.id;
+      if (parentId && parentId === focusEntitlementId) {
+        console.log('[DEBUG:fetchChildResources] MATCH by ID: resource', resourceName, 'has parent ID', parentId);
+        return true;
+      }
+
+      // Try matching by parsing the reason description "Ancestors: [parent name] / ..."
+      const reasons = Array.isArray(assignment.reason) ? assignment.reason : [assignment.reason];
+      for (const reason of reasons.filter(Boolean)) {
+        if (reason?.reasonType === 'ChildResource' && reason?.description) {
+          const desc = reason.description;
+          console.log('[DEBUG:fetchChildResources] Checking resource:', resourceName, '| reason desc:', desc);
+
+          if (desc.startsWith('Ancestors:')) {
+            // Extract IMMEDIATE parent from "Ancestors: Grandparent / Parent"
+            // The Ancestors path shows the full ancestry chain from root to immediate parent
+            // Example: "Ancestors: Basic role / Read Documents" means:
+            //   - The resource is a child of "Read Documents"
+            //   - "Read Documents" is a child of "Basic role"
+            // So the LAST segment (after final /) is the immediate parent
+            const afterAncestors = desc.substring('Ancestors:'.length).trim();
+            const lastSlashIndex = afterAncestors.lastIndexOf('/');
+
+            let immediateParentName;
+            if (lastSlashIndex > 0) {
+              // The LAST segment after "/" is the immediate parent
+              immediateParentName = afterAncestors.substring(lastSlashIndex + 1).trim();
+            } else {
+              // No slash, the whole thing is the immediate parent (direct child of focus)
+              immediateParentName = afterAncestors.trim();
+            }
+
+            console.log('[DEBUG:fetchChildResources] Extracted immediate parent name:', immediateParentName);
+
+            // Compare with focus node name - EXACT match only (case-insensitive, trimmed)
+            const focusNameLower = focusEntitlementName.toLowerCase().trim();
+            const focusNameAltLower = focusEntitlementNameAlt.toLowerCase().trim();
+            const immediateParentLower = immediateParentName.toLowerCase().trim();
+
+            // Only exact matches - no partial/includes matching
+            if (immediateParentLower && (
+                immediateParentLower === focusNameLower ||
+                immediateParentLower === focusNameAltLower
+            )) {
+              console.log('[DEBUG:fetchChildResources] MATCH by name: resource', resourceName, 'has immediate parent', immediateParentName);
+              return true;
+            } else {
+              console.log('[DEBUG:fetchChildResources] NO MATCH: immediate parent "' + immediateParentName + '" !== focus "' + focusEntitlementName + '"');
+            }
+          }
+        }
+      }
+
+      return false;
+    });
+
+    console.log('[DEBUG:fetchChildResources] === FILTERING COMPLETE ===');
+    console.log(`[DEBUG:fetchChildResources] Found ${matchingAssignments.length} matching child resources (out of ${result.data.length} total)`);
+
+    if (matchingAssignments.length === 0) {
+      // No child resources that reference this entitlement as parent
+      return buildChildResourcesLaneForEntitlement(entitlementNode);
+    }
+
+    // Deduplicate by resource ID to get unique child resources
+    const uniqueResources = new Map();
+    for (const assignment of matchingAssignments) {
+      const resourceId = assignment.resource?.id;
+      if (resourceId && !uniqueResources.has(resourceId)) {
+        uniqueResources.set(resourceId, assignment);
+      }
+    }
+
+    // Transform API response to lane items
+    const items = Array.from(uniqueResources.values()).map(assignment => {
+      const resource = assignment.resource;
+      const parentResource = assignment.parentResource;
+      const badges = [];
+      const reasons = Array.isArray(assignment.reason) ? assignment.reason : [assignment.reason];
+
+      // Check for ChildResource reasonType and extract parent name from "Ancestors:" description
+      let parentName = null;
+      let isChildResource = false;
+
+      for (const reason of reasons.filter(Boolean)) {
+        if (reason.reasonType === 'ChildResource') {
+          isChildResource = true;
+
+          // Extract IMMEDIATE parent name from "Ancestors: Grandparent / Parent" format
+          // The last segment is the immediate parent (what this item inherits from)
+          if (reason.description && reason.description.startsWith('Ancestors:')) {
+            const afterAncestors = reason.description.substring('Ancestors:'.length).trim();
+            const parts = afterAncestors.split('/').map(p => p.trim());
+            // Get the LAST segment (immediate parent), not the first (root ancestor)
+            parentName = parts[parts.length - 1];
+          }
+          break;
+        }
+      }
+
+      // Add CHILD pill if this is a child resource
+      if (isChildResource) {
+        badges.push('CHILD');
+      }
+
+      // Add PARENT: [name] pill if we found the parent name
+      if (parentName) {
+        badges.push(`PARENT: ${parentName}`);
+      }
+
+      // Add system badge if available
+      if (resource?.system?.name) {
+        badges.push(resource.system.name);
+      }
+
+      // Add resource type badge if available
+      if (resource?.resourceType?.name) {
+        badges.push(resource.resourceType.name);
+      }
+
+      // Add risk level badge if available
+      if (resource?.riskLevel?.name) {
+        badges.push(`Risk: ${resource.riskLevel.name}`);
+      }
+
+      return {
+        node: {
+          id: resource?.id,
+          type: NodeTypes.ENTITLEMENT,
+          displayName: resource?.name || 'Unknown',
+          description: resource?.description,
+          status: assignment.disabled ? 'disabled' : 'active',
+          badges,
+          metadata: {
+            parentResourceId: parentResource?.id,
+            parentResourceName: parentResource?.name || parentName,
+            isChildResource: true,
+            systemId: resource?.system?.id,
+            systemName: resource?.system?.name,
+            resourceTypeId: resource?.resourceType?.id,
+            resourceTypeName: resource?.resourceType?.name,
+            riskLevel: resource?.riskLevel?.name,
+            childResourceIds: resource?.childResourceIds || [],
+            complianceStatus: assignment.complianceStatus
+          },
+          rawData: {
+            ...resource,
+            parentResource,
+            assignment: assignment
+          }
+        },
+        reasons: reasons.filter(Boolean).map(r => ({
+          id: r.causeObjectKey || `reason-${Math.random().toString(36).substr(2, 9)}`,
+          type: r.reasonType,
+          title: r.reasonType === 'ChildResource' ? 'Inherited' : r.reasonType,
+          description: r.description
+        })),
+        validFrom: assignment.validFrom,
+        validTo: assignment.validTo,
+        groupKey: 'child-resources',
+        groupLabel: 'Child Resource'
+      };
+    });
+
+    console.log(`[fetchChildResourcesForEntitlement] Built ${items.length} unique child resource lane items for ${entitlementNode.displayName}`);
+
+    return {
+      laneType: LaneTypes.EFFECTIVE_ENTITLEMENTS,
+      totalCount: items.length,
+      items: items,
+      allItemsData: items,
+      canLoadMore: false, // We fetch all in one call
+      apiSource: 'GraphQL:getChildResourcesForIdentities'
+    };
+  } catch (error) {
+    console.error('[fetchChildResourcesForEntitlement] Error fetching child resources:', error);
+    // Fallback to static data on error
+    return buildChildResourcesLaneForEntitlement(entitlementNode);
+  }
 }
 
 /**

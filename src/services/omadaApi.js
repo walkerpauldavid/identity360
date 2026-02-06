@@ -1047,6 +1047,114 @@ export const assignmentApi = {
   },
 
   /**
+   * Get child resources for identities using reasonType: CHILD_RESOURCE filter
+   * Used when Entitlement is focus node to find child resources via identity assignments
+   * @param {string[]} identityIds - Array of identity UUIDs to query
+   * @param {string} bearerToken - OAuth bearer token
+   * @param {string} impersonateUser - User email for impersonation
+   * @param {Object} pagination - Pagination options { page, rows, signal }
+   * @param {boolean} includeDisabled - Include disabled assignments (default: true)
+   * @returns {Promise<Object>} Child resource assignments for the specified identities
+   */
+  getChildResourcesForIdentities: async (
+    identityIds,
+    bearerToken,
+    impersonateUser,
+    pagination = {},
+    includeDisabled = true
+  ) => {
+    console.log('[DEBUG:API:getChildResourcesForIdentities] === API METHOD CALLED ===');
+    console.log('[DEBUG:API:getChildResourcesForIdentities] identityIds count:', identityIds?.length);
+    console.log('[DEBUG:API:getChildResourcesForIdentities] identityIds (first 3):', identityIds?.slice(0, 3));
+    console.log('[DEBUG:API:getChildResourcesForIdentities] bearerToken available:', !!bearerToken);
+    console.log('[DEBUG:API:getChildResourcesForIdentities] impersonateUser:', impersonateUser);
+
+    // H-04 fix: Extract signal from pagination options
+    const { signal, ...paginationParams } = pagination;
+    let requestId;
+    let endpoint;
+    try {
+      // Use GraphQL v3.2 which supports the reasonType filter
+      endpoint = `${API_CONFIG.baseUrl}${API_CONFIG.endpoints.graphql.v3_2}`;
+      console.log('[DEBUG:API:getChildResourcesForIdentities] Endpoint:', endpoint);
+
+      const queryObject = GraphQLQueries.getChildResourcesForIdentities(
+        identityIds,
+        paginationParams,
+        includeDisabled
+      );
+      console.log('[DEBUG:API:getChildResourcesForIdentities] Query built successfully');
+      console.log('[DEBUG:API:getChildResourcesForIdentities] Query:', queryObject.query.substring(0, 200) + '...');
+      const requestHeaders = await getGraphQLHeaders(bearerToken, impersonateUser);
+
+      requestId = apiLogger.logRequest('GraphQL', endpoint, {
+        functionName: 'getChildResourcesForIdentities',
+        identityIds,
+        identityCount: identityIds.length,
+        pagination: paginationParams,
+        includeDisabled,
+        graphqlQuery: queryObject.query
+      }, requestHeaders);
+
+      // H-04 fix: Pass signal for request cancellation
+      const result = await executeGraphQL(
+        endpoint,
+        queryObject,
+        requestHeaders,
+        { signal }
+      );
+
+      console.log('[DEBUG:API:getChildResourcesForIdentities] GraphQL call completed');
+      console.log('[DEBUG:API:getChildResourcesForIdentities] Raw result keys:', Object.keys(result));
+
+      // Handle both standard GraphQL response { data: { ... } } and direct response
+      const graphqlData = result.data?.data || result.data;
+      console.log('[DEBUG:API:getChildResourcesForIdentities] graphqlData keys:', graphqlData ? Object.keys(graphqlData) : 'null');
+
+      const assignments = graphqlData?.calculatedAssignments?.data || [];
+      const total = graphqlData?.calculatedAssignments?.total || 0;
+      const pages = graphqlData?.calculatedAssignments?.pages || 0;
+
+      console.log('[DEBUG:API:getChildResourcesForIdentities] Parsed results: assignments=', assignments.length, 'total=', total, 'pages=', pages);
+
+      if (assignments.length > 0) {
+        console.log('[DEBUG:API:getChildResourcesForIdentities] First assignment:', JSON.stringify(assignments[0], null, 2).substring(0, 500));
+      }
+
+      const response = {
+        status: 'success',
+        data: assignments,
+        total,
+        pages,
+        current_page: pagination.page || 1,
+        rows_per_page: pagination.rows || 500
+      };
+
+      apiLogger.logResponse(requestId, 'GraphQL', endpoint, response, true, null, result.headers, result.status, result.rawResponse);
+
+      console.log('[DEBUG:API:getChildResourcesForIdentities] Returning response with', response.data.length, 'assignments');
+      return response;
+    } catch (error) {
+      console.error('[DEBUG:API:getChildResourcesForIdentities] ERROR:', error.message);
+      console.error('[DEBUG:API:getChildResourcesForIdentities] Error details:', error);
+
+      // H-04 fix: Handle abort errors gracefully
+      if (isAbortError(error)) {
+        return { status: 'aborted', data: [], total: 0, pages: 0 };
+      }
+      const responseHeaders = error.responseHeaders || {};
+      const statusCode = error.statusCode || null;
+      const rawResponse = error.rawResponse || null;
+
+      if (requestId) {
+        apiLogger.logResponse(requestId, 'GraphQL', endpoint, null, false, error, responseHeaders, statusCode, rawResponse);
+      }
+
+      return handleApiError(error, 'getChildResourcesForIdentities');
+    }
+  },
+
+  /**
    * Get system compliance health data from the Compliance Workbench
    * Returns per-system compliance status counts and system health in a single call.
    * @param {string} bearerToken - OAuth bearer token
@@ -1733,6 +1841,11 @@ export const omadaApi = {
       assignmentApi.getIdentitiesHavingResource,
       (resourceId, resourceName, _token, impersonateUser, pagination, systemId, complianceStatus, includeDisabled) =>
         [impersonateUser, resourceId, resourceName, pagination, systemId, complianceStatus, includeDisabled]
+    ),
+    getChildResourcesForIdentities: withApiCache('assignment', 'getChildResourcesForIdentities',
+      assignmentApi.getChildResourcesForIdentities,
+      (identityIds, _token, impersonateUser, pagination, includeDisabled) =>
+        [impersonateUser, identityIds, pagination, includeDisabled]
     ),
   },
 

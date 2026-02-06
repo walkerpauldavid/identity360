@@ -22,11 +22,29 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [error, setError] = useState(null);
 
-  // Check authentication status on mount
+  // Initialize authentication on mount - clears stale tokens and validates auth
   useEffect(() => {
     // Clear any stale callback processing flags
     localStorage.removeItem('oauth_callback_processing');
+
+    // Initialize auth and clear any stale tokens before checking
+    console.log('=== App Startup: Initializing Authentication ===');
+    authService.initializeAuth();
+
     checkAuth();
+  }, []);
+
+  // Listen for 401 unauthorized events from API calls
+  useEffect(() => {
+    const handleUnauthorized = (event) => {
+      console.warn('Received auth:unauthorized event:', event.detail);
+      setIsAuthenticated(false);
+      setUser(null);
+      setError('Your session has expired. Please log in again.');
+    };
+
+    window.addEventListener('auth:unauthorized', handleUnauthorized);
+    return () => window.removeEventListener('auth:unauthorized', handleUnauthorized);
   }, []);
 
   const checkAuth = () => {
@@ -114,6 +132,27 @@ export const AuthProvider = ({ children }) => {
     return await authService.ensureValidToken();
   };
 
+  /**
+   * Handle authentication errors (e.g., 401 responses from APIs)
+   * Clears stale tokens and triggers re-authentication
+   * @param {string} reason - Description of why re-auth is needed
+   */
+  const handleAuthError = (reason = 'API authentication error') => {
+    console.warn(`Auth error detected: ${reason} - clearing stale auth and redirecting to login`);
+    authService.clearAuth();
+    setIsAuthenticated(false);
+    setUser(null);
+    // Navigate to login will happen automatically due to route protection
+  };
+
+  /**
+   * Check if token is stale (for use by API services)
+   * @returns {boolean} True if token is stale
+   */
+  const isTokenStale = () => {
+    return authService.isTokenStale();
+  };
+
   const value = {
     isAuthenticated,
     isLoading,
@@ -125,7 +164,9 @@ export const AuthProvider = ({ children }) => {
     getAccessToken,
     getBearerToken,
     ensureValidToken,
-    checkAuth
+    checkAuth,
+    handleAuthError,
+    isTokenStale
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

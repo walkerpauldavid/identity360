@@ -183,10 +183,97 @@ class AuthService {
     this.tokenKey = 'oauth_token_data';
     this.stateKey = 'oauth_state';
     this.codeVerifierKey = 'oauth_code_verifier';
+    this.sessionKey = 'oauth_session_id';
+
+    // Maximum age for tokens in milliseconds (24 hours)
+    // Tokens older than this are considered stale even if JWT hasn't expired
+    this.MAX_TOKEN_AGE_MS = 24 * 60 * 60 * 1000;
+
+    // Buffer time for token expiry checks (5 minutes)
+    this.TOKEN_EXPIRY_BUFFER_MS = 5 * 60 * 1000;
+  }
+
+  /**
+   * Generate a unique session ID for tracking login sessions
+   * @returns {string} Unique session identifier
+   */
+  generateSessionId() {
+    return `${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
+  }
+
+  /**
+   * Get the current session ID
+   * @returns {string|null} Current session ID
+   */
+  getSessionId() {
+    return localStorage.getItem(this.sessionKey);
+  }
+
+  /**
+   * Initialize authentication on app startup
+   * Validates existing tokens and clears any stale data
+   * Call this method when the app loads to ensure clean auth state
+   * @returns {boolean} True if valid authentication exists, false otherwise
+   */
+  initializeAuth() {
+    console.log('=== Initializing Authentication ===');
+
+    // Check for stale tokens and clear them
+    if (this.isTokenStale()) {
+      console.log('Stale token detected during initialization - clearing auth');
+      this.clearAuth();
+      return false;
+    }
+
+    // Validate current authentication
+    const isValid = this.isAuthenticated();
+    console.log('Authentication initialized, valid:', isValid);
+    return isValid;
+  }
+
+  /**
+   * Check if the stored token is stale
+   * A token is considered stale if:
+   * 1. It was stored more than MAX_TOKEN_AGE_MS ago
+   * 2. The JWT is expired or expiring soon
+   * 3. The session ID doesn't match (indicates different login session)
+   * @returns {boolean} True if token is stale
+   */
+  isTokenStale() {
+    const tokenData = this.getStoredToken();
+    if (!tokenData || !tokenData.access_token) {
+      return false; // No token to be stale
+    }
+
+    // Check 1: Token age based on stored_at timestamp
+    if (tokenData.stored_at) {
+      const storedTime = new Date(tokenData.stored_at).getTime();
+      const age = Date.now() - storedTime;
+      if (age > this.MAX_TOKEN_AGE_MS) {
+        console.log(`Token is stale: age ${Math.round(age / 1000 / 60)} minutes exceeds max ${this.MAX_TOKEN_AGE_MS / 1000 / 60} minutes`);
+        return true;
+      }
+    }
+
+    // Check 2: JWT expiry
+    if (this.isTokenExpired(tokenData.access_token)) {
+      console.log('Token is stale: JWT is expired or expiring soon');
+      return true;
+    }
+
+    // Check 3: Session ID validation (if session tracking is enabled)
+    const currentSessionId = this.getSessionId();
+    if (tokenData.session_id && currentSessionId && tokenData.session_id !== currentSessionId) {
+      console.log('Token is stale: session ID mismatch (different login session)');
+      return true;
+    }
+
+    return false;
   }
 
   /**
    * Check if user is authenticated
+   * Validates token freshness, expiry, and session consistency
    * @returns {boolean} Authentication status
    */
   isAuthenticated() {
@@ -210,6 +297,13 @@ class AuthService {
       return false;
     }
 
+    // STALE TOKEN CHECK: Validate token is not stale before accepting it
+    if (this.isTokenStale()) {
+      console.log('Token is stale - clearing authentication');
+      this.clearAuth();
+      return false;
+    }
+
     // Check the actual JWT token expiry (more reliable than stored expires_at)
     if (this.isTokenExpired(tokenData.access_token)) {
       console.log('OAuth token JWT is expired - clearing authentication');
@@ -224,7 +318,7 @@ class AuthService {
       return false;
     }
 
-    console.log('OAuth token is valid');
+    console.log('OAuth token is valid and not stale');
     return true;
   }
 
@@ -333,6 +427,7 @@ class AuthService {
 
   /**
    * Ensure we have a valid access token, refreshing if necessary
+   * Checks for stale tokens before returning
    * @returns {Promise<string|null>} Valid access token
    */
   async ensureValidToken() {
@@ -347,6 +442,13 @@ class AuthService {
       } else {
         return overrideToken;
       }
+    }
+
+    // STALE TOKEN CHECK: Reject stale tokens before proceeding
+    if (this.isTokenStale()) {
+      console.warn('Token is stale - clearing auth and requiring fresh login');
+      this.clearAuth();
+      return null;
     }
 
     // Check if refresh is needed
@@ -396,7 +498,7 @@ class AuthService {
   }
 
   /**
-   * Store token data
+   * Store token data with staleness tracking metadata
    * @param {Object} tokenData - Token data to store
    */
   storeToken(tokenData) {
@@ -408,28 +510,46 @@ class AuthService {
         tokenData.expires_at = expiresAt.toISOString();
       }
 
+      // Add staleness tracking metadata
+      tokenData.stored_at = new Date().toISOString();
+      tokenData.session_id = this.getSessionId();
+
       localStorage.setItem(this.tokenKey, JSON.stringify(tokenData));
+      console.log('Token stored with session:', tokenData.session_id, 'at:', tokenData.stored_at);
     } catch (error) {
       console.error('Error storing token:', error);
     }
   }
 
   /**
-   * Clear authentication data
+   * Clear authentication data including session tracking
    */
   clearAuth() {
     localStorage.removeItem(this.tokenKey);
     localStorage.removeItem(this.stateKey);
     localStorage.removeItem(this.codeVerifierKey);
-    console.log('Auth data cleared');
+    localStorage.removeItem(this.sessionKey);
+    localStorage.removeItem('bearer_token_override'); // Also clear override tokens
+    console.log('Auth data cleared (including session and override tokens)');
   }
 
   /**
    * Initiate OAuth2 login with PKCE
+   * Clears any existing stale tokens before starting fresh login
    */
   async login() {
     try {
       console.log('=== Starting OAuth2 Login Flow ===');
+
+      // STALE TOKEN PREVENTION: Clear any existing auth data before new login
+      // This prevents stale tokens from interfering with the new login session
+      console.log('Clearing any existing auth data before new login...');
+      this.clearAuth();
+
+      // Generate a new session ID for this login attempt
+      const newSessionId = this.generateSessionId();
+      localStorage.setItem(this.sessionKey, newSessionId);
+      console.log('New session ID:', newSessionId);
 
       // Validate configuration
       console.log('Checking OAuth configuration...');

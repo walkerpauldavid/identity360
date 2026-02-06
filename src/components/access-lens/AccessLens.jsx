@@ -26,7 +26,7 @@ const getSelectionForLane = (laneType, selections) => {
   const key = LaneSchema[laneType]?.selectionStateKey;
   return key ? (selections[key] || null) : null;
 };
-import accessLensDataService, { buildContextsLane, buildLanesFromAssignments, extractUniqueReasonTypes, extractUniqueComplianceStatuses, extractViolationCount, enrichPoliciesWithOData, enrichResourceFoldersWithOData } from './accessLensDataService';
+import accessLensDataService, { buildContextsLane, buildLanesFromAssignments, extractUniqueReasonTypes, extractUniqueComplianceStatuses, extractViolationCount, enrichPoliciesWithOData, enrichResourceFoldersWithOData, fetchChildResourcesForEntitlement } from './accessLensDataService';
 import { usePreferences } from '../../contexts/PreferencesContext';
 import {
   applyCrossLaneFilters,
@@ -422,8 +422,8 @@ const DraggableLane = memo(({ id, position, children, onPositionChange, onRefCha
       data-lane-type={id}
       {...attributes}
     >
-      {/* Drag handle overlay - covers left portion of header for dragging */}
-      {/* Right side (buttons area) is left uncovered so buttons receive clicks */}
+      {/* Drag handle overlay - covers icon and title area for dragging */}
+      {/* Uses fixed width to leave search input and buttons uncovered */}
       <div
         className="drag-handle-overlay"
         {...listeners}
@@ -431,7 +431,7 @@ const DraggableLane = memo(({ id, position, children, onPositionChange, onRefCha
           position: 'absolute',
           top: 0,
           left: 0,
-          right: '140px', // Leave space for header buttons (toggle, maximize, grid controls)
+          width: '160px', // Fixed width covering icon + title area only
           height: '40px', // Height of the lane header
           cursor: isDragging ? 'grabbing' : 'grab',
           zIndex: 10,
@@ -1081,11 +1081,13 @@ const AccessLens = ({
   // Track enrichment status to prevent infinite loops
   const policiesEnrichedRef = useRef(false);
   const foldersEnrichedRef = useRef(false);
+  const childResourcesEnrichedRef = useRef(false);
 
   // Reset enrichment flags when focus node changes
   useEffect(() => {
     policiesEnrichedRef.current = false;
     foldersEnrichedRef.current = false;
+    childResourcesEnrichedRef.current = false;
   }, [focusNode?.id]);
 
   // Enrich Assignment Policies lane with OData details (AP_CONTEXTS for cross-lane filtering)
@@ -1173,6 +1175,115 @@ const AccessLens = ({
 
     enrichFolders();
   }, [lanes, apiContext]);
+
+  // Fetch child resources for Entitlement focus node using GraphQL API (reasonType: CHILD_RESOURCE)
+  // This runs after lanes are built and we have apiContext, only for Entitlement focus nodes
+  // Approach: Query identities from Identities lane with reasonType: CHILD_RESOURCE, then filter by parent ID
+  useEffect(() => {
+    const fetchChildResources = async () => {
+      console.log('[DEBUG:ChildResources] === useEffect triggered ===');
+      console.log('[DEBUG:ChildResources] childResourcesEnrichedRef.current:', childResourcesEnrichedRef.current);
+      console.log('[DEBUG:ChildResources] focusNode:', focusNode?.type, focusNode?.id, focusNode?.displayName);
+      console.log('[DEBUG:ChildResources] apiContext available:', !!apiContext);
+      console.log('[DEBUG:ChildResources] lanes count:', lanes?.length);
+
+      // Skip if already fetched for this focus node
+      if (childResourcesEnrichedRef.current) {
+        console.log('[DEBUG:ChildResources] SKIP: Already enriched for this focus node');
+        return;
+      }
+
+      // Only fetch for Entitlement focus nodes
+      if (!focusNode || (focusNode.type !== NodeTypes.ENTITLEMENT && focusNode.type !== 'Entitlement')) {
+        console.log('[DEBUG:ChildResources] SKIP: Focus node is not Entitlement, type:', focusNode?.type);
+        return;
+      }
+
+      if (!apiContext || !lanes || lanes.length === 0) {
+        console.log('[DEBUG:ChildResources] SKIP: No apiContext or lanes');
+        return;
+      }
+
+      // Log all available lanes
+      console.log('[DEBUG:ChildResources] Available lanes:', lanes.map(l => `${l.laneType}(${l.items?.length || 0})`).join(', '));
+
+      // Check if we already have child resources lane with API data
+      const existingChildLane = lanes.find(l => l.laneType === LaneTypes.EFFECTIVE_ENTITLEMENTS);
+      console.log('[DEBUG:ChildResources] Existing EFFECTIVE_ENTITLEMENTS lane:', existingChildLane ? `items=${existingChildLane.items?.length}, apiSource=${existingChildLane.apiSource}` : 'none');
+
+      if (existingChildLane?.apiSource === 'GraphQL:getChildResourcesForIdentities') {
+        childResourcesEnrichedRef.current = true;
+        console.log('[DEBUG:ChildResources] SKIP: Already fetched from API');
+        return;
+      }
+
+      // Get identity IDs from the Identities lane
+      const identitiesLane = lanes.find(l => l.laneType === LaneTypes.IDENTITIES);
+      console.log('[DEBUG:ChildResources] Identities lane:', identitiesLane ? `items=${identitiesLane.items?.length}` : 'NOT FOUND');
+
+      if (!identitiesLane || !identitiesLane.items || identitiesLane.items.length === 0) {
+        console.log('[DEBUG:ChildResources] SKIP: No identities in Identities lane');
+        return;
+      }
+
+      // Extract identity IDs from the lane items
+      console.log('[DEBUG:ChildResources] First identity item:', JSON.stringify(identitiesLane.items[0]?.node, null, 2));
+      const identityIds = identitiesLane.items
+        .map(item => item.node?.id)
+        .filter(id => id != null);
+
+      console.log('[DEBUG:ChildResources] Extracted identity IDs:', identityIds.length, identityIds.slice(0, 5));
+
+      if (identityIds.length === 0) {
+        console.log('[DEBUG:ChildResources] SKIP: No valid identity IDs found');
+        return;
+      }
+
+      // Mark as enriched before async call to prevent duplicate calls
+      childResourcesEnrichedRef.current = true;
+
+      try {
+        console.log(`[DEBUG:ChildResources] CALLING fetchChildResourcesForEntitlement with ${identityIds.length} identities, focusNode ID: ${focusNode.id}`);
+        const childResourcesLane = await fetchChildResourcesForEntitlement(focusNode, identityIds, apiContext);
+
+        console.log('[DEBUG:ChildResources] API response:', {
+          laneType: childResourcesLane?.laneType,
+          totalCount: childResourcesLane?.totalCount,
+          itemsLength: childResourcesLane?.items?.length,
+          apiSource: childResourcesLane?.apiSource
+        });
+
+        if (childResourcesLane && childResourcesLane.items && childResourcesLane.items.length > 0) {
+          console.log('[DEBUG:ChildResources] SUCCESS: Updating lanes with', childResourcesLane.items.length, 'child resources');
+          // Update lanes with fetched child resources
+          setLanes(prevLanes => {
+            // Check if EFFECTIVE_ENTITLEMENTS lane exists
+            const hasChildLane = prevLanes.some(l => l.laneType === LaneTypes.EFFECTIVE_ENTITLEMENTS);
+
+            if (hasChildLane) {
+              // Replace existing lane
+              return prevLanes.map(lane =>
+                lane.laneType === LaneTypes.EFFECTIVE_ENTITLEMENTS ? childResourcesLane : lane
+              );
+            } else {
+              // Add new lane
+              return [...prevLanes, childResourcesLane];
+            }
+          });
+          console.log(`[AccessLens] Fetched ${childResourcesLane.items.length} child resources for Entitlement focus node`);
+        } else {
+          console.log('[DEBUG:ChildResources] NO child resources returned from API');
+        }
+      } catch (error) {
+        console.error('[DEBUG:ChildResources] ERROR:', error);
+        console.warn('[AccessLens] Failed to fetch child resources:', error.message);
+        // Reset flag so it can retry on next render
+        childResourcesEnrichedRef.current = false;
+      }
+    };
+
+    fetchChildResources();
+  }, [lanes, apiContext, focusNode]);
 
   // Sync currentAssignments with prop when prop changes (initial load or external update)
   useEffect(() => {
