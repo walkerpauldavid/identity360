@@ -2723,6 +2723,7 @@ export async function enrichResourceFoldersWithOData(resourceFoldersLane, apiCon
         const badges = [`${item.node.metadata.resourceCount} resources`];
         if (owner) badges.push(owner);
         if (classification) badges.push(classification);
+        if (approval) badges.push(`Approval: ${approval}`);
 
         // Update item
         item.node.badges = badges;
@@ -3647,10 +3648,6 @@ export async function enrichPoliciesWithOData(policiesLane, apiContext) {
         const policyData = result.data;
         const apContexts = policyData.AP_CONTEXTS || [];
 
-        // Debug: Log raw AP_CONTEXTS structure
-        console.warn(`[enrichPoliciesWithOData] ⚠️ "${item.node?.displayName}" raw AP_CONTEXTS (first item):`,
-          apContexts.length > 0 ? JSON.stringify(apContexts[0]) : 'empty');
-
         // Extract context IDs for cross-lane filtering
         // Use UId (UUID) to match GraphQL id field which returns UUIDs
         const contextIds = apContexts
@@ -3666,8 +3663,12 @@ export async function enrichPoliciesWithOData(policiesLane, apiContext) {
           })
           .filter(Boolean);
 
-        console.warn(`[enrichPoliciesWithOData] ⚠️ "${item.node?.displayName}" extracted contextIds:`, contextIds);
-        console.warn(`[enrichPoliciesWithOData] ⚠️ "${item.node?.displayName}" extracted contextNames:`, contextNames);
+        if (shouldLog('POLICIES')) {
+          console.log(`[enrichPoliciesWithOData] "${item.node?.displayName}" raw AP_CONTEXTS:`,
+            apContexts.length > 0 ? JSON.stringify(apContexts[0]) : 'empty');
+          console.log(`[enrichPoliciesWithOData] "${item.node?.displayName}" extracted contextIds:`, contextIds);
+          console.log(`[enrichPoliciesWithOData] "${item.node?.displayName}" extracted contextNames:`, contextNames);
+        }
 
         // Enrich the item with AP_CONTEXTS data
         item.node.metadata.contextIds = contextIds;
