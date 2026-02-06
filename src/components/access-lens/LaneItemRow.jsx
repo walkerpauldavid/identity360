@@ -112,6 +112,8 @@ const LaneItemRow = ({
   const complianceStatus = node.metadata?.complianceStatus || rawData?.complianceStatus || null;
   // Check if this entitlement has violations
   const hasViolations = node.metadata?.hasViolations || rawData?.hasViolations || (node.metadata?.violations?.length > 0) || (rawData?.violations?.length > 0);
+  // Check if this assignment is disabled (from rawData.disabled or rawData.assignment.disabled)
+  const isDisabled = rawData?.disabled === true || rawData?.assignment?.disabled === true || node.status === 'disabled';
 
   // Check for multiple assignment paths (reason array with more than one entry)
   // This indicates overlapping policies/reasons granting the same entitlement
@@ -185,6 +187,14 @@ const LaneItemRow = ({
     hoverDescription = tooltipParts.join('\n');
   }
 
+  // Build enhanced hover tooltip for entitlement nodes - show resource description
+  if (isEntitlementNode && !hoverDescription) {
+    const entitlementDescription = rawData?.description || node.description || null;
+    if (entitlementDescription) {
+      hoverDescription = `${node.displayName}\n\n${entitlementDescription}`;
+    }
+  }
+
   // Handle click with proper event handling
   const handleClick = (e) => {
     e.stopPropagation(); // Prevent drag/parent interference
@@ -194,7 +204,7 @@ const LaneItemRow = ({
 
   return (
     <div
-      className={`lane-item-row ${isSelected ? 'selected' : ''} ${isActiveFilter ? 'active-filter' : ''} ${viewMode === 'risk' && node.riskScore >= 50 ? 'high-risk' : ''} ${isLogicalSystem ? 'logical-system' : ''} ${hasViolations ? 'has-violations' : ''} ${isViolationNode ? 'violation-node' : ''} ${hasMultiplePaths ? 'multi-path' : ''}`}
+      className={`lane-item-row ${isSelected ? 'selected' : ''} ${isActiveFilter ? 'active-filter' : ''} ${viewMode === 'risk' && node.riskScore >= 50 ? 'high-risk' : ''} ${isLogicalSystem ? 'logical-system' : ''} ${hasViolations ? 'has-violations' : ''} ${isViolationNode ? 'violation-node' : ''} ${hasMultiplePaths ? 'multi-path' : ''} ${isDisabled ? 'is-disabled' : ''}`}
       onClick={handleClick}
       style={{ cursor: 'pointer' }}
       title={hoverDescription || node.displayName}
@@ -253,6 +263,15 @@ const LaneItemRow = ({
               className={`lane-item-compliance ${complianceStatus === 'Approved' ? 'approved' : complianceStatus === 'Not Approved' ? 'not-approved' : 'pending'}`}
             >
               {complianceStatus}
+            </span>
+          )}
+          {/* Disabled indicator for entitlements - shows icon when assignment is disabled */}
+          {isEntitlementNode && isDisabled && (
+            <span className="lane-item-disabled-icon" title="This assignment is disabled">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="12" cy="12" r="10" stroke="#ef4444" strokeWidth="2" fill="none"/>
+                <line x1="6" y1="6" x2="18" y2="18" stroke="#ef4444" strokeWidth="2" strokeLinecap="round"/>
+              </svg>
             </span>
           )}
         </div>

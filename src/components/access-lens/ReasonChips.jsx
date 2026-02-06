@@ -18,8 +18,18 @@ const getReasonTooltip = (reason, parentResource) => {
                       reason.type === 'ChildResource' ||
                       reason.reasonType === 'ChildResource';
 
-  if (isInherited && parentResource?.name) {
-    return `Inherited from: ${parentResource.name}`;
+  if (isInherited) {
+    // First try parentResource.name from API
+    if (parentResource?.name) {
+      return `Inherited from: ${parentResource.name}`;
+    }
+
+    // Fall back to parsing "Ancestors: ..." from reason.description
+    // Format: "Ancestors: Parent Name" or "Ancestors: Grandparent / Parent"
+    if (reason.description && reason.description.startsWith('Ancestors:')) {
+      const ancestorPath = reason.description.substring('Ancestors:'.length).trim();
+      return `Inherited from: ${ancestorPath}`;
+    }
   }
 
   return reason.description || reason.title;

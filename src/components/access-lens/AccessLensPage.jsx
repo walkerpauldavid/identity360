@@ -1203,7 +1203,93 @@ const AccessLensPage = () => {
           let reasonTypes = [];
           let complianceStatuses = [];
 
+          // Fetch Resource details from OData FIRST to get CHILDROLES and owner information
+          // This must be done before building lanes so child resources can be included
+          let resourceOwners = null;
+          let childRoles = [];
+          let resourceOdataData = null;
+          try {
+            const resourceOdataResult = await omadaApi.odata.query(
+              'Resource',
+              bearerToken,
+              impersonateUser,
+              {
+                filter: `Uid eq ${resourceId}`,  // Use Uid (UUID field), not Id (integer)
+                top: 1
+                // Don't use $select or $expand - they may cause 400 errors on Resource entity
+                // Let OData return all default fields instead
+              }
+            );
+
+            if (resourceOdataResult.status === 'success' && resourceOdataResult.data?.length > 0) {
+              resourceOdataData = resourceOdataResult.data[0];
+
+              // Extract CHILDROLES for building child resources lane
+              childRoles = resourceOdataData.CHILDROLES || [];
+              if (childRoles.length > 0) {
+                console.log(`[Entitlement Pivot] Found ${childRoles.length} CHILDROLES from OData for ${resourceName}`);
+              }
+
+              // Extract owner information
+              // OWNERREF and EXPLICITOWNER are typically arrays of identity references
+              const ownerRef = resourceOdataData.OWNERREF;
+              const explicitOwner = resourceOdataData.EXPLICITOWNER;
+
+              // Parse owners - could be array or single object
+              // OData returns DisplayNameValue for the owner's display name
+              const parseOwner = (ownerData) => {
+                if (!ownerData) return null;
+                if (Array.isArray(ownerData)) {
+                  return ownerData.map(o => ({
+                    id: o.Id || o.UId,
+                    displayName: o.DisplayNameValue || o.DisplayName || o.DISPLAYNAME || o.Name,
+                    type: 'OWNERREF'
+                  })).filter(o => o.displayName);
+                }
+                if (typeof ownerData === 'object') {
+                  return [{
+                    id: ownerData.Id || ownerData.UId,
+                    displayName: ownerData.DisplayNameValue || ownerData.DisplayName || ownerData.DISPLAYNAME || ownerData.Name,
+                    type: 'OWNERREF'
+                  }].filter(o => o.displayName);
+                }
+                return null;
+              };
+
+              const owners = parseOwner(ownerRef) || [];
+              const explicitOwners = parseOwner(explicitOwner)?.map(o => ({ ...o, type: 'EXPLICITOWNER' })) || [];
+
+              resourceOwners = {
+                owners: owners,
+                explicitOwners: explicitOwners,
+                allOwners: [...owners, ...explicitOwners]
+              };
+            }
+          } catch (ownerError) {
+            console.warn('[Entitlement Pivot] OData query failed:', ownerError.message);
+            // Continue without owner info and CHILDROLES - not critical
+          }
+
+          // Create enriched node with CHILDROLES from OData for lane building
+          const nodeWithChildRoles = {
+            ...node,
+            id: resourceId,
+            displayName: resourceName,
+            rawData: {
+              ...node.rawData,
+              CHILDROLES: childRoles,
+              // Also include any other OData data that might be useful
+              ...(resourceOdataData ? {
+                description: resourceOdataData.DESCRIPTION || node.rawData?.description,
+                DISPLAYNAME: resourceOdataData.DISPLAYNAME
+              } : {})
+            }
+          };
+
           if (assignmentsResult.status === 'success' && assignmentsResult.data) {
+            // Enrich assignments with identity details from OData
+            let enrichedAssignments = assignmentsResult.data;
+
             if (assignmentsResult.data.length > 0) {
               // Extract unique identity UUIDs for OData enrichment (use UUID, not identityId code)
               const uniqueIdentityUIds = [...new Set(
@@ -1257,7 +1343,7 @@ const AccessLensPage = () => {
               }
 
               // Enrich assignments with OData details before building lanes
-              const enrichedAssignments = assignmentsResult.data.map(assignment => {
+              enrichedAssignments = assignmentsResult.data.map(assignment => {
                 const identityUId = assignment.identity?.id;  // Use UUID for lookup
                 const odataDetails = identityUId ? identityDetailsMap[identityUId] : null;
                 if (odataDetails) {
@@ -1274,74 +1360,24 @@ const AccessLensPage = () => {
                 return assignment;
               });
 
-              // Build lanes for entitlement-centric view
-              lanes = buildLanesForEntitlement(enrichedAssignments, {}, node);
               reasonTypes = extractUniqueReasonTypes(enrichedAssignments);
               complianceStatuses = extractUniqueComplianceStatuses(enrichedAssignments);
+            }
 
-              if (shouldLog('LANES')) {
-                console.log('[Pivot] Built', lanes.length, 'entitlement-centric lanes');
-              }
+            // Build lanes for entitlement-centric view
+            // ALWAYS call buildLanesForEntitlement even if no assignments, so child resources lane can be built from CHILDROLES
+            lanes = buildLanesForEntitlement(enrichedAssignments, {}, nodeWithChildRoles);
+
+            if (shouldLog('LANES')) {
+              console.log('[Pivot] Built', lanes.length, 'entitlement-centric lanes (assignments:', enrichedAssignments.length, ', CHILDROLES:', childRoles.length, ')');
             }
           } else {
             console.error('Entitlement pivot: API call failed');
-          }
-
-          // Fetch Resource details from OData to get owner information
-          let resourceOwners = null;
-          try {
-            const resourceOdataResult = await omadaApi.odata.query(
-              'Resource',
-              bearerToken,
-              impersonateUser,
-              {
-                filter: `Uid eq ${resourceId}`,  // Use Uid (UUID field), not Id (integer)
-                top: 1
-                // Don't use $select or $expand - they may cause 400 errors on Resource entity
-                // Let OData return all default fields instead
-              }
-            );
-
-            if (resourceOdataResult.status === 'success' && resourceOdataResult.data?.length > 0) {
-              const resourceData = resourceOdataResult.data[0];
-
-              // Extract owner information
-              // OWNERREF and EXPLICITOWNER are typically arrays of identity references
-              const ownerRef = resourceData.OWNERREF;
-              const explicitOwner = resourceData.EXPLICITOWNER;
-
-              // Parse owners - could be array or single object
-              // OData returns DisplayNameValue for the owner's display name
-              const parseOwner = (ownerData) => {
-                if (!ownerData) return null;
-                if (Array.isArray(ownerData)) {
-                  return ownerData.map(o => ({
-                    id: o.Id || o.UId,
-                    displayName: o.DisplayNameValue || o.DisplayName || o.DISPLAYNAME || o.Name,
-                    type: 'OWNERREF'
-                  })).filter(o => o.displayName);
-                }
-                if (typeof ownerData === 'object') {
-                  return [{
-                    id: ownerData.Id || ownerData.UId,
-                    displayName: ownerData.DisplayNameValue || ownerData.DisplayName || ownerData.DISPLAYNAME || ownerData.Name,
-                    type: 'OWNERREF'
-                  }].filter(o => o.displayName);
-                }
-                return null;
-              };
-
-              const owners = parseOwner(ownerRef) || [];
-              const explicitOwners = parseOwner(explicitOwner)?.map(o => ({ ...o, type: 'EXPLICITOWNER' })) || [];
-
-              resourceOwners = {
-                owners: owners,
-                explicitOwners: explicitOwners,
-                allOwners: [...owners, ...explicitOwners]
-              };
+            // Even if API failed, try to build lanes with CHILDROLES from OData
+            if (childRoles.length > 0) {
+              lanes = buildLanesForEntitlement([], {}, nodeWithChildRoles);
+              console.log('[Pivot] Built lanes from CHILDROLES only (no assignments)');
             }
-          } catch (ownerError) {
-            // Continue without owner info - not critical
           }
 
           // Create a clean entitlement-focused node without relationship data
@@ -1357,7 +1393,7 @@ const AccessLensPage = () => {
               system: node.metadata?.system || node.rawData?.system?.name,
               resourceType: node.metadata?.resourceType || node.rawData?.resourceType?.name,
               resourceTypeId: node.metadata?.resourceTypeId || node.rawData?.resourceType?.id,
-              description: node.metadata?.description || node.rawData?.description,
+              description: node.metadata?.description || node.rawData?.description || resourceOdataData?.DESCRIPTION,
               // Owner information from OData
               owners: resourceOwners?.owners || [],
               explicitOwners: resourceOwners?.explicitOwners || [],
@@ -1367,12 +1403,14 @@ const AccessLensPage = () => {
             rawData: {
               id: resourceId,
               name: resourceName,
-              description: node.rawData?.description || node.rawData?.resource?.description,
+              description: node.rawData?.description || node.rawData?.resource?.description || resourceOdataData?.DESCRIPTION,
               system: node.rawData?.system || node.rawData?.resource?.system,
               resourceType: node.rawData?.resourceType || node.rawData?.resource?.resourceType,
               resourceCategory: node.rawData?.resourceCategory || node.rawData?.resource?.resourceCategory,
               resourceFolder: node.rawData?.resourceFolder || node.rawData?.resource?.resourceFolder,
               maxValidity: node.rawData?.maxValidity || node.rawData?.resource?.maxValidity,
+              // CHILDROLES for child resources lane building
+              CHILDROLES: childRoles,
               // Owner information
               owners: resourceOwners?.owners || [],
               explicitOwners: resourceOwners?.explicitOwners || [],

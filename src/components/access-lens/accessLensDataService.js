@@ -2821,27 +2821,35 @@ export function configureDataService(options) {
  * @returns {Array} Array of lane objects
  */
 export function buildLanesForEntitlement(assignments, filters = {}, entitlementNode = null) {
-  if (!assignments || !Array.isArray(assignments) || assignments.length === 0) {
-    // console.log('[buildLanesForEntitlement] No assignments provided');
+  const hasAssignments = assignments && Array.isArray(assignments) && assignments.length > 0;
+  const hasChildRoles = entitlementNode?.rawData?.CHILDROLES?.length > 0;
+
+  // If no assignments AND no CHILDROLES, return empty lanes
+  if (!hasAssignments && !hasChildRoles) {
+    // console.log('[buildLanesForEntitlement] No assignments and no CHILDROLES');
     return [];
   }
 
-  // console.log('[buildLanesForEntitlement] Processing', assignments.length, 'assignments');
+  // console.log('[buildLanesForEntitlement] Processing', assignments?.length || 0, 'assignments,', entitlementNode?.rawData?.CHILDROLES?.length || 0, 'CHILDROLES');
 
   const lanes = [];
 
-  // 1. Build Identities lane - who has this entitlement
-  lanes.push(buildIdentitiesLaneForEntitlement(assignments, filters));
+  // Only build assignment-based lanes if we have assignments
+  if (hasAssignments) {
+    // 1. Build Identities lane - who has this entitlement
+    lanes.push(buildIdentitiesLaneForEntitlement(assignments, filters));
 
-  // 2. Build Accounts lane - accounts through which the entitlement is assigned
-  lanes.push(buildAccountsLaneForEntitlement(assignments, filters));
+    // 2. Build Accounts lane - accounts through which the entitlement is assigned
+    lanes.push(buildAccountsLaneForEntitlement(assignments, filters));
 
-  // 3. Build System and/or Logical Application lanes
-  // This returns an array: [LogicalApps lane, Systems lane] or just [Systems lane]
-  const systemLanes = buildSystemLanesForEntitlement(assignments, filters, entitlementNode);
-  lanes.push(...systemLanes);
+    // 3. Build System and/or Logical Application lanes
+    // This returns an array: [LogicalApps lane, Systems lane] or just [Systems lane]
+    const systemLanes = buildSystemLanesForEntitlement(assignments, filters, entitlementNode);
+    lanes.push(...systemLanes);
+  }
 
   // 4. Build Resource Folder lane (if entitlement has a resource folder)
+  // This doesn't depend on assignments
   try {
     const resourceFolderLane = buildResourceFolderLaneForEntitlement(entitlementNode);
     if (resourceFolderLane && resourceFolderLane.items && resourceFolderLane.items.length > 0) {
@@ -2852,10 +2860,12 @@ export function buildLanesForEntitlement(assignments, filters = {}, entitlementN
   }
 
   // 5. Build Child Resources lane (if entitlement has CHILDROLES)
+  // This doesn't depend on assignments - uses CHILDROLES from OData
   try {
     const childResourcesLane = buildChildResourcesLaneForEntitlement(entitlementNode);
     if (childResourcesLane && childResourcesLane.items && childResourcesLane.items.length > 0) {
       lanes.push(childResourcesLane);
+      console.log(`[buildLanesForEntitlement] Added child resources lane with ${childResourcesLane.items.length} items`);
     }
   } catch (e) {
     console.warn('[buildLanesForEntitlement] Error building child resources lane:', e);
@@ -3025,7 +3035,8 @@ function buildAccountsLaneForEntitlement(assignments, filters) {
         system: acc.system?.name,
         systemId: acc.system?.id,
         accountType: acc.accountType?.name,
-        identityId: acc.identity?.id,  // For cross-lane filtering when identity is selected
+        identityId: acc.identity?.id,  // Single identity ID (backward compatibility)
+        identityIds: acc.identity?.id ? [acc.identity.id] : [],  // Array for cross-lane filtering
         identityName: acc.identity?.displayName || `${acc.identity?.firstName || ''} ${acc.identity?.lastName || ''}`.trim()
       },
       rawData: acc
@@ -3685,7 +3696,10 @@ export async function fetchChildResourcesForEntitlement(entitlementNode, identit
           rawData: {
             ...resource,
             parentResource,
-            assignment: assignment
+            assignment: assignment,
+            // Include validity dates in rawData so LaneItemRow can find them
+            validFrom: assignment.validFrom,
+            validTo: assignment.validTo
           }
         },
         reasons: reasons.filter(Boolean).map(r => ({

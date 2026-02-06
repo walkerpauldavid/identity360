@@ -196,6 +196,7 @@ export const LaneSchema = {
     selectionStateKey: 'accountId',        // Key in selections object for cross-lane filtering
     dependsOnEntitlements: true,           // Clear when entitlements filter is empty
     supportsComplianceFiltering: true,     // Can be filtered by compliance status
+    showFilters: true,                     // Show search field in lane header
     displayRule: 'SINGLE_COLUMN',
     icon: '💻',
     color: '#bf616a',
@@ -264,6 +265,7 @@ export const LaneSchema = {
     selectionStateKey: 'identityId',       // Key in selections object for cross-lane filtering
     dependsOnEntitlements: true,           // Clear when entitlements filter is empty
     supportsComplianceFiltering: true,     // Can be filtered by compliance status
+    showFilters: true,                     // Show search field in lane header
     displayRule: 'SINGLE_COLUMN',
     icon: '👤',
     color: '#88c0d0',

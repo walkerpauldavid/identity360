@@ -799,6 +799,9 @@
 .lane-content.multi-column-content {
   display: grid;
   gap: 0.5rem;
+  max-height: 450px;  /* Taller than single-column to show more items and Show All button */
+  overflow-y: auto;
+  padding-bottom: 3rem;  /* Extra space to ensure Show All button is fully visible when scrolled */
 }
 
 .lane-card.columns-2 .lane-content.multi-column-content {
@@ -1265,6 +1268,9 @@
   border-left: 4px solid var(--lane-color, #4c566a);
   /* Allow drag events to pass through to the overlay */
   pointer-events: none;
+  /* Prevent overflow - ensure all header elements fit */
+  flex-wrap: nowrap;
+  overflow: hidden;
 }
 
 .lane-header:hover {
@@ -1276,10 +1282,13 @@
 }
 
 .lane-title {
-  flex: 1;
+  flex: 0 1 auto;  /* Don't grow, can shrink, auto basis */
   font-size: 0.85rem;
   font-weight: 600;
   color: #e0e0e0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .lane-count {
@@ -1382,19 +1391,75 @@
   border-color: #bf616a;
 }
 
-/* Lane search filter - inline in header */
-/* z-index: 20 to stay above drag-handle-overlay (z-index: 10) */
-/* pointer-events: auto to override header's pointer-events: none */
+/* Lane search bar - below header, full width */
+.lane-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.4rem 0.75rem;
+  background: #151515;
+  border-bottom: 1px solid #2a2a2a;
+}
+
+.lane-search-input {
+  flex: 1;
+  padding: 0.3rem 0.5rem;
+  background: #0d0d0d;
+  border: 1px solid #3b4252;
+  border-radius: 4px;
+  color: #e0e0e0;
+  font-size: 0.75rem;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.lane-search-input::placeholder {
+  color: #606070;
+}
+
+.lane-search-input:focus {
+  border-color: #88c0d0;
+  box-shadow: 0 0 0 2px rgba(136, 192, 208, 0.15);
+}
+
+.lane-search-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  background: rgba(191, 97, 106, 0.2);
+  border: 1px solid rgba(191, 97, 106, 0.3);
+  border-radius: 50%;
+  color: #bf616a;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.lane-search-clear:hover {
+  background: rgba(191, 97, 106, 0.3);
+  border-color: #bf616a;
+}
+
+/* Legacy inline search styles - keep for backward compatibility */
 .lane-search-inline {
   display: flex;
   align-items: center;
   gap: 0.25rem;
   margin-left: 0.5rem;
-  flex: 1;
-  max-width: 180px;
+  flex: 0 1 auto;
+  max-width: 120px;
+  min-width: 60px;
   position: relative;
   z-index: 20;
   pointer-events: auto;
+}
+
+.lane-card.multi-column .lane-search-inline {
+  max-width: 180px;
 }
 
 .lane-search-input-inline {
@@ -1559,10 +1624,16 @@
   font-size: 0.85rem;
 }
 
+/* Show All button container - fixed at bottom of card, outside scrollable content */
+.lane-show-all-container {
+  padding: 0.5rem;
+  background: #151515;
+  border-top: 1px solid #2a2a2a;
+}
+
 .lane-load-more {
   width: 100%;
   padding: 0.5rem;
-  margin-top: 0.5rem;
   background: rgba(136, 192, 208, 0.1);
   border: 1px dashed rgba(136, 192, 208, 0.3);
   border-radius: 4px;
@@ -1971,6 +2042,32 @@
   color: white;
 }
 
+/* Disabled icon - shows when assignment is disabled */
+.lane-item-disabled-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 0.3rem;
+  flex-shrink: 0;
+}
+
+/* Disabled row styling - visual indicator for disabled assignments */
+.lane-item-row.is-disabled {
+  opacity: 0.65;
+  border-left: 4px solid #ef4444 !important;
+  background: rgba(239, 68, 68, 0.05);
+}
+
+.lane-item-row.is-disabled:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.lane-item-row.is-disabled .lane-item-name {
+  text-decoration: line-through;
+  text-decoration-color: rgba(239, 68, 68, 0.6);
+  color: #9ca3af;
+}
+
 /* Multi-path indicator - shows when entitlement has multiple assignment sources */
 .lane-item-multi-path {
   display: inline-flex;
@@ -2016,11 +2113,9 @@
   /* Same as base - no changes needed */
 }
 
-/* Never expires - yellow/amber highlight */
+/* Never expires - same styling as other validity pills for consistency */
 .lane-item-validity.never-expires {
-  background: rgba(235, 203, 139, 0.25);
-  color: #ebcb8b;
-  border: 1px solid rgba(235, 203, 139, 0.4);
+  /* Same as base - consistent appearance */
 }
 
 /* Time-limited - has an expiration date - same styling */

@@ -41,8 +41,17 @@ const LaneCard = ({
   // Extract lane properties early (needed for hooks)
   const { laneType, totalCount, items, canLoadMore, allItemsData } = lane;
   const laneIsFiltered = isFiltered || lane.isFiltered;
+
+  // Determine if this is a multi-column lane
+  const displayRule = LaneSchema[laneType]?.displayRule || 'SINGLE_COLUMN';
+  const isMultiColumnLane = displayRule === 'MULTI_COLUMN';
+
   // Schema-driven: showFilters is defined on each lane schema entry
-  const showFilters = LaneSchema[laneType]?.showFilters === true;
+  // For single-column lanes (Identities, Accounts), only show search if scrolling is needed (>4 items)
+  const schemaShowFilters = LaneSchema[laneType]?.showFilters === true;
+  const itemCount = items?.length || 0;
+  const needsScrolling = isMultiColumnLane ? true : itemCount > 4;  // Single-column fits ~4 items
+  const showFilters = schemaShowFilters && needsScrolling;
 
   // State hooks
   const [isExpanded, setIsExpanded] = useState(!forceCollapsed);
@@ -277,39 +286,6 @@ const LaneCard = ({
         <span className="lane-icon">{displayConfig.icon}</span>
         <span className="lane-title">{displayConfig.label}</span>
 
-        {/* Search filter - inline in header */}
-        {showFilters && isExpanded && (
-          <div className="lane-search-inline">
-            <input
-              type="text"
-              id={`lane-search-${laneType}`}
-              name={`lane-search-${laneType}`}
-              className="lane-search-input-inline"
-              placeholder="Search..."
-              autoComplete="off"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onMouseDown={(e) => e.stopPropagation()}
-              onPointerDown={(e) => e.stopPropagation()}
-              onKeyDown={(e) => e.stopPropagation()}
-            />
-            {searchQuery && (
-              <button
-                className="lane-search-clear-inline"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setSearchQuery('');
-                }}
-                onMouseDown={(e) => e.stopPropagation()}
-                onPointerDown={(e) => e.stopPropagation()}
-                title="Clear search"
-              >
-                ×
-              </button>
-            )}
-          </div>
-        )}
-
         <span className="lane-count">
           ({(searchQuery.trim() || validSelectedResourceTypes.length > 0)
             ? `${displayItems.length}/${laneIsFiltered ? items.length : totalCount}`
@@ -402,6 +378,39 @@ const LaneCard = ({
         </button>
       </div>
 
+      {/* Search filter bar - below header, full width */}
+      {showFilters && isExpanded && (
+        <div
+          className="lane-search-bar"
+          onClick={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <input
+            type="text"
+            id={`lane-search-${laneType}`}
+            name={`lane-search-${laneType}`}
+            className="lane-search-input"
+            placeholder="Search..."
+            autoComplete="off"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => e.stopPropagation()}
+          />
+          {searchQuery && (
+            <button
+              className="lane-search-clear"
+              onClick={(e) => {
+                e.stopPropagation();
+                setSearchQuery('');
+              }}
+              title="Clear search"
+            >
+              ×
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Resource Type Filter Bar - only for Effective Entitlements lane */}
       {showFilters && isExpanded && allResourceTypes.length > 0 && (
         <div
@@ -477,18 +486,7 @@ const LaneCard = ({
                 />
               ))}
 
-              {/* Load More - only show for multi-column lanes when not maximized */}
-              {!isMaximized && isMultiColumn && (displayItems.length > maxVisibleItems || canLoadMore) && (
-                <button
-                  className="lane-load-more"
-                  onClick={handleMaximize}
-                  style={{ gridColumn: isMultiColumn ? '1 / -1' : undefined }}
-                >
-                  Show all {totalCount} items
-                </button>
-              )}
-
-              {/* Restore button at bottom when maximized */}
+              {/* Restore button at bottom when maximized - inside scrollable area */}
               {isMaximized && (
                 <button
                   className="lane-restore-btn"
@@ -500,6 +498,18 @@ const LaneCard = ({
               )}
             </>
           )}
+        </div>
+      )}
+
+      {/* Show All button - OUTSIDE scrollable content so it's always visible */}
+      {isExpanded && !isMaximized && isMultiColumn && (displayItems.length > maxVisibleItems || canLoadMore) && (
+        <div className="lane-show-all-container">
+          <button
+            className="lane-load-more"
+            onClick={handleMaximize}
+          >
+            Show all {totalCount} items
+          </button>
         </div>
       )}
     </div>
