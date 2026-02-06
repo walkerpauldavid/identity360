@@ -274,6 +274,26 @@ As a user, I want the Assignment Policies lane to automatically fetch and displa
 **US-130: Policy Context Tooltip**
 As a user, when I hover over an Assignment Policy lane item, I want to see which contexts are associated with it, so that I can quickly understand the policy's scope.
 
+### Entitlement Focus Node Enhancements
+
+**US-140: Resource Folder Lane for Entitlement**
+As a user, when I pivot to an Entitlement as the focus node, I want to see a Resource Folder lane showing the folder that contains this entitlement (if it has one), so that I can understand the organizational grouping of the entitlement.
+
+**US-141: Resource Folder Approval Display**
+As a user, I want the Resource Folder lane item to display the folder's Approval status as a badge (e.g., "Approval: Manager"), so that I can understand what approval is required for resources in that folder.
+
+**US-142: Child Resources Lane for Entitlement**
+As a user, when I pivot to an Entitlement that has child resources (CHILDROLES), I want to see a Child Resources lane showing all child entitlements, so that I can understand the hierarchical structure of the entitlement.
+
+**US-143: Object Inspector State Reset on Pivot**
+As a user, when I pivot from one focus node type to another (e.g., Identity to Entitlement), I want the Object Inspector to be cleared automatically, so that I don't see stale data from the previous node type.
+
+**US-144: Never Expires Pill for Missing ValidTo**
+As a user, when an entitlement assignment has no expiry date (validTo is null/undefined), I want to see a "Never expires" pill, so that I understand the assignment is permanent.
+
+**US-145: Never Expires with Start Date Display**
+As a user, when an entitlement assignment has a start date but no expiry date, I want to see "From MM/YY · Never expires" as the validity display, so that I can see both the start date and the permanent nature of the assignment.
+
 ---
 
 ## Business Rules
@@ -573,6 +593,32 @@ When any lane card is being dragged (`activeDragId !== null`), the focus node (f
 
 **BR-054: Lane Loading State Cleanup**
 The `lanesLoading` state must be cleared in both success and error paths. Specifically, `setLanesLoading(false)` must be called in the `finally` block of the `handlePivot` function, as well as in any fallback path where `handlePivotToNode` returns null or is not called. Failure to clear this state causes permanent loading spinners and prevents lane reveal animations.
+
+### Entitlement Focus Node Rules
+
+**BR-055: Resource Folder Lane Building**
+When an Entitlement is the focus node, the `buildLanesForEntitlement()` function shall check for a resource folder in `entitlementNode.rawData.resourceFolder`, `entitlementNode.metadata.resourceFolder`, or `entitlementNode.rawData.ROLEFOLDER` (OData format) and build a RESOURCE_FOLDERS lane if found.
+
+**BR-056: Resource Folder Lane Visibility**
+The RESOURCE_FOLDERS lane type must be included in the default `visibleLanes` filter array to ensure it displays when built.
+
+**BR-057: Resource Folder Approval Badge**
+Resource Folder lane items shall display an "Approval: {value}" badge when the folder has approval information from OData enrichment (extracted from the `APPROVAL` field).
+
+**BR-058: Child Resources Lane Building**
+When an Entitlement is the focus node, the `buildLanesForEntitlement()` function shall check for child resources in `entitlementNode.rawData.CHILDROLES` and build an EFFECTIVE_ENTITLEMENTS lane (titled "Child Resources") if child roles exist.
+
+**BR-059: Enrichment Loop Prevention**
+Enrichment useEffects (for policies and resource folders) must use refs (`policiesEnrichedRef`, `foldersEnrichedRef`) to track enrichment status per focus node. These refs must be reset when `focusNode.id` changes. The ref must be set to `true` before the async enrichment call to prevent duplicate calls.
+
+**BR-060: Object Inspector State Reset**
+When `focusNode.type` changes (indicating a pivot to a different node type), the Object Inspector state (`selectedItem`, `explanation`, `selectedReasonId`) must be cleared to prevent displaying stale data from the previous focus node.
+
+**BR-061: Never Expires for Missing ValidTo**
+The validity display function shall treat a null/undefined `validTo` the same as year 9999, displaying "Never expires" in both cases.
+
+**BR-062: Validity Display with Start Date**
+When an entitlement has a valid start date (not null and not year 1999) but no end date (null or year 9999), the validity display shall show "From MM/YY · Never expires" to indicate both the start date and permanent nature.
 
 ### Layout Rules
 
@@ -1198,3 +1244,4 @@ API logs show:
 | 1.17 | 2025-01 | UI cleanup: Removed exit button and view mode buttons from Access Lens. Replaced identity inspector panel with direct Access Lens navigation on identity table click. |
 | 1.18 | 2025-01 | **Toolbar consolidation & UI improvements** (US-131 through US-137, BR-047 through BR-054): Merged two-row header (topbar + filter bar) into single unified toolbar (FilterBar). Removed "All Entitlements" dropdown filter (BR-048). Removed multi-path capability from ComplianceHeatmap (BR-036 deprecated). Repositioned canvas from `top: 50%` to `top: 40%` with `CANVAS_CENTER_Y` constant and reduced canvas height from 1800px to 1600px (BR-051, BR-052). Single-column lane cards now show 4 visible items with vertical scroll, hiding "Show all" button (BR-049, BR-050). Tightened toolbar spacing: layout actions at 0.75rem gap, filter buttons at 2px gap. Focus node z-index drops from 10 to 1 during lane drag so dragged cards render above it (BR-053). Fixed entitlement focus node infinite loading spinner by clearing `lanesLoading` in `finally` block (BR-054). |
 | 1.19 | 2025-01 | **Schema audit & cleanup**: Added `LaneGridConstraints` to `schemas/index.js` re-exports. Updated `getLanesForNodeType` fallback switch-case to match `LaneConfigSchema` definitions (added missing Violations, Assignment Policies, Logical Applications for Identity/System/Account views). Removed `.env.production` and `.env.development` from git tracking (contained Azure AD credentials); added `.gitignore` entries and `.env.*.template` files with placeholder values; purged sensitive files from entire git history. |
+| 1.20 | 2026-02 | **Entitlement Focus Node Enhancements** (US-140 through US-145, BR-055 through BR-062): Added Resource Folder and Child Resources (CHILDROLES) lanes when Entitlement is focus node. Resource Folder lane shows folder with Approval badge from OData enrichment. Child Resources lane uses EFFECTIVE_ENTITLEMENTS type to display child entitlements. Fixed infinite loop in enrichment useEffects by adding refs (`policiesEnrichedRef`, `foldersEnrichedRef`) to track enrichment status per focus node. Added `RESOURCE_FOLDERS` to default `visibleLanes` filter. Added useEffect to clear Object Inspector state (`selectedItem`, `explanation`, `selectedReasonId`) when `focusNode.type` changes to prevent stale data display during pivot. Fixed "Never expires" pill: now displays when `validTo` is null/undefined OR year 9999. Shows "From MM/YY · Never expires" when there's a start date but no end date. Moved enrichment debug logs behind `shouldLog('POLICIES')` flag. |
