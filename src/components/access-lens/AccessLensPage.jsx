@@ -1599,8 +1599,11 @@ const AccessLensPage = () => {
     }
   }, [getBearerToken, user]);
 
+  // Get theme from preferences for page wrapper
+  const currentTheme = preferences.theme || 'dark';
+
   return (
-    <div className="access-lens-page">
+    <div className={`access-lens-page theme-${currentTheme}`}>
       {/* Omada Top Banner */}
       <Navbar title="Identity360" />
 

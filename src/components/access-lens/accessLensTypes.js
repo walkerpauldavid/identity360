@@ -116,6 +116,8 @@ export const shouldLog = (module) => {
 export const LaneSchema = {
   [LaneTypes.SYSTEMS]: {
     dataType: NodeTypes.SYSTEM,
+    selectionStateKey: 'systemId',        // Key in selections object for cross-lane filtering
+    dependsOnEntitlements: true,           // Clear when entitlements filter is empty
     displayRule: 'SINGLE_COLUMN',
     icon: '🖥️',
     color: '#d08770',
@@ -156,6 +158,8 @@ export const LaneSchema = {
   },
   [LaneTypes.LOGICAL_APPLICATIONS]: {
     dataType: NodeTypes.SYSTEM,  // Still a system type, but logical
+    selectionStateKey: 'logicalAppId',     // Key in selections object for cross-lane filtering
+    dependsOnEntitlements: true,           // Clear when entitlements filter is empty
     displayRule: 'SINGLE_COLUMN',
     icon: '☁️',  // Cloud icon to represent logical/virtual application
     color: '#8fbcbb',  // Teal color to distinguish from physical systems
@@ -189,6 +193,9 @@ export const LaneSchema = {
   },
   [LaneTypes.ACCOUNTS]: {
     dataType: NodeTypes.ACCOUNT,
+    selectionStateKey: 'accountId',        // Key in selections object for cross-lane filtering
+    dependsOnEntitlements: true,           // Clear when entitlements filter is empty
+    supportsComplianceFiltering: true,     // Can be filtered by compliance status
     displayRule: 'SINGLE_COLUMN',
     icon: '💻',
     color: '#bf616a',
@@ -200,6 +207,11 @@ export const LaneSchema = {
     defaultPosition: {
       compass: CompassOrientation.NE,  // North-East
       priority: 1
+    },
+    // Node build config - how to extract badges and metadata when building lane items
+    nodeBuildConfig: {
+      badges: ['system', 'accountType'],
+      metadataFields: { system: 'system', systemId: 'systemId' }
     },
     // Default sort configuration
     defaultSort: {
@@ -228,6 +240,7 @@ export const LaneSchema = {
   },
   [LaneTypes.CONTEXTS]: {
     dataType: NodeTypes.CONTEXT,
+    selectionStateKey: 'contextId',        // Key in selections object for cross-lane filtering
     displayRule: 'SINGLE_COLUMN',
     icon: '🏷️',
     color: '#5e81ac',
@@ -248,6 +261,9 @@ export const LaneSchema = {
   },
   [LaneTypes.IDENTITIES]: {
     dataType: NodeTypes.IDENTITY,
+    selectionStateKey: 'identityId',       // Key in selections object for cross-lane filtering
+    dependsOnEntitlements: true,           // Clear when entitlements filter is empty
+    supportsComplianceFiltering: true,     // Can be filtered by compliance status
     displayRule: 'SINGLE_COLUMN',
     icon: '👤',
     color: '#88c0d0',
@@ -255,6 +271,11 @@ export const LaneSchema = {
     description: 'Related identities',
     sortable: true,
     collapsible: true,
+    // Node build config - how to extract badges and metadata when building lane items
+    nodeBuildConfig: {
+      badges: ['riskLevel'],
+      metadataFields: {}
+    },
     exclusionList: [
       {
         // Exclude unresolved identities - these are placeholder entries for accounts without linked identities
@@ -329,6 +350,8 @@ export const LaneSchema = {
   },
   [LaneTypes.ASSIGNMENT_POLICIES]: {
     dataType: NodeTypes.POLICY,
+    selectionStateKey: 'policyId',         // Key in selections object for cross-lane filtering
+    dependsOnEntitlements: true,           // Clear when entitlements filter is empty
     displayRule: 'SINGLE_COLUMN',
     icon: '📜',
     color: '#d08770',  // Orange color to distinguish from other policies
@@ -358,6 +381,9 @@ export const LaneSchema = {
   },
   [LaneTypes.EFFECTIVE_ENTITLEMENTS]: {
     dataType: NodeTypes.ENTITLEMENT,
+    selectionStateKey: 'entitlementId',    // Key in selections object for cross-lane filtering
+    showFilters: true,                     // Show resource type filter chips and search
+    showReasons: { whenFocusNodeType: [NodeTypes.IDENTITY] },  // Show reason pills when Identity is focus
     displayRule: 'MULTI_COLUMN',
     minColumns: 2,  // Minimum columns for entitlements (enforced in LaneCard)
     icon: '🔑',
@@ -366,6 +392,11 @@ export const LaneSchema = {
     description: 'All effective entitlements for this identity',
     sortable: true,
     collapsible: true,
+    // Node build config - how to extract badges and metadata when building lane items
+    nodeBuildConfig: {
+      badges: ['system', 'resourceType'],
+      metadataFields: { system: 'system', systemId: 'systemId', type: 'resourceType' }
+    },
     exclusionList: [
       {
         // Exclude default account resources (use contains for this one)
@@ -421,6 +452,8 @@ export const LaneSchema = {
   },
   [LaneTypes.VIOLATIONS]: {
     dataType: NodeTypes.VIOLATION,
+    selectionStateKey: 'violationId',      // Key in selections object for cross-lane filtering
+    dependsOnEntitlements: true,           // Clear when entitlements filter is empty
     displayRule: 'SINGLE_COLUMN',
     icon: '⚠️',
     color: '#f59e0b',  // Warning yellow/amber color
@@ -447,6 +480,41 @@ export const LaneSchema = {
         { field: 'resourceIds', label: 'Affected Resources', type: 'array' }
       ],
       hideAttributes: ['id', 'Id']
+    }
+  },
+  [LaneTypes.RESOURCE_FOLDERS]: {
+    dataType: NodeTypes.RESOURCE_FOLDER,
+    displayRule: 'SINGLE_COLUMN',
+    icon: '📁',
+    color: '#81a1c1',
+    label: 'Resource Folders',
+    description: 'Resource folders grouping entitlements',
+    sortable: true,
+    collapsible: true,
+    exclusionList: [],
+    defaultPosition: {
+      compass: CompassOrientation.NW,
+      priority: 2
+    },
+    apiSource: {
+      type: 'OData',
+      endpoint: 'ResourceFolder',
+      filterField: 'NAME',
+      idField: 'UId'
+    },
+    inspectorConfig: {
+      showAttributes: [
+        { field: 'NAME', label: 'Name', type: 'text' },
+        { field: 'FOLDERID', label: 'Folder ID', type: 'text' },
+        { field: 'OWNERREF', label: 'Owner', type: 'reference' },
+        { field: 'EXPLICITOWNER', label: 'Explicit Owner', type: 'reference' },
+        { field: 'MANUALOWNER', label: 'Manual Owner', type: 'reference' },
+        { field: 'APPROVAL', label: 'Approval', type: 'reference' },
+        { field: 'CLT_TAGS', label: 'Classification', type: 'reference' },
+        { field: 'RESOURCECONTEXTS', label: 'Contexts', type: 'reference' },
+        { field: 'C_RESOURCEFOLDER_CONTEXTS', label: 'Folder Contexts', type: 'reference' }
+      ],
+      hideAttributes: ['Id', 'UId', 'CurrentVersionId', 'Deleted', 'DeleteTime']
     }
   }
 };
@@ -996,7 +1064,7 @@ export const LaneConfigSchema = {
         crossLaneFilters: {
           // When an entitlement is selected, filter related lanes to show only relevant items
           filtersLanes: [LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.SYSTEMS, LaneTypes.ACCOUNTS, LaneTypes.ASSIGNMENT_POLICIES],
-          filteredByLanes: [LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.VIOLATIONS],
+          filteredByLanes: [LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.VIOLATIONS, LaneTypes.CONTEXTS],
           filterMappings: {
             // When Entitlement is selected, filter Logical Applications to show only the one this entitlement belongs to
             [LaneTypes.LOGICAL_APPLICATIONS]: {
@@ -1032,9 +1100,40 @@ export const LaneConfigSchema = {
         apiSource: { type: 'GraphQL', query: 'getIdentityContexts', idParam: 'identityUId' },
         position: { x: 380, y: 80 },
         crossLaneFilters: {
-          filtersLanes: [],  // Contexts don't filter other lanes directly
+          filtersLanes: [LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.IDENTITIES, LaneTypes.EFFECTIVE_ENTITLEMENTS],
           filteredByLanes: [LaneTypes.ASSIGNMENT_POLICIES],  // Contexts can be filtered by Assignment Policies (via AP_CONTEXTS)
-          filterMappings: {}
+          filterMappings: {
+            // When Context is selected, filter Assignment Policies to show only those that reference this context
+            // Uses name-based fallback because GraphQL and OData return different UUIDs for the same context
+            [LaneTypes.ASSIGNMENT_POLICIES]: {
+              type: CrossLaneFilterType.ARRAY_CONTAINS_WITH_NAME_FALLBACK,
+              sourceField: 'id',                    // Primary: Context's id (GraphQL UUID)
+              targetField: 'metadata.contextIds',   // Primary: Policy's array of context ids (OData UUIDs)
+              fallbackSourceField: 'displayName',   // Fallback: Context's displayName
+              fallbackTargetField: 'metadata.contextNames'  // Fallback: Policy's normalized context names
+            },
+            // When Context is selected, filter Identities to show only those belonging to this context
+            // Note: This only applies in views where Identities lane exists (not Identity-focused view)
+            [LaneTypes.IDENTITIES]: {
+              type: CrossLaneFilterType.ARRAY_CONTAINS,
+              sourceField: 'id',                    // Context's id (GraphQL UUID)
+              targetField: 'metadata.contextIds'    // Identity's array of context ids (also from GraphQL)
+            },
+            // When Context is selected, filter Entitlements via Assignment Policies (cascaded with name fallback)
+            // Context -> Policies (by contextIds/contextNames) -> Entitlements (by resourceIds)
+            [LaneTypes.EFFECTIVE_ENTITLEMENTS]: {
+              type: CrossLaneFilterType.CASCADED_WITH_NAME_FALLBACK,
+              intermediateLane: LaneTypes.ASSIGNMENT_POLICIES,
+              sourceField: 'id',                              // Context's id
+              fallbackSourceField: 'displayName',             // Fallback: Context's displayName
+              intermediateTargetField: 'metadata.contextIds', // Match against policy's contextIds
+              fallbackIntermediateTargetField: 'metadata.contextNames',  // Fallback: policy's normalized names
+              intermediateExtractField: 'metadata.resourceIds',  // Extract resourceIds from matched policies
+              targetField: 'id'                               // Match against entitlement's id
+            }
+            // Note: Accounts and Systems require a 3-level cascade (Context -> Policies -> Entitlements -> Accounts/Systems)
+            // which is not yet supported. Users can click on a filtered Entitlement to see related Accounts/Systems.
+          }
         }
       },
       {
@@ -1096,7 +1195,7 @@ export const LaneConfigSchema = {
         position: { x: -600, y: 80 },
         crossLaneFilters: {
           filtersLanes: [LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.CONTEXTS],
-          filteredByLanes: [LaneTypes.VIOLATIONS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS],  // Policies are filtered when a violation, logical app, entitlement, account, or system is selected
+          filteredByLanes: [LaneTypes.VIOLATIONS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS, LaneTypes.CONTEXTS],  // Policies are filtered when a violation, logical app, entitlement, account, system, or context is selected
           filterMappings: {
             // When Policy is selected, filter Entitlements to show only those assigned by this policy
             [LaneTypes.EFFECTIVE_ENTITLEMENTS]: {
@@ -1138,11 +1237,11 @@ export const LaneConfigSchema = {
               targetFields: ['id', 'displayName']   // Match against logical app's ID or displayName
             },
             // When Policy is selected, filter Contexts to show only those that trigger this policy
-            // Uses AP_CONTEXTS array from OData enrichment - matches context UId
+            // Uses AP_CONTEXTS array from OData enrichment - matches context Id
             [LaneTypes.CONTEXTS]: {
               type: CrossLaneFilterType.ARRAY_CONTAINS,
-              sourceField: 'metadata.contextUIds',  // Array of context UIds from AP_CONTEXTS
-              targetField: 'metadata.uId'           // Match against context's UId
+              sourceField: 'metadata.contextIds',  // Array of context Ids from AP_CONTEXTS
+              targetField: 'id'                    // Match against context's id (from GraphQL)
             }
           }
         }
@@ -1233,8 +1332,9 @@ export const LaneConfigSchema = {
   },
 
   [NodeTypes.ENTITLEMENT]: {
-    // Entitlement is the focus node, so no Entitlements lane is needed
-    excludedLanes: [LaneTypes.EFFECTIVE_ENTITLEMENTS],
+    // Entitlement is the focus node
+    // Effective Entitlements lane is reused to show child resources (CHILDROLES from OData)
+    excludedLanes: [],
     lanes: [
       {
         laneType: LaneTypes.IDENTITIES,
@@ -1284,6 +1384,24 @@ export const LaneConfigSchema = {
         apiSource: { type: 'derived', from: 'focusNode', extract: 'system' },
         position: { x: 0, y: 250 },
         crossLaneFilters: null  // System is just informational in entitlement view
+      },
+      {
+        laneType: LaneTypes.RESOURCE_FOLDERS,
+        title: 'Resource Folder',
+        description: 'Folder this entitlement belongs to',
+        required: false,
+        apiSource: { type: 'derived', from: 'focusNode', extract: 'resourceFolder' },
+        position: { x: -380, y: -250 },
+        crossLaneFilters: null  // Resource Folder is informational in entitlement view
+      },
+      {
+        laneType: LaneTypes.EFFECTIVE_ENTITLEMENTS,
+        title: 'Child Resources',
+        description: 'Child resources (CHILDROLES) belonging to this entitlement',
+        required: false,
+        apiSource: { type: 'derived', from: 'focusNode', extract: 'childResources' },
+        position: { x: 380, y: -250 },
+        crossLaneFilters: null  // Child resources are informational in entitlement view
       }
     ]
   },

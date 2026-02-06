@@ -14,7 +14,8 @@ export const NodeTypes = Object.freeze({
   SYSTEM: 'System',
   LOGICAL_APPLICATION: 'LogicalApplication',  // System marked as logical (has resources but no direct accounts)
   CONTEXT: 'Context',
-  VIOLATION: 'Violation'  // Represents an access violation (e.g., SoD conflict)
+  VIOLATION: 'Violation',  // Represents an access violation (e.g., SoD conflict)
+  RESOURCE_FOLDER: 'ResourceFolder'
 });
 
 // Edge/relationship types
@@ -62,7 +63,8 @@ export const LaneTypes = Object.freeze({
   LOGICAL_APPLICATIONS: 'LogicalApplications',
   IDENTITIES: 'Identities',
   CONTEXTS: 'Contexts',
-  VIOLATIONS: 'Violations'  // Access violations (SoD conflicts, policy breaches, etc.)
+  VIOLATIONS: 'Violations',  // Access violations (SoD conflicts, policy breaches, etc.)
+  RESOURCE_FOLDERS: 'ResourceFolders'
 });
 
 // View modes
@@ -101,7 +103,9 @@ export const CrossLaneFilterType = Object.freeze({
   FIELD_MATCH: 'fieldMatch',
   ARRAY_CONTAINS: 'arrayContains',
   MULTI_FIELD_MATCH: 'multiFieldMatch',
-  CASCADED_THROUGH: 'cascadedThrough'
+  CASCADED_THROUGH: 'cascadedThrough',
+  ARRAY_CONTAINS_WITH_NAME_FALLBACK: 'arrayContainsWithNameFallback',  // Tries ID match first, falls back to name match
+  CASCADED_WITH_NAME_FALLBACK: 'cascadedWithNameFallback'  // Cascaded filter where first level uses name fallback
 });
 
 // Lane display rules

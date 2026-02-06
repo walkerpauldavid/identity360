@@ -227,17 +227,17 @@
 /* Filter Select */
 .filter-select {
   padding: 0.35rem 0.6rem;
-  background: #1a1a1a;
-  border: 1px solid #3a3a4a;
+  background: var(--al-bg-tertiary);
+  border: 1px solid var(--al-border-secondary);
   border-radius: 4px;
-  color: #e0e0e0;
+  color: var(--al-text-primary);
   font-size: 0.8rem;
   cursor: pointer;
 }
 
 .filter-select:focus {
   outline: none;
-  border-color: #88c0d0;
+  border-color: var(--al-accent-primary);
 }
 
 /* Reason Filter Dropdown */
@@ -247,17 +247,17 @@
 
 .dropdown-trigger {
   padding: 0.3rem 0.5rem;
-  background: #1a1a1a;
-  border: 1px solid #3a3a4a;
+  background: var(--al-bg-tertiary);
+  border: 1px solid var(--al-border-secondary);
   border-radius: 4px;
-  color: #e0e0e0;
+  color: var(--al-text-primary);
   font-size: 0.8rem;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .dropdown-trigger:hover {
-  border-color: #88c0d0;
+  border-color: var(--al-accent-primary);
 }
 
 .dropdown-menu {
@@ -267,10 +267,10 @@
   z-index: 100;
   min-width: 180px;
   padding: 0.5rem;
-  background: #1a1a1a;
-  border: 1px solid #3a3a4a;
+  background: var(--al-bg-tertiary);
+  border: 1px solid var(--al-border-secondary);
   border-radius: 4px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--al-shadow-md);
   display: none;
 }
 
@@ -283,14 +283,14 @@
   align-items: center;
   gap: 0.5rem;
   padding: 0.35rem 0.5rem;
-  color: #c0c0c0;
+  color: var(--al-text-secondary);
   font-size: 0.8rem;
   cursor: pointer;
   border-radius: 3px;
 }
 
 .dropdown-item:hover {
-  background: rgba(136, 192, 208, 0.1);
+  background: var(--al-bg-hover);
 }
 
 .dropdown-item input {
@@ -300,7 +300,7 @@
 .dropdown-divider {
   height: 1px;
   margin: 0.5rem 0;
-  background: #3a3a4a;
+  background: var(--al-border-secondary);
 }
 
 .dropdown-clear {

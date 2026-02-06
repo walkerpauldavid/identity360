@@ -36,6 +36,7 @@ export const API_CONFIG = {
     SYSTEM: 'System',
     CALCULATED_ASSIGNMENTS: 'CalculatedAssignments',
     ASSIGNMENT_POLICY: 'AssignmentPolicy',
+    RESOURCE_FOLDER: 'ResourceFolder',
   },
 
   // Identity Category Configuration

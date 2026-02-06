@@ -13,7 +13,7 @@
  */
 
 import { useState, useCallback, useEffect, useMemo, useRef, memo } from 'react';
-import { LaneTypes, getLaneDisplayConfig, LaneGridConstraints } from './accessLensTypes';
+import { LaneTypes, LaneSchema, getLaneDisplayConfig, LaneGridConstraints } from './accessLensTypes';
 import LaneItemRow from './LaneItemRow';
 import { getItemResourceType } from './accessLensUtils';
 
@@ -41,7 +41,8 @@ const LaneCard = ({
   // Extract lane properties early (needed for hooks)
   const { laneType, totalCount, items, canLoadMore, allItemsData } = lane;
   const laneIsFiltered = isFiltered || lane.isFiltered;
-  const showFilters = laneType === LaneTypes.EFFECTIVE_ENTITLEMENTS;
+  // Schema-driven: showFilters is defined on each lane schema entry
+  const showFilters = LaneSchema[laneType]?.showFilters === true;
 
   // State hooks
   const [isExpanded, setIsExpanded] = useState(!forceCollapsed);
@@ -76,13 +77,21 @@ const LaneCard = ({
     }
   }, [forceExpanded]);
 
-  // Effect: Auto-expand lanes when filtering is active and lane has items
+  // Track previous filter state so we only auto-expand on transition (not on every render)
+  const prevFilterActiveRef = useRef(isFilterSource || isFiltered);
+
+  // Effect: Auto-expand lanes when filtering transitions from inactive to active
   // This ensures lanes that become visible due to filter changes are shown expanded
+  // but does NOT prevent manual collapse while filtering is active
   useEffect(() => {
     const hasActiveFilter = isFilterSource || isFiltered;
+    const wasFilterActive = prevFilterActiveRef.current;
+    prevFilterActiveRef.current = hasActiveFilter;
+
     const hasItems = items && items.length > 0;
 
-    if (hasActiveFilter && hasItems && !isExpanded) {
+    // Only auto-expand when filter state transitions from inactive to active
+    if (hasActiveFilter && !wasFilterActive && hasItems && !isExpanded) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsExpanded(true);
     }
@@ -187,7 +196,9 @@ const LaneCard = ({
   // DERIVED VALUES - Computed after early return (no hooks allowed here)
   // ==========================================================================
   const displayConfig = getLaneDisplayConfig(laneType);
-  const showReasons = laneType === LaneTypes.EFFECTIVE_ENTITLEMENTS && focusNodeType === 'Identity';
+  // Schema-driven: showReasons defines which focus node types trigger reason pills
+  const laneSchema = LaneSchema[laneType];
+  const showReasons = laneSchema?.showReasons?.whenFocusNodeType?.includes(focusNodeType) ?? false;
 
   // Grid size: use custom values if set, otherwise use defaults from schema
   // Schema minColumns overrides global minimum (e.g., Entitlements requires min 2 columns)

@@ -1,11 +1,18 @@
 /* Identity360 Page Styles */
 
+/* Dark theme (default) */
 .access-lens-page {
   display: flex;
   flex-direction: column;
   height: 100vh;
   background-color: #0d0d0d;
   color: #e0e0e0;
+}
+
+/* Light theme */
+.access-lens-page.theme-light {
+  background-color: #f9fafc;
+  color: #32445b;
 }
 
 .access-lens-page-content {
@@ -25,7 +32,7 @@
   bottom: 0;
 }
 
-/* Data Loading Overlay */
+/* Data Loading Overlay - Dark theme */
 .data-loading-overlay {
   position: absolute;
   top: 0;
@@ -40,6 +47,11 @@
   z-index: 100;
 }
 
+/* Light theme loading overlay */
+.theme-light .data-loading-overlay {
+  background: rgba(249, 250, 252, 0.95);
+}
+
 .data-loading-spinner {
   width: 48px;
   height: 48px;
@@ -49,6 +61,11 @@
   animation: spin 0.8s linear infinite;
   margin-bottom: 1.5rem;
   transition: border-top-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.theme-light .data-loading-spinner {
+  border-color: #e7eaf2;
+  border-top-color: #58c1a1;
 }
 
 /* Green flash on IndexedDB cache hit */
@@ -68,12 +85,20 @@
   margin: 0 0 0.75rem 0;
 }
 
+.theme-light .data-loading-overlay .loading-title {
+  color: #32445b;
+}
+
 .data-loading-overlay .loading-status {
   color: #88c0d0;
   font-size: 0.95rem;
   margin: 0 0 1.5rem 0;
   min-height: 1.5em;
   transition: opacity 0.2s ease;
+}
+
+.theme-light .data-loading-overlay .loading-status {
+  color: #58c1a1;
 }
 
 .data-loading-overlay .loading-details {
@@ -85,10 +110,19 @@
   border-radius: 8px;
 }
 
+.theme-light .data-loading-overlay .loading-details {
+  background: rgba(88, 193, 161, 0.05);
+  border-color: rgba(88, 193, 161, 0.15);
+}
+
 .data-loading-overlay .loading-details span {
   color: #707080;
   font-size: 0.8rem;
   line-height: 1.5;
+}
+
+.theme-light .data-loading-overlay .loading-details span {
+  color: #5c5a5b;
 }
 
 /* Data Load Error */
@@ -101,6 +135,12 @@
   border-bottom: 1px solid rgba(191, 97, 106, 0.3);
   color: #bf616a;
   font-size: 0.85rem;
+}
+
+.theme-light .data-load-error {
+  background: rgba(218, 94, 60, 0.1);
+  border-color: rgba(218, 94, 60, 0.3);
+  color: #da5e3c;
 }
 
 .data-load-error .error-icon {
@@ -134,10 +174,18 @@
   color: #e0e0e0;
 }
 
+.theme-light .empty-state h2 {
+  color: #32445b;
+}
+
 .empty-state p {
   margin: 0 0 1.5rem 0;
   color: #666;
   font-size: 0.9rem;
+}
+
+.theme-light .empty-state p {
+  color: #5c5a5b;
 }
 
 .select-identity-btn {
@@ -152,6 +200,14 @@
   transition: all 0.2s;
 }
 
+.theme-light .select-identity-btn {
+  background: #58c1a1;
+}
+
 .select-identity-btn:hover {
   background: #9dcfe0;
+}
+
+.theme-light .select-identity-btn:hover {
+  background: #6dd4b1;
 }

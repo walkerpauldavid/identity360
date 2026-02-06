@@ -168,15 +168,15 @@ export const extractUniqueItems = (assignments, extractType, options = {}) => {
 
 /**
  * Build a lane item node from extracted data
+ * Uses schema-driven nodeBuildConfig for badge and metadata extraction
  *
  * @param {Object} extractedData - Data extracted from assignments
  * @param {string} nodeType - The NodeTypes value
  * @param {Object} assignment - Optional original assignment for rawData
+ * @param {string} laneType - Optional LaneTypes value for schema-driven badge/metadata config
  * @returns {Object} Lane item with node structure
  */
-export const buildLaneItemNode = (extractedData, nodeType, assignment = null) => {
-  const schema = LaneSchema[nodeType] || {};
-
+export const buildLaneItemNode = (extractedData, nodeType, assignment = null, laneType = null) => {
   // Convert Sets to Arrays for the final node
   const identityIds = Array.from(extractedData._identityIds || []);
   const accountIds = Array.from(extractedData._accountIds || []);
@@ -209,27 +209,23 @@ export const buildLaneItemNode = (extractedData, nodeType, assignment = null) =>
     }
   };
 
-  // Build badges based on node type
-  switch (nodeType) {
-    case NodeTypes.IDENTITY:
-      if (extractedData.riskLevel) node.badges.push(extractedData.riskLevel);
-      break;
-    case NodeTypes.ACCOUNT:
-      if (extractedData.system) node.badges.push(extractedData.system);
-      if (extractedData.accountType) node.badges.push(extractedData.accountType);
-      node.metadata.system = extractedData.system;
-      node.metadata.systemId = extractedData.systemId;
-      break;
-    case NodeTypes.ENTITLEMENT:
-      if (extractedData.system) node.badges.push(extractedData.system);
-      if (extractedData.resourceType) node.badges.push(extractedData.resourceType);
-      node.metadata.system = extractedData.system;
-      node.metadata.systemId = extractedData.systemId;
-      node.metadata.type = extractedData.resourceType;
-      break;
-    case NodeTypes.SYSTEM:
-      // Systems may have type/category badges
-      break;
+  // Schema-driven badge and metadata extraction via nodeBuildConfig
+  const laneSchema = laneType ? LaneSchema[laneType] : null;
+  const buildConfig = laneSchema?.nodeBuildConfig;
+
+  if (buildConfig) {
+    // Extract badges from configured fields
+    if (buildConfig.badges) {
+      buildConfig.badges.forEach(field => {
+        if (extractedData[field]) node.badges.push(extractedData[field]);
+      });
+    }
+    // Copy additional metadata from configured fields
+    if (buildConfig.metadataFields) {
+      Object.entries(buildConfig.metadataFields).forEach(([metaKey, dataField]) => {
+        node.metadata[metaKey] = extractedData[dataField];
+      });
+    }
   }
 
   // Filter out empty badges
@@ -274,7 +270,7 @@ export const buildLane = (laneType, assignments, extractType, options = {}) => {
 
   // Convert to lane items
   const items = Array.from(itemsMap.values()).map(extractedData => {
-    const node = buildLaneItemNode(extractedData, nodeType);
+    const node = buildLaneItemNode(extractedData, nodeType, null, laneType);
 
     return {
       node,

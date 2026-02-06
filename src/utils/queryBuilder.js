@@ -641,6 +641,51 @@ export const GraphQLQueries = {
         }
       `
     };
+  },
+
+  /**
+   * Get system compliance health data from the Compliance Workbench
+   * Returns per-system compliance status counts and system health in a single call,
+   * replacing the need to iterate over systems individually.
+   * @param {Object} filters - Optional filters
+   * @param {boolean} filters.showAccounts - Include account-level data (default: true)
+   * @returns {Object} GraphQL query object
+   */
+  getComplianceWorkbenchData: (filters = {}) => {
+    const { showAccounts = true } = filters;
+
+    const filterParts = [];
+    filterParts.push(`showAccounts: ${showAccounts}`);
+
+    const filterClause = filterParts.join(', ');
+
+    return {
+      query: `
+        query GetComplianceWorkbenchData {
+          complianceWorkbenchData(filters: {${filterClause}}) {
+            systemHealth
+            system {
+              id
+              name
+              systemCategory {
+                id
+                displayName
+              }
+            }
+            complianceStatus {
+              notApproved
+              none
+              explicitlyApproved
+              implicitlyApproved
+              implicitlyAssigned
+              inViolation
+              orhpaned
+              pendingDeprovisioning
+            }
+          }
+        }
+      `
+    };
   }
 };
 

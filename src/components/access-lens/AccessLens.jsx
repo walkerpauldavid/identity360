@@ -20,7 +20,13 @@ import {
   getCrossLaneFilterConfig,
   shouldLog
 } from './accessLensTypes';
-import accessLensDataService, { buildContextsLane, buildLanesFromAssignments, extractUniqueReasonTypes, extractUniqueComplianceStatuses, extractViolationCount, enrichPoliciesWithOData } from './accessLensDataService';
+
+// Helper: get the selection value for a lane type from consolidated selections
+const getSelectionForLane = (laneType, selections) => {
+  const key = LaneSchema[laneType]?.selectionStateKey;
+  return key ? (selections[key] || null) : null;
+};
+import accessLensDataService, { buildContextsLane, buildLanesFromAssignments, extractUniqueReasonTypes, extractUniqueComplianceStatuses, extractViolationCount, enrichPoliciesWithOData, enrichResourceFoldersWithOData } from './accessLensDataService';
 import { usePreferences } from '../../contexts/PreferencesContext';
 import {
   applyCrossLaneFilters,
@@ -736,15 +742,10 @@ const AccessLens = ({
   showObjectInspectorRef.current = showObjectInspector;
   inspectorCollapsedRef.current = inspectorCollapsed;
 
-  // Cross-lane filtering state
-  const [selectedAccountId, setSelectedAccountId] = useState(null);
-  const [selectedSystemId, setSelectedSystemId] = useState(null);
-  const [selectedLogicalAppId, setSelectedLogicalAppId] = useState(null);  // For filtering by logical application
-  const [selectedIdentityId, setSelectedIdentityId] = useState(null);  // For entitlement-centric view: filter accounts by identity
-  const [selectedPolicyId, setSelectedPolicyId] = useState(null);  // For filtering entitlements by assignment policy
-  const [selectedEntitlementId, setSelectedEntitlementId] = useState(null);  // For filtering identities/accounts by entitlement (System-centric view)
-  const [selectedViolationId, setSelectedViolationId] = useState(null);  // For filtering by violation
-  const [selectedContextId, setSelectedContextId] = useState(null);  // For filtering identities by context (AP-centric view)
+  // Cross-lane filtering state — schema-driven consolidated selections
+  // Keys are selectionStateKey values from LaneSchema (e.g., 'accountId', 'systemId')
+  // At most one key is active at a time (the lane driving the cross-lane filter)
+  const [laneSelections, setLaneSelections] = useState({});
   const [pendingNodeType, setPendingNodeType] = useState(null);  // Track target node type during pivot for correct loading placeholders
   const [currentAssignments, setCurrentAssignments] = useState(null);  // Track current assignments for violation count (updated on pivot)
 
@@ -761,7 +762,8 @@ const AccessLens = ({
       LaneTypes.LOGICAL_APPLICATIONS,  // Logical applications lane (systems with resources but no direct accounts)
       LaneTypes.CONTEXTS,
       LaneTypes.IDENTITIES,  // For system-centric view
-      LaneTypes.VIOLATIONS   // Violations lane (shows when identity has violations)
+      LaneTypes.VIOLATIONS,  // Violations lane (shows when identity has violations)
+      LaneTypes.RESOURCE_FOLDERS  // Resource folders lane (for entitlement-centric view)
     ],
     reasonTypes: [],
     complianceStatuses: [],  // Selected compliance statuses for filtering
@@ -851,6 +853,27 @@ const AccessLens = ({
     // Update the ref to track the current focus node
     previousFocusNodeId.current = focusNode.id;
   }, [focusNode?.id, collapseLanesOnFocusChange]);
+
+  // Track previous focus node type for detecting type changes
+  const previousFocusNodeTypeRef = useRef(null);
+
+  // Clear inspector state when focus node type changes
+  // This prevents stale data from being shown when pivoting between different node types
+  // (e.g., from Identity to Entitlement)
+  useEffect(() => {
+    if (!focusNode?.type) return;
+
+    // Check if focus node type has actually changed (not just initial load)
+    if (previousFocusNodeTypeRef.current !== null && previousFocusNodeTypeRef.current !== focusNode.type) {
+      // Focus node type changed - clear inspector state to prevent showing stale data
+      setSelectedItem(null);
+      setExplanation(null);
+      setSelectedReasonId(null);
+    }
+
+    // Update the ref to track the current focus node type
+    previousFocusNodeTypeRef.current = focusNode.type;
+  }, [focusNode?.type]);
 
   // Load focus data - sets the central focus node (identity)
   // Lanes are populated separately via calculatedAssignments and identityContexts props
@@ -1059,22 +1082,34 @@ const AccessLens = ({
   // This runs after lanes are built and we have apiContext
   useEffect(() => {
     const enrichPolicies = async () => {
-      if (!apiContext || !lanes || lanes.length === 0) return;
+      console.log('[AccessLens] enrichPolicies effect running, apiContext:', !!apiContext, 'lanes:', lanes?.length);
+
+      if (!apiContext || !lanes || lanes.length === 0) {
+        console.log('[AccessLens] Skipping enrichment - missing apiContext or lanes');
+        return;
+      }
 
       const policiesLane = lanes.find(l => l.laneType === LaneTypes.ASSIGNMENT_POLICIES);
+      console.log('[AccessLens] policiesLane found:', !!policiesLane, 'items:', policiesLane?.items?.length);
+
       if (!policiesLane || policiesLane.items.length === 0) return;
 
-      // Check if already enriched (has contextUIds on first item)
-      if (policiesLane.items[0]?.node?.metadata?.contextUIds) {
+      // Check if already enriched (has contextIds array with items on first item)
+      const existingContextIds = policiesLane.items[0]?.node?.metadata?.contextIds;
+      console.log('[AccessLens] Existing contextIds on first policy:', existingContextIds);
+
+      if (existingContextIds && existingContextIds.length > 0) {
+        console.log('[AccessLens] Policies already enriched, skipping');
         return; // Already enriched
       }
 
-      if (shouldLog('POLICIES')) {
-        console.log('[AccessLens] Enriching assignment policies with OData details (AP_CONTEXTS)');
-      }
+      console.warn('[AccessLens] ⚠️ Starting policy enrichment with OData...');
 
       try {
         const enrichedLane = await enrichPoliciesWithOData(policiesLane, apiContext);
+
+        console.warn('[AccessLens] ⚠️ Enrichment complete, first policy contextIds:',
+          enrichedLane?.items?.[0]?.node?.metadata?.contextIds);
 
         // Update lanes with enriched policy data
         setLanes(prevLanes => {
@@ -1083,15 +1118,45 @@ const AccessLens = ({
           );
         });
 
-        if (shouldLog('POLICIES')) {
-          console.log('[AccessLens] Policy enrichment complete');
-        }
+        console.log('[AccessLens] Policy enrichment complete and lanes updated');
       } catch (error) {
         console.warn('[AccessLens] Failed to enrich policies with OData:', error.message);
       }
     };
 
     enrichPolicies();
+  }, [lanes, apiContext]);
+
+  // Enrich Resource Folders lane with OData details (OWNERREF, CLT_TAGS, APPROVAL, RESOURCECONTEXTS)
+  // This runs after lanes are built and we have apiContext
+  useEffect(() => {
+    const enrichFolders = async () => {
+      if (!apiContext || !lanes || lanes.length === 0) return;
+
+      const foldersLane = lanes.find(l => l.laneType === LaneTypes.RESOURCE_FOLDERS);
+      if (!foldersLane || foldersLane.items.length === 0) return;
+
+      // Check if already enriched (has owner or contextIds)
+      const firstItem = foldersLane.items[0]?.node?.metadata;
+      if (firstItem?.owner || (firstItem?.contextIds && firstItem.contextIds.length > 0)) {
+        return; // Already enriched
+      }
+
+      try {
+        await enrichResourceFoldersWithOData(foldersLane, apiContext);
+
+        // Update lanes with enriched folder data
+        setLanes(prevLanes => {
+          return prevLanes.map(lane =>
+            lane.laneType === LaneTypes.RESOURCE_FOLDERS ? { ...foldersLane } : lane
+          );
+        });
+      } catch (error) {
+        console.warn('[AccessLens] Failed to enrich resource folders with OData:', error.message);
+      }
+    };
+
+    enrichFolders();
   }, [lanes, apiContext]);
 
   // Sync currentAssignments with prop when prop changes (initial load or external update)
@@ -1226,32 +1291,18 @@ const AccessLens = ({
     // Set the selected item for visual feedback (used for highlighting)
     setSelectedItem(item);
 
-    // Track selection for cross-lane filtering
+    // Track selection for cross-lane filtering (schema-driven)
     // When clicking an item in a lane, it becomes the new master filter
     // All other lane selections are cleared so the clicked lane takes control
-
-    // Map lane types to their selection setters (no current values needed — uses functional updaters)
-    const selectionSetters = {
-      [LaneTypes.ACCOUNTS]: setSelectedAccountId,
-      [LaneTypes.SYSTEMS]: setSelectedSystemId,
-      [LaneTypes.LOGICAL_APPLICATIONS]: setSelectedLogicalAppId,
-      [LaneTypes.IDENTITIES]: setSelectedIdentityId,
-      [LaneTypes.ASSIGNMENT_POLICIES]: setSelectedPolicyId,
-      [LaneTypes.EFFECTIVE_ENTITLEMENTS]: setSelectedEntitlementId,
-      [LaneTypes.VIOLATIONS]: setSelectedViolationId,
-      [LaneTypes.CONTEXTS]: setSelectedContextId
-    };
-
-    // Clear ALL other lane selections - the clicked lane becomes the master filter
-    Object.entries(selectionSetters).forEach(([lane, setter]) => {
-      if (lane !== laneType) {
-        setter(null);
-      }
-    });
-
-    // Set the selection for the clicked lane (toggle if clicking same item)
-    if (selectionSetters[laneType]) {
-      selectionSetters[laneType](prev => prev === item.node.id ? null : item.node.id);
+    const selectionKey = LaneSchema[laneType]?.selectionStateKey;
+    if (selectionKey) {
+      console.warn(`[AccessLens] Item clicked in ${laneType} lane, item.node.id:`, item.node.id);
+      setLaneSelections(prev => {
+        // Toggle: if clicking the same item, deselect (clear all)
+        if (prev[selectionKey] === item.node.id) return {};
+        // Select new item, clearing all other selections
+        return { [selectionKey]: item.node.id };
+      });
     }
 
     // Set reason and expand inspector (only if inspector is visible)
@@ -1348,12 +1399,8 @@ const AccessLens = ({
       return;
     }
 
-    // Clear any lane item selection
-    setSelectedAccountId(null);
-    setSelectedSystemId(null);
-    setSelectedLogicalAppId(null);
-    setSelectedPolicyId(null);
-    setSelectedEntitlementId(null);
+    // Clear all lane selections and reason
+    setLaneSelections({});
     setSelectedReasonId(null);
 
     // Build the explanation from the identity data
@@ -1407,12 +1454,7 @@ const AccessLens = ({
     setPendingNodeType(node.type);
 
     // Clear cross-lane filter selections when pivoting
-    setSelectedAccountId(null);
-    setSelectedSystemId(null);
-    setSelectedLogicalAppId(null);
-    setSelectedIdentityId(null);
-    setSelectedPolicyId(null);
-    setSelectedEntitlementId(null);
+    setLaneSelections({});
     setSelectedItem(null);
     setExplanation(null);
 
@@ -1658,12 +1700,7 @@ const AccessLens = ({
     // Clear all manually set positions so dynamic positioning takes over
     setLanePositions({});
     // Clear all selection/filter states
-    setSelectedAccountId(null);
-    setSelectedSystemId(null);
-    setSelectedLogicalAppId(null);
-    setSelectedIdentityId(null);
-    setSelectedPolicyId(null);
-    setSelectedEntitlementId(null);
+    setLaneSelections({});
     // Collapse all lanes
     setLanesForceCollapsed(true);
     // Reset the forceCollapsed flag after a brief delay so lanes can be expanded again
@@ -1685,44 +1722,18 @@ const AccessLens = ({
   // to only show items related to the filtered entitlements.
   // ============================================================================
 
-  // Check if any cross-lane filter (lane selection) is active
-  const hasActiveCrossLaneFilter = Boolean(
-    selectedAccountId ||
-    selectedSystemId ||
-    selectedLogicalAppId ||
-    selectedIdentityId ||
-    selectedPolicyId ||
-    selectedEntitlementId ||
-    selectedViolationId ||
-    selectedContextId
-  );
+  // Check if any cross-lane filter (lane selection) is active (schema-driven)
+  const hasActiveCrossLaneFilter = Object.keys(laneSelections).length > 0;
 
   // Handler to clear all lane selections (cross-lane filters)
   const handleClearAllSelections = useCallback(() => {
-    setSelectedAccountId(null);
-    setSelectedSystemId(null);
-    setSelectedLogicalAppId(null);
-    setSelectedIdentityId(null);
-    setSelectedPolicyId(null);
-    setSelectedEntitlementId(null);
-    setSelectedViolationId(null);
-    setSelectedContextId(null);
+    setLaneSelections({});
     setSelectedItem(null);
     setExplanation(null);
   }, []);
 
-  // Consolidated selection state — avoids rebuilding inside the useMemo on every call
-  const selections = useMemo(() => ({
-    identityId: selectedIdentityId,
-    accountId: selectedAccountId,
-    systemId: selectedSystemId,
-    logicalAppId: selectedLogicalAppId,
-    policyId: selectedPolicyId,
-    entitlementId: selectedEntitlementId,
-    violationId: selectedViolationId,
-    contextId: selectedContextId
-  }), [selectedIdentityId, selectedAccountId, selectedSystemId, selectedLogicalAppId,
-       selectedPolicyId, selectedEntitlementId, selectedViolationId, selectedContextId]);
+  // Selections object for cross-lane filter service — just use laneSelections directly
+  const selections = laneSelections;
 
   const visibleLanes = useMemo(() => {
     // Early exit — no focus node means no lanes to filter
@@ -2010,9 +2021,8 @@ const AccessLens = ({
             if (lane.laneType === LaneTypes.EFFECTIVE_ENTITLEMENTS) return lane;
             if (isLaneFilterSource(lane.laneType, selections)) return lane;
 
-            // Clear items from lanes that depend on entitlements
-            if ([LaneTypes.IDENTITIES, LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS, LaneTypes.ASSIGNMENT_POLICIES,
-                 LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.VIOLATIONS].includes(lane.laneType)) {
+            // Clear items from lanes that depend on entitlements (schema-driven)
+            if (LaneSchema[lane.laneType]?.dependsOnEntitlements) {
               return {
                 ...lane,
                 items: [],
@@ -2029,8 +2039,8 @@ const AccessLens = ({
             filteredLanes = filteredLanes.map(lane => {
               if (isLaneFilterSource(lane.laneType, selections)) return lane;
 
-              // These lanes may have complianceStatus in their metadata (from assignments)
-              if ([LaneTypes.IDENTITIES, LaneTypes.ACCOUNTS].includes(lane.laneType)) {
+              // Schema-driven: lanes that support compliance status filtering
+              if (LaneSchema[lane.laneType]?.supportsComplianceFiltering) {
                 const filteredItems = lane.items.filter(item => {
                   const complianceStatus = item.node?.metadata?.complianceStatus ||
                                            item.rawData?.complianceStatus ||
@@ -2122,16 +2132,16 @@ const AccessLens = ({
     let selectedIdentity = null;
 
     // Case 1: Identity is directly selected
-    if (selectedIdentityId) {
+    if (laneSelections.identityId) {
       selectedIdentity = identitiesLane.items?.find(
-        item => String(item.node.id) === String(selectedIdentityId)
+        item => String(item.node.id) === String(laneSelections.identityId)
       );
     }
     // Case 2: Account is selected - derive the identity from the account
-    else if (selectedAccountId) {
+    else if (laneSelections.accountId) {
       const accountsLane = lanes.find(l => l.laneType === LaneTypes.ACCOUNTS);
       const selectedAccount = accountsLane?.items?.find(
-        item => String(item.node.id) === String(selectedAccountId)
+        item => String(item.node.id) === String(laneSelections.accountId)
       );
 
       if (selectedAccount) {
@@ -2158,7 +2168,7 @@ const AccessLens = ({
       identityName: selectedIdentity.node.displayName,
       complianceStatus: complianceStatus
     };
-  }, [selectedIdentityId, selectedAccountId, focusNode?.type, lanes]);
+  }, [laneSelections, focusNode?.type, lanes]);
 
   // Render loading state
   if (isLoading && !focusNode) {
@@ -2307,51 +2317,12 @@ const AccessLens = ({
                   onReasonClick={handleReasonClick}
                   onLoadMore={handleLoadMore}
                   viewMode={viewMode}
-                  isFilterActive={lane.laneType === LaneTypes.ACCOUNTS ? selectedAccountId !== null :
-                                  lane.laneType === LaneTypes.SYSTEMS ? selectedSystemId !== null :
-                                  lane.laneType === LaneTypes.LOGICAL_APPLICATIONS ? selectedLogicalAppId !== null :
-                                  lane.laneType === LaneTypes.IDENTITIES ? selectedIdentityId !== null :
-                                  lane.laneType === LaneTypes.ASSIGNMENT_POLICIES ? selectedPolicyId !== null :
-                                  lane.laneType === LaneTypes.EFFECTIVE_ENTITLEMENTS ? selectedEntitlementId !== null :
-                                  lane.laneType === LaneTypes.VIOLATIONS ? selectedViolationId !== null :
-                                  lane.laneType === LaneTypes.CONTEXTS ? selectedContextId !== null :
-                                  lane.isFiltered}
-                  activeFilterId={lane.laneType === LaneTypes.ACCOUNTS ? selectedAccountId :
-                                  lane.laneType === LaneTypes.SYSTEMS ? selectedSystemId :
-                                  lane.laneType === LaneTypes.LOGICAL_APPLICATIONS ? selectedLogicalAppId :
-                                  lane.laneType === LaneTypes.IDENTITIES ? selectedIdentityId :
-                                  lane.laneType === LaneTypes.ASSIGNMENT_POLICIES ? selectedPolicyId :
-                                  lane.laneType === LaneTypes.EFFECTIVE_ENTITLEMENTS ? selectedEntitlementId :
-                                  lane.laneType === LaneTypes.VIOLATIONS ? selectedViolationId :
-                                  lane.laneType === LaneTypes.CONTEXTS ? selectedContextId : null}
+                  isFilterActive={getSelectionForLane(lane.laneType, laneSelections) !== null || lane.isFiltered}
+                  activeFilterId={getSelectionForLane(lane.laneType, laneSelections)}
                   forceCollapsed={lanesForceCollapsed}
                   forceExpanded={lanesForceExpanded}
-                  isFilterSource={
-                    // A lane is the "filter source" (shows "Filtering") if user clicked an item in it
-                    // Having a selection makes this lane the master filter
-                    (lane.laneType === LaneTypes.ACCOUNTS && selectedAccountId !== null) ||
-                    (lane.laneType === LaneTypes.SYSTEMS && selectedSystemId !== null) ||
-                    (lane.laneType === LaneTypes.LOGICAL_APPLICATIONS && selectedLogicalAppId !== null) ||
-                    (lane.laneType === LaneTypes.IDENTITIES && selectedIdentityId !== null) ||
-                    (lane.laneType === LaneTypes.ASSIGNMENT_POLICIES && selectedPolicyId !== null) ||
-                    (lane.laneType === LaneTypes.EFFECTIVE_ENTITLEMENTS && selectedEntitlementId !== null) ||
-                    (lane.laneType === LaneTypes.VIOLATIONS && selectedViolationId !== null) ||
-                    (lane.laneType === LaneTypes.CONTEXTS && selectedContextId !== null)
-                  }
-                  isFiltered={
-                    // A lane is "filtered" (shows "Filtered") if it's being filtered BY another lane
-                    // AND it does NOT have its own selection (selection = master filter takes precedence)
-                    lane.isFiltered && !(
-                      (lane.laneType === LaneTypes.ACCOUNTS && selectedAccountId !== null) ||
-                      (lane.laneType === LaneTypes.SYSTEMS && selectedSystemId !== null) ||
-                      (lane.laneType === LaneTypes.LOGICAL_APPLICATIONS && selectedLogicalAppId !== null) ||
-                      (lane.laneType === LaneTypes.IDENTITIES && selectedIdentityId !== null) ||
-                      (lane.laneType === LaneTypes.ASSIGNMENT_POLICIES && selectedPolicyId !== null) ||
-                      (lane.laneType === LaneTypes.EFFECTIVE_ENTITLEMENTS && selectedEntitlementId !== null) ||
-                      (lane.laneType === LaneTypes.VIOLATIONS && selectedViolationId !== null) ||
-                      (lane.laneType === LaneTypes.CONTEXTS && selectedContextId !== null)
-                    )
-                  }
+                  isFilterSource={getSelectionForLane(lane.laneType, laneSelections) !== null}
+                  isFiltered={lane.isFiltered && getSelectionForLane(lane.laneType, laneSelections) === null}
                 />
               </DraggableLane>
             ))}

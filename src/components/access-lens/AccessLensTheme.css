@@ -1,0 +1,241 @@
+/**
+ * AccessLens Theme System
+ * Supports light (Omada brand) and dark themes via CSS variables
+ */
+
+/* ============================================
+   DARK THEME (Default - Nord-inspired)
+   ============================================ */
+.access-lens.theme-dark,
+.access-lens:not(.theme-light) {
+  /* Backgrounds */
+  --al-bg-primary: #0d0d0d;
+  --al-bg-secondary: #121218;
+  --al-bg-tertiary: #1a1a1a;
+  --al-bg-card: #151515;
+  --al-bg-hover: rgba(136, 192, 208, 0.1);
+  --al-bg-active: rgba(136, 192, 208, 0.15);
+  --al-bg-input: #1a1a1a;
+
+  /* Borders */
+  --al-border-primary: #2a2a2a;
+  --al-border-secondary: #3a3a4a;
+  --al-border-accent: rgba(136, 192, 208, 0.3);
+  --al-border-focus: #88c0d0;
+
+  /* Text */
+  --al-text-primary: #e0e0e0;
+  --al-text-secondary: #c0c0c0;
+  --al-text-muted: #808090;
+  --al-text-dimmed: #606070;
+  --al-text-accent: #88c0d0;
+
+  /* Accent Colors */
+  --al-accent-primary: #88c0d0;
+  --al-accent-secondary: #81a1c1;
+  --al-accent-success: #a3be8c;
+  --al-accent-warning: #ebcb8b;
+  --al-accent-error: #bf616a;
+  --al-accent-info: #5e81ac;
+  --al-accent-purple: #b48ead;
+  --al-accent-orange: #d08770;
+  --al-accent-teal: #8fbcbb;
+
+  /* Lane Colors (semantic) */
+  --al-lane-identity: #88c0d0;
+  --al-lane-account: #d08770;
+  --al-lane-system: #8fbcbb;
+  --al-lane-entitlement: #a3be8c;
+  --al-lane-policy: #b48ead;
+  --al-lane-violation: #bf616a;
+  --al-lane-context: #ebcb8b;
+  --al-lane-logical-app: #5e81ac;
+
+  /* Shadows */
+  --al-shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.3);
+  --al-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.3);
+  --al-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.4);
+  --al-shadow-glow: 0 0 10px rgba(136, 192, 208, 0.3);
+
+  /* Overlays */
+  --al-overlay-bg: rgba(0, 0, 0, 0.7);
+  --al-loading-bg: rgba(13, 13, 13, 0.9);
+
+  /* Connector Lines */
+  --al-connector-stroke: #4a5568;
+  --al-connector-glow: rgba(136, 192, 208, 0.4);
+
+  /* Scrollbar */
+  --al-scrollbar-track: #1a1a1a;
+  --al-scrollbar-thumb: #3a3a4a;
+  --al-scrollbar-thumb-hover: #4a4a5a;
+
+  /* Toggle specific */
+  --al-toggle-bg: #3a3a4a;
+  --al-toggle-bg-active: rgba(136, 192, 208, 0.2);
+  --al-toggle-border: #3a3a4a;
+  --al-toggle-border-active: rgba(136, 192, 208, 0.3);
+}
+
+/* ============================================
+   LIGHT THEME (Omada Brand)
+   ============================================ */
+.access-lens.theme-light {
+  /* Backgrounds */
+  --al-bg-primary: #f9fafc;
+  --al-bg-secondary: #ffffff;
+  --al-bg-tertiary: #e7eaf2;
+  --al-bg-card: #ffffff;
+  --al-bg-hover: rgba(88, 193, 161, 0.1);
+  --al-bg-active: rgba(88, 193, 161, 0.15);
+  --al-bg-input: #ffffff;
+
+  /* Borders */
+  --al-border-primary: #e7eaf2;
+  --al-border-secondary: #c4ccde;
+  --al-border-accent: rgba(88, 193, 161, 0.4);
+  --al-border-focus: #58c1a1;
+
+  /* Text */
+  --al-text-primary: #32445b;
+  --al-text-secondary: #323232;
+  --al-text-muted: #5c5a5b;
+  --al-text-dimmed: #8a8a8a;
+  --al-text-accent: #1e7c88;
+
+  /* Accent Colors - Omada Brand */
+  --al-accent-primary: #58c1a1;
+  --al-accent-secondary: #1e7c88;
+  --al-accent-success: #58c1a1;
+  --al-accent-warning: #f5a623;
+  --al-accent-error: #da5e3c;
+  --al-accent-info: #32445b;
+  --al-accent-purple: #7c5295;
+  --al-accent-orange: #da5e3c;
+  --al-accent-teal: #1e7c88;
+
+  /* Lane Colors (Omada-aligned) */
+  --al-lane-identity: #58c1a1;
+  --al-lane-account: #da5e3c;
+  --al-lane-system: #1e7c88;
+  --al-lane-entitlement: #58c1a1;
+  --al-lane-policy: #7c5295;
+  --al-lane-violation: #da5e3c;
+  --al-lane-context: #f5a623;
+  --al-lane-logical-app: #32445b;
+
+  /* Shadows - lighter for light theme */
+  --al-shadow-sm: 0 2px 4px rgba(50, 68, 91, 0.08);
+  --al-shadow-md: 0 4px 12px rgba(50, 68, 91, 0.12);
+  --al-shadow-lg: 0 8px 24px rgba(50, 68, 91, 0.16);
+  --al-shadow-glow: 0 0 10px rgba(88, 193, 161, 0.3);
+
+  /* Overlays */
+  --al-overlay-bg: rgba(50, 68, 91, 0.5);
+  --al-loading-bg: rgba(249, 250, 252, 0.95);
+
+  /* Connector Lines */
+  --al-connector-stroke: #c4ccde;
+  --al-connector-glow: rgba(88, 193, 161, 0.4);
+
+  /* Scrollbar */
+  --al-scrollbar-track: #e7eaf2;
+  --al-scrollbar-thumb: #c4ccde;
+  --al-scrollbar-thumb-hover: #a0a8b8;
+
+  /* Toggle specific */
+  --al-toggle-bg: #e7eaf2;
+  --al-toggle-bg-active: rgba(88, 193, 161, 0.2);
+  --al-toggle-border: #c4ccde;
+  --al-toggle-border-active: rgba(88, 193, 161, 0.4);
+}
+
+/* ============================================
+   THEME TOGGLE SWITCH
+   ============================================ */
+.theme-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem;
+  background: var(--al-toggle-bg);
+  border: 1px solid var(--al-toggle-border);
+  border-radius: 20px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.theme-toggle:hover {
+  border-color: var(--al-border-accent);
+}
+
+.theme-toggle-track {
+  position: relative;
+  width: 48px;
+  height: 24px;
+  background: var(--al-bg-tertiary);
+  border-radius: 12px;
+  transition: background 0.3s ease;
+}
+
+.theme-toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  background: var(--al-text-primary);
+  border-radius: 50%;
+  transition: transform 0.3s ease, background 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+}
+
+.theme-toggle.light .theme-toggle-thumb {
+  transform: translateX(24px);
+  background: #f5a623;
+}
+
+.theme-toggle.dark .theme-toggle-thumb {
+  background: #32445b;
+}
+
+.theme-toggle-label {
+  font-size: 0.75rem;
+  color: var(--al-text-muted);
+  min-width: 36px;
+  text-align: center;
+}
+
+/* Compact toggle for toolbar */
+.theme-toggle-compact {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.5rem;
+  background: var(--al-toggle-bg);
+  border: 1px solid var(--al-toggle-border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 0.8rem;
+  color: var(--al-text-secondary);
+}
+
+.theme-toggle-compact:hover {
+  background: var(--al-toggle-bg-active);
+  border-color: var(--al-toggle-border-active);
+  color: var(--al-text-accent);
+}
+
+.theme-toggle-compact .theme-icon {
+  font-size: 1rem;
+}
+
+.theme-toggle-compact .theme-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}

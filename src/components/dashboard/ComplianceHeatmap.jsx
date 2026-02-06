@@ -2,7 +2,7 @@
  * ComplianceHeatmap Component
  *
  * Displays a treemap-style heatmap showing compliance by system.
- * - Tile size is proportional to account count
+ * - Tile size is proportional to assignment count
  * - Color indicates compliance rate (green = good, red = bad)
  * - Shows compliance breakdown with percentages and counts
  */
@@ -11,6 +11,12 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSystemCompliance } from '../../hooks/useSystemCompliance';
 import './ComplianceHeatmap.css';
+
+/**
+ * Get the sizing value for a system tile
+ * Uses assignmentCount (total compliance status counts) for tile sizing
+ */
+const getTileSize = (system) => system.assignmentCount || system.compliance?.total || 0;
 
 /**
  * Get color based on compliance rate
@@ -50,7 +56,7 @@ const getTextColor = (complianceRate) => {
  * Row-based layout with logarithmic scaling
  * Uses log scale so similar values (316 vs 314) look similar
  * Groups systems into size buckets for more predictable layouts
- * Systems with identical accountCount values get identical tile sizes
+ * Systems with identical assignmentCount values get identical tile sizes
  */
 const calculateTreemapLayout = (systems, containerWidth, containerHeight) => {
   if (!systems || systems.length === 0) return [];
@@ -62,17 +68,17 @@ const calculateTreemapLayout = (systems, containerWidth, containerHeight) => {
   // Preserve the sort order from filteredSystems (sorted by compliance status)
   const sortedSystems = [...systems];
 
-  // Check if all systems have the same accountCount - if so, use equal sizing
-  const uniqueAccountCounts = new Set(sortedSystems.map(s => s.accountCount));
-  const allSameValue = uniqueAccountCounts.size === 1;
+  // Check if all systems have the same assignmentCount - if so, use equal sizing
+  const uniqueSizes = new Set(sortedSystems.map(s => getTileSize(s)));
+  const allSameValue = uniqueSizes.size === 1;
 
-  // Use logarithmic scaling: log(accounts + 1) to handle 0 accounts
+  // Use logarithmic scaling: log(assignments + 1) to handle 0 assignments
   // This makes 10 vs 100 a bigger difference than 310 vs 400
   const getLogValue = (count) => Math.log10(Math.max(count, 1) + 1);
 
   const itemsWithSizes = sortedSystems.map(system => ({
     ...system,
-    logValue: getLogValue(system.accountCount)
+    logValue: getLogValue(getTileSize(system))
   }));
 
   // Find min/max log values for normalization
@@ -82,7 +88,7 @@ const calculateTreemapLayout = (systems, containerWidth, containerHeight) => {
   const logRange = maxLog - minLog;
 
   // Assign size category (1-5) based on normalized log value
-  // Systems with the same accountCount will have the same logValue and thus same category
+  // Systems with the same assignmentCount will have the same logValue and thus same category
   const getSizeCategory = (logValue) => {
     // If all values are the same (logRange is 0), give them all category 3 (medium)
     if (logRange === 0) return 3;
@@ -181,7 +187,7 @@ const calculateTreemapLayout = (systems, containerWidth, containerHeight) => {
 };
 
 /**
- * Layout for equal-sized tiles when all have 0 accounts
+ * Layout for equal-sized tiles when all have 0 assignments
  */
 const layoutEqualSized = (systems, containerWidth, containerHeight) => {
   const cols = Math.ceil(Math.sqrt(systems.length));
@@ -232,7 +238,7 @@ const HeatmapTile = ({ system, onClick }) => {
         '--secondary-color': secondaryColor
       }}
       onClick={() => onClick && onClick(system)}
-      title={`${system.name}: ${complianceRate}% compliant (${system.accountCount} accounts)`}
+      title={`${system.name}: ${complianceRate}% compliant (${formatNumber(system.compliance?.total || 0)} assignments)`}
     >
       <div className="tile-content">
         <div className="tile-header">
@@ -291,15 +297,9 @@ const HeatmapTile = ({ system, onClick }) => {
 
         <div className={`tile-footer ${isSmall ? 'small' : ''}`}>
           <span className="footer-item">
-            <span className="footer-icon">&#x1F464;</span>
-            {formatNumber(system.accountCount)} accounts
+            <span className="footer-icon">&#x1F4CB;</span>
+            {formatNumber(system.compliance?.total || 0)} assignments
           </span>
-          {!isSmall && (
-            <span className="footer-item">
-              <span className="footer-icon">&#x1F4CB;</span>
-              {formatNumber(system.compliance?.total || 0)} assignments
-            </span>
-          )}
         </div>
       </div>
     </div>
@@ -349,11 +349,11 @@ const ComplianceHeatmap = ({ bearerToken, impersonateUser }) => {
         return rate < 100; // Show systems that are not 100% compliant
       });
 
-      // Override accountCount with non-compliance rate for tile sizing
+      // Override assignmentCount with non-compliance rate for tile sizing
       // 0% compliance = 100 (largest), 99% compliance = 1 (smallest)
       filtered = filtered.map(system => ({
         ...system,
-        accountCount: Math.max(1, 100 - (system.compliance?.complianceRate || 0))
+        assignmentCount: Math.max(1, 100 - (system.compliance?.complianceRate || 0))
       }));
     }
 
@@ -388,17 +388,16 @@ const ComplianceHeatmap = ({ bearerToken, impersonateUser }) => {
   // Calculate overall statistics (from filtered systems)
   const overallStats = useMemo(() => {
     if (!filteredSystems || filteredSystems.length === 0) {
-      return { totalSystems: 0, totalAccounts: 0, totalAssignments: 0, avgCompliance: 0, isFiltered: false };
+      return { totalSystems: 0, totalAssignments: 0, avgCompliance: 0, isFiltered: false };
     }
 
     const totalSystems = filteredSystems.length;
-    const totalAccounts = filteredSystems.reduce((sum, s) => sum + s.accountCount, 0);
     const totalAssignments = filteredSystems.reduce((sum, s) => sum + (s.compliance?.total || 0), 0);
     const totalCompliant = filteredSystems.reduce((sum, s) => sum + (s.compliance?.compliant || 0), 0);
     const avgCompliance = totalAssignments > 0 ? Math.round((totalCompliant / totalAssignments) * 100) : 0;
     const isFiltered = selectedStatuses.length > 0 || showOnlyNonCompliant;
 
-    return { totalSystems, totalAccounts, totalAssignments, avgCompliance, isFiltered };
+    return { totalSystems, totalAssignments, avgCompliance, isFiltered };
   }, [filteredSystems, selectedStatuses.length, showOnlyNonCompliant]);
 
   // Toggle a status in the filter
@@ -508,17 +507,13 @@ const ComplianceHeatmap = ({ bearerToken, impersonateUser }) => {
         <div className="header-left">
           <h2>System Compliance Overview</h2>
           <span className="header-subtitle">
-            Tile size indicates account volume. Color indicates compliance rate.
+            Tile size indicates assignment volume. Color indicates compliance rate.
           </span>
         </div>
         <div className="header-stats">
           <div className="header-stat">
             <span className="stat-value">{overallStats.totalSystems}</span>
             <span className="stat-label">Systems</span>
-          </div>
-          <div className="header-stat">
-            <span className="stat-value">{formatNumber(overallStats.totalAccounts)}</span>
-            <span className="stat-label">Accounts</span>
           </div>
           <div className="header-stat">
             <span className="stat-value">{formatNumber(overallStats.totalAssignments)}</span>

@@ -8,6 +8,7 @@
 
 import {
   LaneConfigSchema,
+  LaneSchema,
   CrossLaneFilterType,
   LaneTypes,
   NodeTypes,
@@ -69,6 +70,67 @@ const applyArrayContains = (item, sourceValue, targetField, sourceSet = null) =>
   const sourceStr = sourceValue != null ? String(sourceValue) : '';
   const targetStr = targetValue != null ? String(targetValue) : '';
   return targetStr === sourceStr;
+};
+
+/**
+ * Normalize a name for comparison
+ * Removes bracketed suffixes like "[GBG]", trims whitespace, and lowercases
+ * @param {string} name - Name to normalize
+ * @returns {string} Normalized name
+ */
+const normalizeName = (name) => {
+  if (!name || typeof name !== 'string') return '';
+  return name.replace(/\s*\[.*?\]\s*$/, '').trim().toLowerCase();
+};
+
+/**
+ * Apply array contains filter with name-based fallback
+ * First tries ID matching, then falls back to normalized name matching
+ * This handles cases where GraphQL and OData return different UUIDs for the same logical entity
+ * @param {Object} item - Item to check
+ * @param {*} sourceValue - Primary source value (ID)
+ * @param {string} targetField - Field path to get primary target value (ID array)
+ * @param {*} fallbackSourceValue - Fallback source value (name)
+ * @param {string} fallbackTargetField - Field path to get fallback target value (name array)
+ */
+const applyArrayContainsWithNameFallback = (item, sourceValue, targetField, fallbackSourceValue, fallbackTargetField) => {
+  const targetValue = getItemValue(item, targetField);
+  const itemName = item.node?.displayName || 'unknown';
+
+  // First try: ID-based matching
+  if (targetValue && Array.isArray(targetValue)) {
+    const sourceStr = sourceValue != null ? String(sourceValue) : '';
+    const targetSet = new Set(targetValue.map(tv => String(tv)));
+    if (targetSet.has(sourceStr)) {
+      console.log(`[NameFallback] ✅ ID match for "${itemName}": sourceId=${sourceStr}`);
+      return true;
+    }
+  }
+
+  // Fallback: Name-based matching
+  if (fallbackSourceValue && fallbackTargetField) {
+    const fallbackTargetValue = getItemValue(item, fallbackTargetField);
+    if (fallbackTargetValue && Array.isArray(fallbackTargetValue)) {
+      const normalizedSource = normalizeName(String(fallbackSourceValue));
+      if (normalizedSource) {
+        // Check if any target name matches the normalized source name
+        const matched = fallbackTargetValue.some(tv => {
+          const normalizedTarget = typeof tv === 'string' ? tv : normalizeName(String(tv));
+          return normalizedTarget === normalizedSource;
+        });
+        if (matched) {
+          console.log(`[NameFallback] ✅ NAME match for "${itemName}": sourceName="${normalizedSource}" in [${fallbackTargetValue.join(', ')}]`);
+          return true;
+        } else {
+          console.log(`[NameFallback] ❌ No match for "${itemName}": sourceName="${normalizedSource}" vs targetNames=[${fallbackTargetValue.join(', ')}]`);
+        }
+      }
+    } else {
+      console.log(`[NameFallback] ⚠️ "${itemName}" has no contextNames array`);
+    }
+  }
+
+  return false;
 };
 
 /**
@@ -252,6 +314,139 @@ const applyCascadedFilter = (targetItems, selectedNode, filterMapping, allLanes)
 };
 
 /**
+ * Apply a cascaded filter with name fallback for the first level
+ * This is for Context -> Policy -> Entitlement/Account/System cascading
+ * where Context -> Policy needs name fallback due to UUID mismatch between GraphQL and OData
+ *
+ * @param {Array} targetItems - Items in the target lane to filter
+ * @param {Object} selectedNode - The selected node (e.g., Context)
+ * @param {Object} filterMapping - The filter mapping configuration
+ * @param {Array} allLanes - All lanes (to find intermediate lane)
+ * @returns {Array} Filtered target items
+ */
+const applyCascadedWithNameFallback = (targetItems, selectedNode, filterMapping, allLanes) => {
+  const {
+    intermediateLane,
+    sourceField,
+    fallbackSourceField,
+    intermediateTargetField,
+    fallbackIntermediateTargetField,
+    intermediateExtractField,
+    intermediateExtractFields,
+    targetField,
+    targetFields
+  } = filterMapping;
+
+  // Normalize to arrays for unified handling
+  const extractFields = intermediateExtractFields || (intermediateExtractField ? [intermediateExtractField] : []);
+  const matchTargetFields = targetFields || (targetField ? [targetField] : []);
+
+  // Get primary source value (ID)
+  const sourceValue = getNestedValue(selectedNode, sourceField) ??
+                      getNestedValue(selectedNode, `metadata.${sourceField}`);
+
+  // Get fallback source value (displayName)
+  const fallbackSourceValue = fallbackSourceField ?
+    (getNestedValue(selectedNode, fallbackSourceField) ??
+     getNestedValue(selectedNode, `metadata.${fallbackSourceField}`)) : null;
+
+  if (!sourceValue && !fallbackSourceValue) {
+    return targetItems;
+  }
+
+  // Find the intermediate lane (e.g., Assignment Policies)
+  const intermediateL = allLanes.find(l => l.laneType === intermediateLane);
+  if (!intermediateL || !intermediateL.items) {
+    console.log(`[CascadedNameFallback] Intermediate lane ${intermediateLane} not found`);
+    return targetItems;
+  }
+
+  // Step 1: Filter intermediate items using name fallback logic
+  const filteredIntermediateItems = intermediateL.items.filter(item => {
+    // First try: ID-based matching
+    const itemTargetValue = getItemValue(item, intermediateTargetField);
+    if (itemTargetValue && Array.isArray(itemTargetValue) && sourceValue) {
+      const sourceStr = String(sourceValue);
+      const targetSet = new Set(itemTargetValue.map(tv => String(tv)));
+      if (targetSet.has(sourceStr)) {
+        return true;
+      }
+    }
+
+    // Fallback: Name-based matching
+    if (fallbackSourceValue && fallbackIntermediateTargetField) {
+      const fallbackTargetValue = getItemValue(item, fallbackIntermediateTargetField);
+      if (fallbackTargetValue && Array.isArray(fallbackTargetValue)) {
+        const normalizedSource = normalizeName(String(fallbackSourceValue));
+        if (normalizedSource) {
+          const matched = fallbackTargetValue.some(tv => {
+            const normalizedTarget = typeof tv === 'string' ? tv : normalizeName(String(tv));
+            return normalizedTarget === normalizedSource;
+          });
+          if (matched) {
+            return true;
+          }
+        }
+      }
+    }
+
+    return false;
+  });
+
+  console.log(`[CascadedNameFallback] Filtered ${intermediateL.items.length} -> ${filteredIntermediateItems.length} intermediate items`);
+
+  if (filteredIntermediateItems.length === 0) {
+    return [];
+  }
+
+  // Step 2: Extract values from filtered intermediate items
+  const extractedValuesSet = new Set();
+  for (const item of filteredIntermediateItems) {
+    for (const extractField of extractFields) {
+      const value = getItemValue(item, extractField);
+      if (value != null) {
+        if (Array.isArray(value)) {
+          for (const v of value) {
+            if (v != null) extractedValuesSet.add(String(v));
+          }
+        } else {
+          extractedValuesSet.add(String(value));
+        }
+      }
+    }
+  }
+
+  console.log(`[CascadedNameFallback] Extracted ${extractedValuesSet.size} values from intermediate items`);
+
+  if (extractedValuesSet.size === 0) {
+    return [];
+  }
+
+  // Step 3: Filter target items using extracted values
+  const filteredTargetItems = targetItems.filter(item => {
+    for (const tField of matchTargetFields) {
+      const targetValue = getItemValue(item, tField);
+      if (targetValue == null) continue;
+
+      if (Array.isArray(targetValue)) {
+        if (targetValue.some(tv => tv != null && extractedValuesSet.has(String(tv)))) {
+          return true;
+        }
+      } else {
+        if (extractedValuesSet.has(String(targetValue))) {
+          return true;
+        }
+      }
+    }
+    return false;
+  });
+
+  console.log(`[CascadedNameFallback] Filtered ${targetItems.length} -> ${filteredTargetItems.length} target items`);
+
+  return filteredTargetItems;
+};
+
+/**
  * Apply a filter mapping to a lane's items
  * @param {Array} items - Lane items to filter
  * @param {Object} selectedNode - The selected node that drives filtering
@@ -269,15 +464,21 @@ const applyFilterMapping = (items, selectedNode, filterMapping, allLanes = []) =
     return applyCascadedFilter(items, selectedNode, filterMapping, allLanes);
   }
 
+  // Cascaded filter with name fallback for first level (e.g., Context -> Policy -> Entitlements)
+  if (type === CrossLaneFilterType.CASCADED_WITH_NAME_FALLBACK) {
+    return applyCascadedWithNameFallback(items, selectedNode, filterMapping, allLanes);
+  }
+
   // Pre-compute source values once (outside the filter loop)
   let sourceValue = null;
   let sourceSet = null;
   let sourceStr = null;
 
-  if (type === CrossLaneFilterType.FIELD_MATCH || type === CrossLaneFilterType.ARRAY_CONTAINS) {
+  if (type === CrossLaneFilterType.FIELD_MATCH || type === CrossLaneFilterType.ARRAY_CONTAINS || type === CrossLaneFilterType.ARRAY_CONTAINS_WITH_NAME_FALLBACK) {
     sourceValue = getNestedValue(selectedNode, sourceField) ??
                   getNestedValue(selectedNode, `metadata.${sourceField}`);
-    if (!sourceValue) return items; // No source value, don't filter
+    // For name fallback type, we can proceed even without primary source value
+    if (!sourceValue && type !== CrossLaneFilterType.ARRAY_CONTAINS_WITH_NAME_FALLBACK) return items;
 
     // Pre-compute string conversion for FIELD_MATCH
     if (type === CrossLaneFilterType.FIELD_MATCH) {
@@ -363,6 +564,14 @@ const applyFilterMapping = (items, selectedNode, filterMapping, allLanes = []) =
         return applyArrayContains(item, sourceValue, targetField, sourceSet);
       }
 
+      case CrossLaneFilterType.ARRAY_CONTAINS_WITH_NAME_FALLBACK: {
+        // Get fallback source value (displayName for name-based matching)
+        const { fallbackSourceField, fallbackTargetField } = filterMapping;
+        const fallbackSourceValue = getNestedValue(selectedNode, fallbackSourceField) ??
+                                    getNestedValue(selectedNode, `metadata.${fallbackSourceField}`);
+        return applyArrayContainsWithNameFallback(item, sourceValue, targetField, fallbackSourceValue, fallbackTargetField);
+      }
+
       case CrossLaneFilterType.MULTI_FIELD_MATCH: {
         // Use pre-computed source values Set for O(1) lookup
         for (const tf of targetFields) {
@@ -441,6 +650,25 @@ export const applyCrossLaneFilters = (
   additionalFilters = {},
   previousFilteredLanes = []
 ) => {
+  // Debug: Always log when filtering with a policy selection
+  if (selections.policyId) {
+    console.warn('[CrossLaneFilter] ⚠️ FILTERING WITH POLICY SELECTION:', selections.policyId);
+    console.warn('[CrossLaneFilter] Available lanes:', lanes?.map(l => l.laneType));
+    const contextsLane = lanes?.find(l => l.laneType === 'Contexts');
+    console.warn('[CrossLaneFilter] Contexts lane exists:', !!contextsLane, 'items:', contextsLane?.items?.length);
+  }
+
+  // Debug: Log when filtering with a context selection
+  if (selections.contextId) {
+    console.warn('[CrossLaneFilter] ⚠️ FILTERING WITH CONTEXT SELECTION:', selections.contextId);
+    console.warn('[CrossLaneFilter] Available lanes:', lanes?.map(l => l.laneType));
+    const policiesLane = lanes?.find(l => l.laneType === 'AssignmentPolicies');
+    console.warn('[CrossLaneFilter] Policies lane exists:', !!policiesLane, 'items:', policiesLane?.items?.length);
+    if (policiesLane?.items?.length > 0) {
+      console.warn('[CrossLaneFilter] First policy contextIds:', policiesLane.items[0]?.node?.metadata?.contextIds);
+    }
+  }
+
   if (!lanes || !focusNodeType) return lanes;
 
   const config = LaneConfigSchema[focusNodeType];
@@ -491,6 +719,12 @@ export const applyCrossLaneFilters = (
     }
   }
 
+  // Debug: Log selection map when Assignment Policies is selected
+  if (selectionMap[LaneTypes.ASSIGNMENT_POLICIES]) {
+    console.log('[CrossLaneFilter] Policy selected:', selectionMap[LaneTypes.ASSIGNMENT_POLICIES]?.displayName);
+    console.log('[CrossLaneFilter] Policy contextIds:', selectionMap[LaneTypes.ASSIGNMENT_POLICIES]?.metadata?.contextIds);
+  }
+
   // Track which lanes have been filtered
   const filteredLaneTypes = new Set();
 
@@ -520,9 +754,32 @@ export const applyCrossLaneFilters = (
     let filteredItems = [...lane.items];
     let wasFiltered = false;
 
+    // Debug: Log for Contexts lane processing
+    if (lane.laneType === LaneTypes.CONTEXTS || lane.laneType === 'Contexts') {
+      console.log(`[CrossLaneFilter] Processing Contexts lane, items: ${lane.items?.length}`);
+      console.log(`[CrossLaneFilter] Contexts filteredByLanes:`, laneConfig.crossLaneFilters.filteredByLanes);
+      console.log(`[CrossLaneFilter] Current selectionMap keys:`, Object.keys(selectionMap));
+    }
+
+    // Debug: Log for Assignment Policies lane processing when Context is selected
+    if ((lane.laneType === LaneTypes.ASSIGNMENT_POLICIES || lane.laneType === 'AssignmentPolicies') &&
+        selectionMap[LaneTypes.CONTEXTS]) {
+      console.warn(`[CrossLaneFilter] ⚠️ Processing AssignmentPolicies lane (Context selected)`);
+      console.warn(`[CrossLaneFilter] Policies filteredByLanes:`, laneConfig.crossLaneFilters?.filteredByLanes);
+      console.warn(`[CrossLaneFilter] Selected context node:`, selectionMap[LaneTypes.CONTEXTS]);
+    }
+
     // Check each lane type that can filter this lane
     for (const filteringLaneType of laneConfig.crossLaneFilters.filteredByLanes) {
       const selectedNode = selectionMap[filteringLaneType];
+
+      // Debug: Log for Contexts being filtered by Assignment Policies
+      if ((lane.laneType === LaneTypes.CONTEXTS || lane.laneType === 'Contexts') &&
+          (filteringLaneType === LaneTypes.ASSIGNMENT_POLICIES || filteringLaneType === 'AssignmentPolicies')) {
+        console.log(`[CrossLaneFilter] Checking if Assignment Policies filters Contexts`);
+        console.log(`[CrossLaneFilter] selectedNode for Assignment Policies:`, selectedNode ? selectedNode.displayName : 'NOT FOUND');
+      }
+
       if (!selectedNode) continue;
 
       // Don't filter a lane by itself
@@ -535,8 +792,25 @@ export const applyCrossLaneFilters = (
 
       if (filterMapping) {
         const beforeCount = filteredItems.length;
+
+        // Debug: Log filter mapping details for Contexts lane
+        if (lane.laneType === LaneTypes.CONTEXTS || lane.laneType === 'Contexts') {
+          console.log(`[CrossLaneFilter] Filtering Contexts by ${filteringLaneType}`);
+          console.log(`[CrossLaneFilter] Filter mapping:`, filterMapping);
+          console.log(`[CrossLaneFilter] Policy contextIds:`, selectedNode?.metadata?.contextIds);
+          // Show context IDs as strings for easy comparison
+          const contextItemIds = filteredItems.map(i => i.node?.id);
+          console.log(`[CrossLaneFilter] Context item IDs:`, contextItemIds);
+          console.log(`[CrossLaneFilter] ID types - Policy: ${typeof selectedNode?.metadata?.contextIds?.[0]}, Context: ${typeof contextItemIds[0]}`);
+        }
+
         // Pass all lanes for cascaded filters that need to access intermediate lanes
         filteredItems = applyFilterMapping(filteredItems, selectedNode, filterMapping, lanes);
+
+        // Debug: Always log for Assignment Policies -> Contexts filtering
+        if (lane.laneType === LaneTypes.CONTEXTS || lane.laneType === 'Contexts') {
+          console.log(`[CrossLaneFilter] Contexts filter result: ${beforeCount} -> ${filteredItems.length} items`);
+        }
 
         if (filteredItems.length !== beforeCount) {
           wasFiltered = true;
@@ -595,24 +869,23 @@ export const filterVisibleLanes = (lanes, focusNodeType, visibleLanes = []) => {
 
 /**
  * Get the filter source lane type (which lane is driving the filter)
+ * Schema-driven: iterates LaneSchema to find which lane has an active selection
  *
  * @param {Object} selections - Current selections
  * @returns {string|null} The LaneTypes value of the filter source, or null
  */
 export const getFilterSourceLaneType = (selections) => {
-  if (selections.identityId) return LaneTypes.IDENTITIES;
-  if (selections.accountId) return LaneTypes.ACCOUNTS;
-  if (selections.systemId) return LaneTypes.SYSTEMS;
-  if (selections.logicalAppId) return LaneTypes.LOGICAL_APPLICATIONS;
-  if (selections.policyId) return LaneTypes.ASSIGNMENT_POLICIES;
-  if (selections.entitlementId) return LaneTypes.EFFECTIVE_ENTITLEMENTS;
-  if (selections.violationId) return LaneTypes.VIOLATIONS;
-  if (selections.contextId) return LaneTypes.CONTEXTS;
+  for (const [laneType, schema] of Object.entries(LaneSchema)) {
+    if (schema.selectionStateKey && selections[schema.selectionStateKey]) {
+      return laneType;
+    }
+  }
   return null;
 };
 
 /**
  * Determine if a lane is being filtered by current selections
+ * Schema-driven: uses LaneSchema[laneType].selectionStateKey to check selections
  *
  * @param {string} laneType - The lane type to check
  * @param {string} focusNodeType - The focus node type
@@ -624,39 +897,22 @@ export const isLaneFiltered = (laneType, focusNodeType, selections) => {
   if (!filterConfig?.filteredByLanes) return false;
 
   return filterConfig.filteredByLanes.some(filteringLaneType => {
-    switch (filteringLaneType) {
-      case LaneTypes.IDENTITIES: return !!selections.identityId;
-      case LaneTypes.ACCOUNTS: return !!selections.accountId;
-      case LaneTypes.SYSTEMS: return !!selections.systemId;
-      case LaneTypes.LOGICAL_APPLICATIONS: return !!selections.logicalAppId;
-      case LaneTypes.ASSIGNMENT_POLICIES: return !!selections.policyId;
-      case LaneTypes.EFFECTIVE_ENTITLEMENTS: return !!selections.entitlementId;
-      case LaneTypes.VIOLATIONS: return !!selections.violationId;
-      case LaneTypes.CONTEXTS: return !!selections.contextId;
-      default: return false;
-    }
+    const key = LaneSchema[filteringLaneType]?.selectionStateKey;
+    return key ? !!selections[key] : false;
   });
 };
 
 /**
  * Determine if a lane is the filter source
+ * Schema-driven: uses LaneSchema[laneType].selectionStateKey to check selections
  *
  * @param {string} laneType - The lane type to check
  * @param {Object} selections - Current selections
  * @returns {boolean} True if this lane is the filter source
  */
 export const isLaneFilterSource = (laneType, selections) => {
-  switch (laneType) {
-    case LaneTypes.IDENTITIES: return !!selections.identityId;
-    case LaneTypes.ACCOUNTS: return !!selections.accountId;
-    case LaneTypes.SYSTEMS: return !!selections.systemId;
-    case LaneTypes.LOGICAL_APPLICATIONS: return !!selections.logicalAppId;
-    case LaneTypes.ASSIGNMENT_POLICIES: return !!selections.policyId;
-    case LaneTypes.EFFECTIVE_ENTITLEMENTS: return !!selections.entitlementId;
-    case LaneTypes.VIOLATIONS: return !!selections.violationId;
-    case LaneTypes.CONTEXTS: return !!selections.contextId;
-    default: return false;
-  }
+  const key = LaneSchema[laneType]?.selectionStateKey;
+  return key ? !!selections[key] : false;
 };
 
 export default {

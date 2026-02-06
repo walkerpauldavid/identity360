@@ -95,6 +95,9 @@ const extractorRegistry = {
     return lane.items || [];
   },
 
+  'resourceFolders': (sourceData, focusNode, filters, context) =>
+    extractResourceFoldersFromAssignments(sourceData),
+
   // From focusNode (single item extraction)
   'system': (sourceData, focusNode, filters, context) => {
     if (!focusNode?.metadata?.system) return [];
@@ -122,6 +125,48 @@ const extractorRegistry = {
         metadata: {}
       }
     }];
+  },
+
+  'resourceFolder': (sourceData, focusNode, filters, context) => {
+    const folder = focusNode?.rawData?.resourceFolder || focusNode?.metadata?.resourceFolder;
+    if (!folder?.id && !folder?.name) return [];
+    return [{
+      node: {
+        id: folder.id || 'folder-1',
+        type: NodeTypes.RESOURCE_FOLDER,
+        displayName: folder.name || folder.DisplayName || 'Unknown Folder',
+        status: 'active',
+        badges: [],
+        metadata: {
+          contextIds: [],
+          owner: null,
+          classification: null,
+          approval: null
+        },
+        rawData: folder
+      }
+    }];
+  },
+
+  // Child resources from OData CHILDROLES field (shown when Entitlement is focus node)
+  'childResources': (sourceData, focusNode, filters, context) => {
+    const childRoles = focusNode?.rawData?.CHILDROLES || [];
+    if (!Array.isArray(childRoles) || childRoles.length === 0) return [];
+
+    return childRoles.map(child => ({
+      node: {
+        id: child.UId || child.Id || child.id,
+        type: NodeTypes.ENTITLEMENT,
+        displayName: child.DisplayName || child.Name || child.displayName || 'Unknown',
+        status: 'active',
+        badges: [],
+        metadata: {
+          parentResourceId: focusNode?.id,
+          isChildResource: true
+        },
+        rawData: child
+      }
+    }));
   },
 
   // Assignment Policy related extractions (from focusNode data)
@@ -859,7 +904,10 @@ export function buildEntitlementsLaneFromAPResources(apResources, assignments = 
         complianceStatus: assignmentData?.complianceStatuses?.has('Not Approved')
           ? 'Not Approved'
           : assignmentData?.complianceStatuses?.has('Pending')
-            ? 'Pending' : 'Approved'
+            ? 'Pending' : 'Approved',
+        // Resource folder for cross-lane filtering (from ROLEFOLDER OData field)
+        resourceFolderId: resource.ROLEFOLDER?.UId || resource.ROLEFOLDER?.Id || null,
+        resourceFolderName: resource.ROLEFOLDER?.DisplayName || null
       },
       rawData: resource
     };
@@ -2095,6 +2143,9 @@ function buildEntitlementsLane(assignments, filters) {
         accountId: firstAssignment.account?.id,
         identityId: firstAssignment.identity?.id,
         identityDisplayName: firstAssignment.identity?.displayName,
+        // Resource folder for cross-lane filtering
+        resourceFolderId: resource?.resourceFolder?.id || null,
+        resourceFolderName: resource?.resourceFolder?.name || null,
         // Violation tracking
         hasViolations: entry.violations.length > 0,
         violations: entry.violations
@@ -2559,13 +2610,133 @@ function extractEntitlementsFromAssignments(assignments) {
         system: assignment.resource?.system?.name,
         systemId: assignment.resource?.system?.id,
         type: assignment.resource?.resourceType?.name,
-        complianceStatus: assignment.complianceStatus
+        complianceStatus: assignment.complianceStatus,
+        resourceFolderId: assignment.resource?.resourceFolder?.id || null,
+        resourceFolderName: assignment.resource?.resourceFolder?.name || null
       }
     },
     reasons: assignment.reason ? [transformReason(assignment.reason, index)] : [],
     groupKey: assignment.resource?.system?.id,
     groupLabel: assignment.resource?.system?.name
   }));
+}
+
+/**
+ * Extract unique resource folders from calculated assignments
+ * Groups assignments by resourceFolder.id, counts resources per folder
+ */
+function extractResourceFoldersFromAssignments(assignments) {
+  const folderMap = new Map();
+
+  assignments.forEach(assignment => {
+    const folder = assignment.resource?.resourceFolder;
+    if (!folder?.id) return;
+
+    if (!folderMap.has(folder.id)) {
+      folderMap.set(folder.id, {
+        id: folder.id,
+        name: folder.name || 'Unknown Folder',
+        resourceCount: 0,
+        resourceIds: new Set()
+      });
+    }
+
+    const entry = folderMap.get(folder.id);
+    entry.resourceCount++;
+    if (assignment.resource?.id) entry.resourceIds.add(assignment.resource.id);
+  });
+
+  return Array.from(folderMap.values()).map(folder => ({
+    node: {
+      id: folder.id,
+      type: NodeTypes.RESOURCE_FOLDER,
+      displayName: folder.name,
+      status: 'active',
+      badges: [`${folder.resourceCount} resources`],
+      metadata: {
+        resourceCount: folder.resourceCount,
+        resourceIds: Array.from(folder.resourceIds),
+        // Populated by OData enrichment later
+        contextIds: [],
+        owner: null,
+        classification: null,
+        approval: null
+      },
+      rawData: { id: folder.id, name: folder.name }
+    }
+  }));
+}
+
+/**
+ * Enrich resource folder lane items with OData details
+ * Fetches OWNERREF, CLT_TAGS, APPROVAL, RESOURCECONTEXTS for each folder
+ *
+ * @param {Object} resourceFoldersLane - Lane object with items array
+ * @param {Object} apiContext - { bearerToken, impersonateUser, omadaApi }
+ */
+export async function enrichResourceFoldersWithOData(resourceFoldersLane, apiContext) {
+  if (!resourceFoldersLane?.items?.length || !apiContext?.omadaApi) return;
+
+  const { bearerToken, impersonateUser, omadaApi } = apiContext;
+
+  for (const item of resourceFoldersLane.items) {
+    const folderId = item.node?.id;
+    if (!folderId) continue;
+
+    try {
+      const result = await omadaApi.odata.query(
+        'ResourceFolder',
+        bearerToken,
+        impersonateUser,
+        { filter: `UId eq ${folderId}` }
+      );
+
+      if (result.status === 'success' && result.data?.length > 0) {
+        const odataDetails = result.data[0];
+
+        // Extract owner
+        const ownerRef = odataDetails.OWNERREF;
+        const owner = Array.isArray(ownerRef) && ownerRef.length > 0
+          ? ownerRef[0]?.DisplayName || ownerRef[0]?.Name
+          : ownerRef?.DisplayName || ownerRef?.Name || null;
+
+        // Extract classification tags
+        const tagsObj = odataDetails.CLT_TAGS;
+        const classification = Array.isArray(tagsObj)
+          ? tagsObj.map(t => t.DisplayName || t.Name).filter(Boolean).join(', ')
+          : tagsObj?.DisplayName || tagsObj?.Name || null;
+
+        // Extract approval info
+        const approvalObj = odataDetails.APPROVAL;
+        const approval = Array.isArray(approvalObj)
+          ? approvalObj.map(a => a.Value || a.DisplayName || a.Name).filter(Boolean).join(', ')
+          : approvalObj?.Value || approvalObj?.DisplayName || null;
+
+        // Extract context IDs from RESOURCECONTEXTS or C_RESOURCEFOLDER_CONTEXTS
+        const contexts = odataDetails.RESOURCECONTEXTS?.length > 0
+          ? odataDetails.RESOURCECONTEXTS
+          : odataDetails.C_RESOURCEFOLDER_CONTEXTS || [];
+        const contextIds = contexts.map(ctx => ctx.UId || ctx.Id).filter(Boolean);
+        const contextNames = contexts.map(ctx => ctx.DisplayName || ctx.Name).filter(Boolean);
+
+        // Enrich badges
+        const badges = [`${item.node.metadata.resourceCount} resources`];
+        if (owner) badges.push(owner);
+        if (classification) badges.push(classification);
+
+        // Update item
+        item.node.badges = badges;
+        item.node.metadata.owner = owner;
+        item.node.metadata.classification = classification;
+        item.node.metadata.approval = approval;
+        item.node.metadata.contextIds = contextIds;
+        item.node.metadata.contextNames = contextNames;
+        item.node.rawData = { ...item.node.rawData, ...odataDetails };
+      }
+    } catch (err) {
+      console.warn(`[enrichResourceFoldersWithOData] Error enriching folder ${folderId}:`, err.message);
+    }
+  }
 }
 
 /**
@@ -2630,6 +2801,26 @@ export function buildLanesForEntitlement(assignments, filters = {}, entitlementN
   // This returns an array: [LogicalApps lane, Systems lane] or just [Systems lane]
   const systemLanes = buildSystemLanesForEntitlement(assignments, filters, entitlementNode);
   lanes.push(...systemLanes);
+
+  // 4. Build Resource Folder lane (if entitlement has a resource folder)
+  try {
+    const resourceFolderLane = buildResourceFolderLaneForEntitlement(entitlementNode);
+    if (resourceFolderLane && resourceFolderLane.items && resourceFolderLane.items.length > 0) {
+      lanes.push(resourceFolderLane);
+    }
+  } catch (e) {
+    console.warn('[buildLanesForEntitlement] Error building resource folder lane:', e);
+  }
+
+  // 5. Build Child Resources lane (if entitlement has CHILDROLES)
+  try {
+    const childResourcesLane = buildChildResourcesLaneForEntitlement(entitlementNode);
+    if (childResourcesLane && childResourcesLane.items && childResourcesLane.items.length > 0) {
+      lanes.push(childResourcesLane);
+    }
+  } catch (e) {
+    console.warn('[buildLanesForEntitlement] Error building child resources lane:', e);
+  }
 
   // console.log('[buildLanesForEntitlement] Built:', lanes.map(l => `${l.laneType}(${l.items.length})`).join(', '));
 
@@ -3067,6 +3258,126 @@ function buildSystemLanesForEntitlement(assignments, filters, entitlementNode) {
 }
 
 /**
+ * Build Resource Folder lane for entitlement-centric view
+ * Extracts the resource folder from the entitlement node's rawData or metadata
+ * @param {Object} entitlementNode - The entitlement node being viewed
+ * @returns {Object} Lane object with resource folder item, or empty items array
+ */
+function buildResourceFolderLaneForEntitlement(entitlementNode) {
+  // Early return if no entitlement node provided
+  if (!entitlementNode) {
+    return {
+      laneType: LaneTypes.RESOURCE_FOLDERS,
+      totalCount: 0,
+      items: [],
+      allItemsData: [],
+      canLoadMore: false
+    };
+  }
+
+  // Use the existing 'resourceFolder' extractor logic
+  const folder = entitlementNode?.rawData?.resourceFolder || entitlementNode?.metadata?.resourceFolder ||
+    // Also check OData format (ROLEFOLDER)
+    entitlementNode?.rawData?.ROLEFOLDER;
+
+  if (!folder || (!folder?.id && !folder?.Id && !folder?.UId && !folder?.name && !folder?.Name && !folder?.DisplayName)) {
+    return {
+      laneType: LaneTypes.RESOURCE_FOLDERS,
+      totalCount: 0,
+      items: [],
+      allItemsData: [],
+      canLoadMore: false
+    };
+  }
+
+  const items = [{
+    node: {
+      id: folder.id || folder.Id || folder.UId || 'folder-1',
+      type: NodeTypes.RESOURCE_FOLDER,
+      displayName: folder.name || folder.Name || folder.DisplayName || 'Unknown Folder',
+      status: 'active',
+      badges: [],
+      metadata: {
+        contextIds: [],
+        owner: null,
+        classification: null,
+        approval: null
+      },
+      rawData: folder
+    },
+    reasons: [],
+    groupKey: 'resource-folders',
+    groupLabel: 'Folder'
+  }];
+
+  return {
+    laneType: LaneTypes.RESOURCE_FOLDERS,
+    totalCount: items.length,
+    items: items,
+    allItemsData: items,
+    canLoadMore: false
+  };
+}
+
+/**
+ * Build Child Resources lane for entitlement-centric view
+ * Extracts child resources (CHILDROLES) from the entitlement node's rawData
+ * @param {Object} entitlementNode - The entitlement node being viewed
+ * @returns {Object} Lane object with child resource items, or empty items array
+ */
+function buildChildResourcesLaneForEntitlement(entitlementNode) {
+  // Early return if no entitlement node provided
+  if (!entitlementNode) {
+    return {
+      laneType: LaneTypes.EFFECTIVE_ENTITLEMENTS,
+      totalCount: 0,
+      items: [],
+      allItemsData: [],
+      canLoadMore: false
+    };
+  }
+
+  // Check for CHILDROLES in OData format
+  const childRoles = entitlementNode?.rawData?.CHILDROLES || [];
+
+  if (!Array.isArray(childRoles) || childRoles.length === 0) {
+    return {
+      laneType: LaneTypes.EFFECTIVE_ENTITLEMENTS,
+      totalCount: 0,
+      items: [],
+      allItemsData: [],
+      canLoadMore: false
+    };
+  }
+
+  const items = childRoles.map(child => ({
+    node: {
+      id: child.UId || child.Id || child.id,
+      type: NodeTypes.ENTITLEMENT,
+      displayName: child.DisplayName || child.Name || child.displayName || 'Unknown',
+      status: 'active',
+      badges: [],
+      metadata: {
+        parentResourceId: entitlementNode?.id,
+        isChildResource: true
+      },
+      rawData: child
+    },
+    reasons: [],
+    groupKey: 'child-resources',
+    groupLabel: 'Child Resource'
+  }));
+
+  return {
+    laneType: LaneTypes.EFFECTIVE_ENTITLEMENTS,
+    totalCount: items.length,
+    items: items,
+    allItemsData: items,
+    canLoadMore: false
+  };
+}
+
+/**
  * Extract unique reason types from calculated assignments data
  * Returns an array of unique reason type strings, sorted alphabetically
  */
@@ -3214,6 +3525,7 @@ export function buildAssignmentPoliciesLane(assignments, filters = {}) {
           resourceIds: new Set(),
           assignmentCount: 0,
           causeObjectKey: reason.causeObjectKey || null  // Policy ID if available
+          // Note: contextIds will be populated by OData enrichment (enrichPoliciesWithOData)
         });
       }
 
@@ -3253,6 +3565,7 @@ export function buildAssignmentPoliciesLane(assignments, filters = {}) {
         assignmentCount: policy.assignmentCount,
         // Cross-lane filtering: store resource IDs this policy assigns
         resourceIds: resourceIdsArr
+        // Note: contextIds will be populated by OData enrichment (enrichPoliciesWithOData)
       },
       rawData: {
         name: policy.name,
@@ -3334,23 +3647,41 @@ export async function enrichPoliciesWithOData(policiesLane, apiContext) {
         const policyData = result.data;
         const apContexts = policyData.AP_CONTEXTS || [];
 
-        // Extract context UIds for cross-lane filtering
-        const contextUIds = apContexts
-          .map(ctx => ctx.UId || ctx.uId)
+        // Debug: Log raw AP_CONTEXTS structure
+        console.warn(`[enrichPoliciesWithOData] ⚠️ "${item.node?.displayName}" raw AP_CONTEXTS (first item):`,
+          apContexts.length > 0 ? JSON.stringify(apContexts[0]) : 'empty');
+
+        // Extract context IDs for cross-lane filtering
+        // Use UId (UUID) to match GraphQL id field which returns UUIDs
+        const contextIds = apContexts
+          .map(ctx => ctx.UId || ctx.uId || ctx.Id || ctx.id)
           .filter(Boolean);
 
+        // Also extract context names for fallback matching (GraphQL and OData may have different UUIDs)
+        const contextNames = apContexts
+          .map(ctx => {
+            const name = ctx.DisplayName || ctx.displayName || ctx.Name || ctx.name || '';
+            // Normalize: remove bracketed suffixes like "[GBG]" for matching
+            return name.replace(/\s*\[.*?\]\s*$/, '').trim().toLowerCase();
+          })
+          .filter(Boolean);
+
+        console.warn(`[enrichPoliciesWithOData] ⚠️ "${item.node?.displayName}" extracted contextIds:`, contextIds);
+        console.warn(`[enrichPoliciesWithOData] ⚠️ "${item.node?.displayName}" extracted contextNames:`, contextNames);
+
         // Enrich the item with AP_CONTEXTS data
-        item.node.metadata.contextUIds = contextUIds;
+        item.node.metadata.contextIds = contextIds;
+        item.node.metadata.contextNames = contextNames;  // For fallback name-based matching
         item.node.metadata.apContexts = apContexts;
         item.node.rawData = {
           ...item.node.rawData,
           AP_CONTEXTS: apContexts,
-          contextUIds: contextUIds
+          contextIds: contextIds
         };
         item.rawData = {
           ...item.rawData,
           AP_CONTEXTS: apContexts,
-          contextUIds: contextUIds
+          contextIds: contextIds
         };
 
         if (shouldLog('POLICIES')) {

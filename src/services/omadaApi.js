@@ -1044,6 +1044,64 @@ export const assignmentApi = {
 
       return handleApiError(error, 'getIdentitiesHavingResource');
     }
+  },
+
+  /**
+   * Get system compliance health data from the Compliance Workbench
+   * Returns per-system compliance status counts and system health in a single call.
+   * @param {string} bearerToken - OAuth bearer token
+   * @param {string} impersonateUser - User email
+   * @param {Object} filters - Optional filters (e.g., { showAccounts: true })
+   * @param {Object} options - Optional settings including { signal } for AbortController
+   * @returns {Promise<Object>} System compliance data
+   */
+  getComplianceWorkbenchData: async (bearerToken, impersonateUser, filters = {}, options = {}) => {
+    const { signal } = options;
+    let requestId;
+    let endpoint;
+    try {
+      endpoint = `${API_CONFIG.baseUrl}${API_CONFIG.endpoints.graphql.v3_2}`;
+      const queryObject = GraphQLQueries.getComplianceWorkbenchData(filters);
+      const requestHeaders = await getGraphQLHeaders(bearerToken, impersonateUser);
+
+      requestId = apiLogger.logRequest('GraphQL', endpoint, {
+        functionName: 'getComplianceWorkbenchData',
+        filters,
+        graphqlQuery: queryObject.query
+      }, requestHeaders);
+
+      const result = await executeGraphQL(
+        endpoint,
+        queryObject,
+        requestHeaders,
+        { signal }
+      );
+
+      const graphqlData = result.data?.data || result.data;
+      const workbenchData = graphqlData?.complianceWorkbenchData || [];
+
+      const response = {
+        status: 'success',
+        data: workbenchData
+      };
+
+      apiLogger.logResponse(requestId, 'GraphQL', endpoint, response, true, null, result.headers, result.status, result.rawResponse);
+
+      return response;
+    } catch (error) {
+      if (isAbortError(error)) {
+        return { status: 'aborted', data: [] };
+      }
+      const responseHeaders = error.responseHeaders || {};
+      const statusCode = error.statusCode || null;
+      const rawResponse = error.rawResponse || null;
+
+      if (requestId) {
+        apiLogger.logResponse(requestId, 'GraphQL', endpoint, null, false, error, responseHeaders, statusCode, rawResponse);
+      }
+
+      return handleApiError(error, 'getComplianceWorkbenchData');
+    }
   }
 };
 
@@ -1376,6 +1434,145 @@ export const assignmentPolicyApi = {
 };
 
 /**
+ * Resource Folder API Methods
+ * OData operations for ResourceFolder entity type
+ */
+export const resourceFolderApi = {
+  /**
+   * Get resource folders with optional filtering
+   * @param {string} bearerToken - OAuth bearer token
+   * @param {string} impersonateUser - User email for impersonation
+   * @param {Object} options - { filter, top, skip, orderBy, signal }
+   * @returns {Promise<Object>} { status, data, total, endpoint }
+   */
+  getResourceFolders: async (bearerToken, impersonateUser, options = {}) => {
+    const { signal, filter, top = 100, skip, orderBy = 'NAME' } = options;
+    let requestId;
+    let url;
+    try {
+      url = `${API_CONFIG.baseUrl}${API_CONFIG.endpoints.odata.dataObjects}/ResourceFolder`;
+
+      const params = new URLSearchParams();
+      if (filter) params.append('$filter', filter);
+      if (top !== undefined) params.append('$top', top);
+      if (skip !== undefined) params.append('$skip', skip);
+      if (orderBy) params.append('$orderby', orderBy);
+      params.append('$count', 'true');
+
+      const queryString = params.toString();
+      if (queryString) {
+        url = `${url}?${queryString}`;
+      }
+
+      const requestHeaders = await getHeaders(bearerToken, impersonateUser);
+      requestId = apiLogger.logRequest('OData', url, {
+        method: 'GET',
+        entityType: 'ResourceFolder',
+        filter, top, skip, orderBy
+      }, requestHeaders);
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: requestHeaders,
+        signal
+      });
+
+      const responseHeaders = Object.fromEntries(response.headers.entries());
+      const statusCode = response.status;
+      const rawResponseText = await response.clone().text();
+
+      if (!response.ok) {
+        const error = new Error(`HTTP ${response.status}: ${response.statusText} - ${rawResponseText}`);
+        apiLogger.logResponse(requestId, 'OData', url, null, false, error, responseHeaders, statusCode, rawResponseText);
+        throw error;
+      }
+
+      const data = JSON.parse(rawResponseText);
+
+      const result = {
+        status: 'success',
+        data: data.value || [],
+        total: data['@odata.count'] || data.value?.length || 0,
+        endpoint: url
+      };
+
+      apiLogger.logResponse(requestId, 'OData', url, result, true, null, responseHeaders, statusCode, rawResponseText);
+
+      return result;
+    } catch (error) {
+      if (isAbortError(error)) {
+        return { status: 'aborted', data: [], total: 0 };
+      }
+      if (requestId) {
+        apiLogger.logResponse(requestId, 'OData', url || 'getResourceFolders', null, false, error, {}, null, null);
+      }
+      return handleApiError(error, 'resourceFolder.getResourceFolders');
+    }
+  },
+
+  /**
+   * Get a single resource folder by UId
+   * @param {string} folderId - ResourceFolder UId (UUID)
+   * @param {string} bearerToken - OAuth bearer token
+   * @param {string} impersonateUser - User email for impersonation
+   * @returns {Promise<Object>} ResourceFolder details or error
+   */
+  getResourceFolderById: async (folderId, bearerToken, impersonateUser) => {
+    let requestId;
+    let url;
+    try {
+      url = `${API_CONFIG.baseUrl}${API_CONFIG.endpoints.odata.dataObjects}/ResourceFolder`;
+
+      const params = new URLSearchParams();
+      params.append('$filter', `UId eq ${folderId}`);
+      params.append('$top', '1');
+
+      url = `${url}?${params.toString()}`;
+
+      const requestHeaders = await getHeaders(bearerToken, impersonateUser);
+      requestId = apiLogger.logRequest('OData', url, {
+        method: 'GET',
+        entityType: 'ResourceFolder',
+        folderId
+      }, requestHeaders);
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: requestHeaders
+      });
+
+      const responseHeaders = Object.fromEntries(response.headers.entries());
+      const statusCode = response.status;
+      const rawResponseText = await response.clone().text();
+
+      if (!response.ok) {
+        const error = new Error(`HTTP ${response.status}: ${response.statusText} - ${rawResponseText}`);
+        apiLogger.logResponse(requestId, 'OData', url, null, false, error, responseHeaders, statusCode, rawResponseText);
+        throw error;
+      }
+
+      const data = JSON.parse(rawResponseText);
+      const folder = data.value?.[0] || null;
+
+      const result = {
+        status: 'success',
+        data: folder,
+        endpoint: url
+      };
+
+      apiLogger.logResponse(requestId, 'OData', url, result, true, null, responseHeaders, statusCode, rawResponseText);
+
+      return result;
+    } catch (error) {
+      if (requestId) {
+        apiLogger.logResponse(requestId, 'OData', url || 'getResourceFolderById', null, false, error, {}, null, null);
+      }
+      return handleApiError(error, 'resourceFolder.getResourceFolderById');
+    }
+  }
+};
+
+/**
  * Generic OData API Methods
  * For querying any OData entity type
  */
@@ -1555,6 +1752,24 @@ export const omadaApi = {
     buildContextToPolicyMap: withApiCache('assignmentPolicy', 'buildContextToPolicyMap',
       assignmentPolicyApi.buildContextToPolicyMap,
       (_token, impersonateUser) => [impersonateUser]
+    ),
+  },
+
+  compliance: {
+    getComplianceWorkbenchData: withApiCache('compliance', 'getComplianceWorkbenchData',
+      assignmentApi.getComplianceWorkbenchData,
+      (_token, impersonateUser, filters) => [impersonateUser, filters]
+    ),
+  },
+
+  resourceFolder: {
+    getResourceFolders: withApiCache('resourceFolder', 'getResourceFolders',
+      resourceFolderApi.getResourceFolders,
+      (_token, impersonateUser, options) => [impersonateUser, options]
+    ),
+    getResourceFolderById: withApiCache('resourceFolder', 'getResourceFolderById',
+      resourceFolderApi.getResourceFolderById,
+      (folderId, _token, impersonateUser) => [impersonateUser, folderId]
     ),
   },
 

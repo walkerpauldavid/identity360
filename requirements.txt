@@ -15,6 +15,9 @@
 # Data fetching and caching
 @tanstack/react-query==5.90.12
 
+# Client-side database (IndexedDB wrapper)
+dexie==4.2.1
+
 # Server-side (proxy server)
 cors==2.8.5
 express==5.2.1
@@ -44,6 +47,53 @@ globals==16.5.0
 # Build tooling
 @vitejs/plugin-react==5.1.1
 vite==7.2.4
+
+# =============================================================================
+# ALTERNATIVE CACHING/STATE LIBRARIES (not installed - for reference)
+# =============================================================================
+
+# SWR - Stale-While-Revalidate (by Vercel)
+# Alternative to React Query for data fetching and caching
+# Website: https://swr.vercel.app/
+# Install: npm install swr
+# swr
+
+# MobX - Reactive State Management
+# Observable-based state management with caching capabilities
+# Website: https://mobx.js.org/
+# Install: npm install mobx mobx-react-lite
+# mobx
+# mobx-react-lite
+
+# Moize - Memoization Library
+# High-performance function result caching/memoization
+# Website: https://github.com/planttheidea/moize
+# Install: npm install moize
+# moize
+
+# Mutative - Immutable State Updates
+# Similar to Immer for immutable state management
+# Website: https://github.com/unadlib/mutative
+# Install: npm install mutative
+# mutative
+
+# Zustand - Lightweight State Management
+# Simple state management with built-in persistence and caching
+# Website: https://github.com/pmndrs/zustand
+# Install: npm install zustand
+# zustand
+
+# Jotai - Atomic State Management
+# Primitive and flexible state management for React
+# Website: https://jotai.org/
+# Install: npm install jotai
+# jotai
+
+# RTK Query - Redux Toolkit Query
+# Data fetching and caching built on Redux Toolkit
+# Website: https://redux-toolkit.js.org/rtk-query/overview
+# Install: npm install @reduxjs/toolkit react-redux
+# @reduxjs/toolkit
 
 # =============================================================================
 # INSTALLATION INSTRUCTIONS
