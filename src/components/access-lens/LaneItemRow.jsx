@@ -29,7 +29,7 @@ const formatValidityDate = (dateString) => {
 /**
  * Get the validity period display text for an assignment
  * Rules:
- * - If validTo year is 9999 → "Never expires"
+ * - If validTo is null/undefined OR year is 9999 → "Never expires"
  * - If validFrom year is 1999 → don't show validFrom
  * - Format: MM/YY (e.g., 07/26 for July 2026)
  * @param {string} validFrom - ISO date string for start
@@ -37,16 +37,15 @@ const formatValidityDate = (dateString) => {
  * @returns {Object} { text: string, isExpiring: boolean }
  */
 const getValidityDisplay = (validFrom, validTo) => {
-  if (!validFrom && !validTo) return null;
-
   const fromDate = validFrom ? new Date(validFrom) : null;
   const toDate = validTo ? new Date(validTo) : null;
 
   const fromYear = fromDate?.getFullYear();
   const toYear = toDate?.getFullYear();
 
-  const isFromDefault = fromYear === 1999;
-  const isNeverExpires = toYear === 9999;
+  const isFromDefault = !fromDate || fromYear === 1999;
+  // Never expires if: no validTo date, OR validTo year is 9999
+  const isNeverExpires = !toDate || toYear === 9999;
 
   // Check if expiring soon (within 90 days)
   const now = new Date();
@@ -65,9 +64,9 @@ const getValidityDisplay = (validFrom, validTo) => {
   }
 
   if (!isFromDefault && isNeverExpires) {
-    // Only show start date
+    // Show start date and "Never expires"
     const fromFormatted = formatValidityDate(validFrom);
-    return { text: `From ${fromFormatted}`, isExpiring: false, isExpiringSoon: false, isNeverExpires: false };
+    return { text: `From ${fromFormatted} · Never expires`, isExpiring: false, isExpiringSoon: false, isNeverExpires: true };
   }
 
   // Both dates are real
