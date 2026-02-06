@@ -1078,38 +1078,44 @@ const AccessLens = ({
     }
   }, [identityContexts, filters]);
 
+  // Track enrichment status to prevent infinite loops
+  const policiesEnrichedRef = useRef(false);
+  const foldersEnrichedRef = useRef(false);
+
+  // Reset enrichment flags when focus node changes
+  useEffect(() => {
+    policiesEnrichedRef.current = false;
+    foldersEnrichedRef.current = false;
+  }, [focusNode?.id]);
+
   // Enrich Assignment Policies lane with OData details (AP_CONTEXTS for cross-lane filtering)
   // This runs after lanes are built and we have apiContext
   useEffect(() => {
     const enrichPolicies = async () => {
-      console.log('[AccessLens] enrichPolicies effect running, apiContext:', !!apiContext, 'lanes:', lanes?.length);
+      // Skip if already enriched for this focus node
+      if (policiesEnrichedRef.current) return;
 
       if (!apiContext || !lanes || lanes.length === 0) {
-        console.log('[AccessLens] Skipping enrichment - missing apiContext or lanes');
         return;
       }
 
       const policiesLane = lanes.find(l => l.laneType === LaneTypes.ASSIGNMENT_POLICIES);
-      console.log('[AccessLens] policiesLane found:', !!policiesLane, 'items:', policiesLane?.items?.length);
 
       if (!policiesLane || policiesLane.items.length === 0) return;
 
       // Check if already enriched (has contextIds array with items on first item)
       const existingContextIds = policiesLane.items[0]?.node?.metadata?.contextIds;
-      console.log('[AccessLens] Existing contextIds on first policy:', existingContextIds);
 
       if (existingContextIds && existingContextIds.length > 0) {
-        console.log('[AccessLens] Policies already enriched, skipping');
+        policiesEnrichedRef.current = true;
         return; // Already enriched
       }
 
-      console.warn('[AccessLens] ⚠️ Starting policy enrichment with OData...');
+      // Mark as enriched before async call to prevent duplicate calls
+      policiesEnrichedRef.current = true;
 
       try {
         const enrichedLane = await enrichPoliciesWithOData(policiesLane, apiContext);
-
-        console.warn('[AccessLens] ⚠️ Enrichment complete, first policy contextIds:',
-          enrichedLane?.items?.[0]?.node?.metadata?.contextIds);
 
         // Update lanes with enriched policy data
         setLanes(prevLanes => {
@@ -1117,10 +1123,10 @@ const AccessLens = ({
             lane.laneType === LaneTypes.ASSIGNMENT_POLICIES ? enrichedLane : lane
           );
         });
-
-        console.log('[AccessLens] Policy enrichment complete and lanes updated');
       } catch (error) {
         console.warn('[AccessLens] Failed to enrich policies with OData:', error.message);
+        // Reset flag so it can retry on next render
+        policiesEnrichedRef.current = false;
       }
     };
 
@@ -1131,6 +1137,9 @@ const AccessLens = ({
   // This runs after lanes are built and we have apiContext
   useEffect(() => {
     const enrichFolders = async () => {
+      // Skip if already enriched for this focus node
+      if (foldersEnrichedRef.current) return;
+
       if (!apiContext || !lanes || lanes.length === 0) return;
 
       const foldersLane = lanes.find(l => l.laneType === LaneTypes.RESOURCE_FOLDERS);
@@ -1139,8 +1148,12 @@ const AccessLens = ({
       // Check if already enriched (has owner or contextIds)
       const firstItem = foldersLane.items[0]?.node?.metadata;
       if (firstItem?.owner || (firstItem?.contextIds && firstItem.contextIds.length > 0)) {
+        foldersEnrichedRef.current = true;
         return; // Already enriched
       }
+
+      // Mark as enriched before async call to prevent duplicate calls
+      foldersEnrichedRef.current = true;
 
       try {
         await enrichResourceFoldersWithOData(foldersLane, apiContext);
@@ -1153,6 +1166,8 @@ const AccessLens = ({
         });
       } catch (error) {
         console.warn('[AccessLens] Failed to enrich resource folders with OData:', error.message);
+        // Reset flag so it can retry on next render
+        foldersEnrichedRef.current = false;
       }
     };
 
