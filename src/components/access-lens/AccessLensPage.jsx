@@ -741,6 +741,7 @@ const AccessLensPage = () => {
 
           let lanes = [];
           let reasonTypes = [];
+          let complianceStatuses = [];
 
           if (assignmentsResult.status === 'success') {
             // Debug logging for identity-centric assignments
@@ -758,6 +759,7 @@ const AccessLensPage = () => {
             }
             lanes = buildLanesFromAssignments(assignmentsResult.data, {});
             reasonTypes = extractUniqueReasonTypes(assignmentsResult.data);
+            complianceStatuses = extractUniqueComplianceStatuses(assignmentsResult.data);
           }
 
           // Build contexts lane if available
@@ -772,6 +774,7 @@ const AccessLensPage = () => {
             focusNode: node,
             lanes,
             reasonTypes,
+            complianceStatuses,
             assignments: assignmentsResult.status === 'success' ? assignmentsResult.data : []
           };
         }
@@ -1685,7 +1688,8 @@ const AccessLensPage = () => {
           return {
             focusNode: node,
             lanes: [],
-            reasonTypes: []
+            reasonTypes: [],
+            complianceStatuses: []
           };
         }
       }

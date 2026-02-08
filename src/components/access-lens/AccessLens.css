@@ -1312,6 +1312,7 @@
   transition: all 0.2s;
   margin-left: auto;
   pointer-events: auto;
+  flex-shrink: 0;  /* Never shrink - toggle button must always be visible */
 }
 
 .lane-toggle-btn:hover {
@@ -1662,6 +1663,7 @@
   transition: all 0.2s;
   line-height: 1;
   pointer-events: auto;
+  flex-shrink: 0;  /* Never shrink - must stay visible */
 }
 
 .lane-maximize-btn:hover {
@@ -1687,6 +1689,7 @@
   align-items: center;
   gap: 2px;
   margin-left: 0.25rem;
+  flex-shrink: 0;  /* Never shrink - must stay visible */
 }
 
 .lane-grid-btn {
