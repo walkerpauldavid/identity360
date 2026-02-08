@@ -460,18 +460,19 @@ const LaneCard = ({
             flexDirection: isMultiColumn ? undefined : 'column',
             gridTemplateColumns: isMultiColumn ? `repeat(${effectiveColumns}, 1fr)` : undefined,
             gap: '0.5rem',
-            maxHeight: isMaximized && calculatedMaxHeight ? `${calculatedMaxHeight}px` : undefined,
-            overflowY: (isMaximized || !isMultiColumn) ? 'auto' : undefined,
+            maxHeight: isMaximized && calculatedMaxHeight ? `${calculatedMaxHeight}px` : '400px',
+            overflowY: 'scroll',
             overflowX: 'hidden',
-            paddingBottom: (isMaximized || !isMultiColumn) ? '0.5rem' : undefined
+            paddingBottom: '3rem',
+            paddingRight: '0.25rem'
           }}
         >
           {displayItems.length === 0 ? (
             <div className="lane-empty">No items</div>
           ) : (
             <>
-              {/* Single-column: render all items (scroll handles visibility). Multi-column: limit to maxVisibleItems unless maximized */}
-              {(isMaximized || !isMultiColumn ? displayItems : displayItems.slice(0, maxVisibleItems)).map((item, index) => (
+              {/* Render ALL items - scrolling handles visibility */}
+              {displayItems.map((item, index) => (
                 <LaneItemRow
                   key={item.node.id || index}
                   item={item}
@@ -485,17 +486,6 @@ const LaneCard = ({
                   viewMode={viewMode}
                 />
               ))}
-
-              {/* Show All button - for multi-column lanes when there are more items than visible */}
-              {!isMaximized && isMultiColumn && (displayItems.length >= maxVisibleItems || canLoadMore) && (
-                <button
-                  className="lane-load-more lane-show-all-btn"
-                  onClick={handleMaximize}
-                  style={{ gridColumn: '1 / -1' }}
-                >
-                  Show all {totalCount} items
-                </button>
-              )}
 
               {/* Restore button at bottom when maximized */}
               {isMaximized && (

@@ -1228,6 +1228,64 @@ const AccessLensPage = () => {
               childRoles = resourceOdataData.CHILDROLES || [];
               if (childRoles.length > 0) {
                 console.log(`[Entitlement Pivot] Found ${childRoles.length} CHILDROLES from OData for ${resourceName}`);
+
+                // Enrich CHILDROLES with full resource details (resource type, system name, description)
+                // OData CHILDROLES only contains minimal reference data (DisplayName, UId)
+                // We need to fetch full details for each child resource
+                const MAX_CHILDREN_TO_ENRICH = 50;  // Limit to avoid too many requests
+                const childrenToEnrich = childRoles.slice(0, MAX_CHILDREN_TO_ENRICH);
+
+                const enrichedChildRoles = await Promise.all(
+                  childrenToEnrich.map(async (child) => {
+                    const childUId = child.UId || child.Id || child.id;
+                    if (!childUId) return child;
+
+                    try {
+                      const childOdataResult = await omadaApi.odata.query(
+                        'Resource',
+                        bearerToken,
+                        impersonateUser,
+                        {
+                          filter: `Uid eq ${childUId}`,
+                          top: 1
+                        }
+                      );
+
+                      if (childOdataResult.status === 'success' && childOdataResult.data?.length > 0) {
+                        const childData = childOdataResult.data[0];
+                        // Merge the full resource data with the original CHILDROLES reference
+                        return {
+                          ...child,
+                          // Resource type from OData
+                          RESOURCETYPE: childData.RESOURCETYPE?.DisplayName ||
+                                       childData.RESOURCETYPE?.Name ||
+                                       childData.RESOURCETYPEDISPLAYNAME ||
+                                       child.RESOURCETYPE,
+                          // System name from OData
+                          SYSTEMNAME: childData.SYSTEMDISPLAYNAME ||
+                                     childData.SYSTEM?.DisplayName ||
+                                     childData.SYSTEM?.Name ||
+                                     childData.SYSTEMNAME ||
+                                     child.SYSTEMNAME,
+                          // Description from OData
+                          DESCRIPTION: childData.DESCRIPTION ||
+                                      childData.Description ||
+                                      child.DESCRIPTION,
+                          // Full raw data for reference
+                          _enrichedData: childData
+                        };
+                      }
+                      return child;
+                    } catch (err) {
+                      console.warn(`[Entitlement Pivot] Failed to enrich child resource ${childUId}:`, err.message);
+                      return child;
+                    }
+                  })
+                );
+
+                // Replace childRoles with enriched version
+                childRoles = enrichedChildRoles;
+                console.log(`[Entitlement Pivot] Enriched ${enrichedChildRoles.length} child resources with full details`);
               }
 
               // Extract owner information

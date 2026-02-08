@@ -285,6 +285,15 @@ As a user, I want the Resource Folder lane item to display the folder's Approval
 **US-142: Child Resources Lane for Entitlement**
 As a user, when I pivot to an Entitlement that has child resources (CHILDROLES), I want to see a Child Resources lane showing all child entitlements, so that I can understand the hierarchical structure of the entitlement.
 
+**US-146: Child Resource Enriched Display**
+As a user, when viewing child resources in the Child Resources lane, I want to see full resource information including:
+- A "CHILD" badge indicating this is a child resource
+- The system name badge (e.g., "SharePoint", "Active Directory")
+- The resource type badge (e.g., "Role", "Group", "Permission")
+- Description in the tooltip when hovering
+
+so that I can understand what type of resource each child is and which system it belongs to, rather than just seeing the resource name.
+
 **US-143: Object Inspector State Reset on Pivot**
 As a user, when I pivot from one focus node type to another (e.g., Identity to Entitlement), I want the Object Inspector to be cleared automatically, so that I don't see stale data from the previous node type.
 
@@ -607,6 +616,22 @@ Resource Folder lane items shall display an "Approval: {value}" badge when the f
 
 **BR-058: Child Resources Lane Building**
 When an Entitlement is the focus node, the `buildLanesForEntitlement()` function shall check for child resources in `entitlementNode.rawData.CHILDROLES` and build an EFFECTIVE_ENTITLEMENTS lane (titled "Child Resources") if child roles exist.
+
+**BR-058a: Child Resource OData Enrichment**
+When CHILDROLES are extracted from the parent resource OData query, each child resource reference shall be enriched with full resource details by making additional OData queries to `/OData/DataObjects/Resource?$filter=Uid eq {childUId}`. This enrichment shall extract:
+- `RESOURCETYPE` (resource type display name)
+- `SYSTEMNAME` or `SYSTEMDISPLAYNAME` (system display name)
+- `DESCRIPTION` (resource description)
+
+A maximum of 50 child resources shall be enriched to avoid excessive API calls.
+
+**BR-058b: Child Resource Badge Display**
+Child resource lane items shall display badges in this order:
+1. "CHILD" badge (always present, indicating this is a child resource)
+2. System name badge (if available from OData enrichment)
+3. Resource type badge (if available from OData enrichment)
+
+These badges shall be populated by the `buildChildResourcesLaneForEntitlement()` function from the enriched CHILDROLES data.
 
 **BR-059: Enrichment Loop Prevention**
 Enrichment useEffects (for policies and resource folders) must use refs (`policiesEnrichedRef`, `foldersEnrichedRef`) to track enrichment status per focus node. These refs must be reset when `focusNode.id` changes. The ref must be set to `true` before the async enrichment call to prevent duplicate calls.
@@ -1245,3 +1270,4 @@ API logs show:
 | 1.18 | 2025-01 | **Toolbar consolidation & UI improvements** (US-131 through US-137, BR-047 through BR-054): Merged two-row header (topbar + filter bar) into single unified toolbar (FilterBar). Removed "All Entitlements" dropdown filter (BR-048). Removed multi-path capability from ComplianceHeatmap (BR-036 deprecated). Repositioned canvas from `top: 50%` to `top: 40%` with `CANVAS_CENTER_Y` constant and reduced canvas height from 1800px to 1600px (BR-051, BR-052). Single-column lane cards now show 4 visible items with vertical scroll, hiding "Show all" button (BR-049, BR-050). Tightened toolbar spacing: layout actions at 0.75rem gap, filter buttons at 2px gap. Focus node z-index drops from 10 to 1 during lane drag so dragged cards render above it (BR-053). Fixed entitlement focus node infinite loading spinner by clearing `lanesLoading` in `finally` block (BR-054). |
 | 1.19 | 2025-01 | **Schema audit & cleanup**: Added `LaneGridConstraints` to `schemas/index.js` re-exports. Updated `getLanesForNodeType` fallback switch-case to match `LaneConfigSchema` definitions (added missing Violations, Assignment Policies, Logical Applications for Identity/System/Account views). Removed `.env.production` and `.env.development` from git tracking (contained Azure AD credentials); added `.gitignore` entries and `.env.*.template` files with placeholder values; purged sensitive files from entire git history. |
 | 1.20 | 2026-02 | **Entitlement Focus Node Enhancements** (US-140 through US-145, BR-055 through BR-062): Added Resource Folder and Child Resources (CHILDROLES) lanes when Entitlement is focus node. Resource Folder lane shows folder with Approval badge from OData enrichment. Child Resources lane uses EFFECTIVE_ENTITLEMENTS type to display child entitlements. Fixed infinite loop in enrichment useEffects by adding refs (`policiesEnrichedRef`, `foldersEnrichedRef`) to track enrichment status per focus node. Added `RESOURCE_FOLDERS` to default `visibleLanes` filter. Added useEffect to clear Object Inspector state (`selectedItem`, `explanation`, `selectedReasonId`) when `focusNode.type` changes to prevent stale data display during pivot. Fixed "Never expires" pill: now displays when `validTo` is null/undefined OR year 9999. Shows "From MM/YY · Never expires" when there's a start date but no end date. Moved enrichment debug logs behind `shouldLog('POLICIES')` flag. |
+| 1.21 | 2026-02 | **Child Resource Enrichment** (US-146, BR-058a, BR-058b): Fixed regression where child resources in the Child Resources lane only showed the resource name. Added OData enrichment for CHILDROLES: each child resource is now queried via `/OData/DataObjects/Resource` to fetch full details including RESOURCETYPE, SYSTEMNAME, and DESCRIPTION. Child resource lane items now display three badges: "CHILD" (always), system name (if available), and resource type (if available). Updated `buildChildResourcesLaneForEntitlement()` and `childResources` extractor in `accessLensDataService.js` to populate badges and metadata from enriched data. Added enrichment limit of 50 child resources to prevent excessive API calls. |

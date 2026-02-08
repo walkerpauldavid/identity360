@@ -153,20 +153,44 @@ const extractorRegistry = {
     const childRoles = focusNode?.rawData?.CHILDROLES || [];
     if (!Array.isArray(childRoles) || childRoles.length === 0) return [];
 
-    return childRoles.map(child => ({
-      node: {
-        id: child.UId || child.Id || child.id,
-        type: NodeTypes.ENTITLEMENT,
-        displayName: child.DisplayName || child.Name || child.displayName || 'Unknown',
-        status: 'active',
-        badges: [],
-        metadata: {
-          parentResourceId: focusNode?.id,
-          isChildResource: true
-        },
-        rawData: child
-      }
-    }));
+    return childRoles.map(child => {
+      // Extract system name from OData CHILDROLES reference
+      const systemName = child.SYSTEMNAME || child.SystemName || child.System?.Name ||
+                         child.SYSTEMDISPLAYNAME || child.SystemDisplayName ||
+                         child.System?.DisplayName || child.SYSTEM?.DisplayName || null;
+
+      // Extract resource type from OData CHILDROLES reference
+      const resourceType = child.RESOURCETYPE || child.ResourceType ||
+                           child.ResourceTypeDisplayName || child.RESOURCETYPEDISPLAYNAME ||
+                           child.ResourceType?.Name || child.ResourceType?.DisplayName ||
+                           child.Type || null;
+
+      // Extract description if available
+      const description = child.DESCRIPTION || child.Description || child.description || null;
+
+      // Build badges array - include CHILD indicator, system name, and resource type
+      const badges = ['CHILD'];
+      if (systemName) badges.push(systemName);
+      if (resourceType) badges.push(resourceType);
+
+      return {
+        node: {
+          id: child.UId || child.Id || child.id,
+          type: NodeTypes.ENTITLEMENT,
+          displayName: child.DisplayName || child.Name || child.displayName || 'Unknown',
+          status: 'active',
+          badges: badges,
+          metadata: {
+            parentResourceId: focusNode?.id,
+            isChildResource: true,
+            systemName: systemName,
+            resourceType: resourceType,
+            description: description
+          },
+          rawData: child
+        }
+      };
+    });
   },
 
   // Assignment Policy related extractions (from focusNode data)
@@ -3400,23 +3424,47 @@ function buildChildResourcesLaneForEntitlement(entitlementNode) {
     };
   }
 
-  const items = childRoles.map(child => ({
-    node: {
-      id: child.UId || child.Id || child.id,
-      type: NodeTypes.ENTITLEMENT,
-      displayName: child.DisplayName || child.Name || child.displayName || 'Unknown',
-      status: 'active',
-      badges: [],
-      metadata: {
-        parentResourceId: entitlementNode?.id,
-        isChildResource: true
+  const items = childRoles.map(child => {
+    // Extract system name from OData CHILDROLES reference
+    const systemName = child.SYSTEMNAME || child.SystemName || child.System?.Name ||
+                       child.SYSTEMDISPLAYNAME || child.SystemDisplayName ||
+                       child.System?.DisplayName || child.SYSTEM?.DisplayName || null;
+
+    // Extract resource type from OData CHILDROLES reference
+    const resourceType = child.RESOURCETYPE || child.ResourceType ||
+                         child.ResourceTypeDisplayName || child.RESOURCETYPEDISPLAYNAME ||
+                         child.ResourceType?.Name || child.ResourceType?.DisplayName ||
+                         child.Type || null;
+
+    // Extract description if available
+    const description = child.DESCRIPTION || child.Description || child.description || null;
+
+    // Build badges array - include CHILD indicator, system name, and resource type
+    const badges = ['CHILD'];
+    if (systemName) badges.push(systemName);
+    if (resourceType) badges.push(resourceType);
+
+    return {
+      node: {
+        id: child.UId || child.Id || child.id,
+        type: NodeTypes.ENTITLEMENT,
+        displayName: child.DisplayName || child.Name || child.displayName || 'Unknown',
+        status: 'active',
+        badges: badges,
+        metadata: {
+          parentResourceId: entitlementNode?.id,
+          isChildResource: true,
+          systemName: systemName,
+          resourceType: resourceType,
+          description: description
+        },
+        rawData: child
       },
-      rawData: child
-    },
-    reasons: [],
-    groupKey: 'child-resources',
-    groupLabel: 'Child Resource'
-  }));
+      reasons: [],
+      groupKey: 'child-resources',
+      groupLabel: 'Child Resource'
+    };
+  });
 
   return {
     laneType: LaneTypes.EFFECTIVE_ENTITLEMENTS,

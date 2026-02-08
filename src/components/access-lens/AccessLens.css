@@ -2066,6 +2066,17 @@
   color: #9ca3af;
 }
 
+/* Ensure validity dates in disabled/violation rows look the same as normal rows */
+.lane-item-row.is-disabled .lane-item-validity,
+.lane-item-row.has-violations .lane-item-validity {
+  opacity: 1;
+  background: rgba(100, 100, 120, 0.15);
+  color: #a0a0a8;
+  border: 1px solid rgba(100, 100, 120, 0.25);
+  font-size: 0.65rem;
+  font-weight: 500;
+}
+
 /* Multi-path indicator - shows when entitlement has multiple assignment sources */
 .lane-item-multi-path {
   display: inline-flex;

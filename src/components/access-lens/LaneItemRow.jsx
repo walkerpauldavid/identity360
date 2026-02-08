@@ -337,8 +337,8 @@ const LaneItemRow = ({
         {/* Reasons and extra info (for effective entitlements without violations) */}
         {showReasons && (
           <div className="lane-item-reasons-row">
-            {/* Show validity period when NO violations (compliance is now always in header) */}
-            {isEntitlementNode && !hasViolations && validityDisplay && (
+            {/* Show validity period for all entitlements (including those with violations) */}
+            {isEntitlementNode && validityDisplay && (
               <span
                 className={`lane-item-validity ${validityDisplay.isExpiring ? 'time-limited' : 'permanent'} ${validityDisplay.isExpiringSoon ? 'expiring-soon' : ''} ${validityDisplay.isNeverExpires ? 'never-expires' : ''}`}
                 title={`Assignment validity: ${validityDisplay.text}`}
