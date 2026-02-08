@@ -486,7 +486,18 @@ const LaneCard = ({
                 />
               ))}
 
-              {/* Restore button at bottom when maximized - inside scrollable area */}
+              {/* Show All button - for multi-column lanes when there are more items than visible */}
+              {!isMaximized && isMultiColumn && (displayItems.length >= maxVisibleItems || canLoadMore) && (
+                <button
+                  className="lane-load-more lane-show-all-btn"
+                  onClick={handleMaximize}
+                  style={{ gridColumn: '1 / -1' }}
+                >
+                  Show all {totalCount} items
+                </button>
+              )}
+
+              {/* Restore button at bottom when maximized */}
               {isMaximized && (
                 <button
                   className="lane-restore-btn"
@@ -498,19 +509,6 @@ const LaneCard = ({
               )}
             </>
           )}
-        </div>
-      )}
-
-      {/* Show All button - OUTSIDE scrollable content so it's always visible */}
-      {/* Show when: expanded, not maximized, multi-column, and items exceed or equal visible limit */}
-      {isExpanded && !isMaximized && isMultiColumn && (displayItems.length >= maxVisibleItems || canLoadMore) && (
-        <div className="lane-show-all-container">
-          <button
-            className="lane-load-more"
-            onClick={handleMaximize}
-          >
-            Show all {totalCount} items
-          </button>
         </div>
       )}
     </div>
