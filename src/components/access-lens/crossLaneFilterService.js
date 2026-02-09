@@ -447,6 +447,182 @@ const applyCascadedWithNameFallback = (targetItems, selectedNode, filterMapping,
 };
 
 /**
+ * Apply a 3-level cascaded filter with name fallback for the first level
+ * This handles: Context -> Assignment Policies -> Entitlements -> Accounts/Systems/LogicalApps
+ *
+ * @param {Array} targetItems - Items in the final target lane to filter
+ * @param {Object} selectedNode - The selected node (e.g., Context)
+ * @param {Object} filterMapping - The filter mapping configuration
+ * @param {Array} allLanes - All lanes (to find intermediate lanes)
+ * @returns {Array} Filtered target items
+ */
+const applyTripleCascadedWithNameFallback = (targetItems, selectedNode, filterMapping, allLanes) => {
+  const {
+    // Level 1: Source -> Intermediate1 (e.g., Context -> Assignment Policies)
+    intermediate1Lane,
+    sourceField,
+    fallbackSourceField,
+    intermediate1TargetField,
+    fallbackIntermediate1TargetField,
+    intermediate1ExtractField,
+    // Level 2: Intermediate1 -> Intermediate2 (e.g., Assignment Policies -> Entitlements)
+    intermediate2Lane,
+    intermediate2TargetField,
+    intermediate2ExtractField,
+    intermediate2ExtractFields,
+    // Level 3: Intermediate2 -> Target (e.g., Entitlements -> Accounts/Systems)
+    targetField,
+    targetFields
+  } = filterMapping;
+
+  // Normalize to arrays for unified handling
+  const level2ExtractFields = intermediate2ExtractFields || (intermediate2ExtractField ? [intermediate2ExtractField] : []);
+  const matchTargetFields = targetFields || (targetField ? [targetField] : []);
+
+  // Get source values (ID and fallback name)
+  const sourceValue = getNestedValue(selectedNode, sourceField) ??
+                      getNestedValue(selectedNode, `metadata.${sourceField}`);
+  const fallbackSourceValue = fallbackSourceField ?
+    (getNestedValue(selectedNode, fallbackSourceField) ??
+     getNestedValue(selectedNode, `metadata.${fallbackSourceField}`)) : null;
+
+  if (!sourceValue && !fallbackSourceValue) {
+    console.log('[TripleCascaded] No source values found');
+    return targetItems;
+  }
+
+  console.log(`[TripleCascaded] Starting 3-level cascade from source: ${sourceValue || fallbackSourceValue}`);
+
+  // Find intermediate lanes
+  const intermediate1L = allLanes.find(l => l.laneType === intermediate1Lane);
+  const intermediate2L = allLanes.find(l => l.laneType === intermediate2Lane);
+
+  if (!intermediate1L?.items || !intermediate2L?.items) {
+    console.log(`[TripleCascaded] Missing intermediate lanes: ${intermediate1Lane}=${!!intermediate1L?.items}, ${intermediate2Lane}=${!!intermediate2L?.items}`);
+    return targetItems;
+  }
+
+  // LEVEL 1: Filter intermediate1 items (e.g., filter Assignment Policies by Context)
+  // Uses name fallback because GraphQL and OData return different UUIDs for contexts
+  const filteredIntermediate1Items = intermediate1L.items.filter(item => {
+    // First try: ID-based matching
+    const itemTargetValue = getItemValue(item, intermediate1TargetField);
+    if (itemTargetValue && Array.isArray(itemTargetValue) && sourceValue) {
+      const sourceStr = String(sourceValue);
+      const targetSet = new Set(itemTargetValue.map(tv => String(tv)));
+      if (targetSet.has(sourceStr)) {
+        return true;
+      }
+    }
+
+    // Fallback: Name-based matching
+    if (fallbackSourceValue && fallbackIntermediate1TargetField) {
+      const fallbackTargetValue = getItemValue(item, fallbackIntermediate1TargetField);
+      if (fallbackTargetValue && Array.isArray(fallbackTargetValue)) {
+        const normalizedSource = normalizeName(fallbackSourceValue);
+        const normalizedTargets = fallbackTargetValue.map(tv => normalizeName(tv));
+        if (normalizedTargets.includes(normalizedSource)) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  });
+
+  console.log(`[TripleCascaded] Level 1: ${intermediate1L.items.length} -> ${filteredIntermediate1Items.length} ${intermediate1Lane}`);
+
+  if (filteredIntermediate1Items.length === 0) {
+    return [];
+  }
+
+  // LEVEL 2: Extract values from filtered intermediate1 items (e.g., get resourceIds from Policies)
+  const intermediate1ExtractedSet = new Set();
+  for (const item of filteredIntermediate1Items) {
+    const value = getItemValue(item, intermediate1ExtractField);
+    if (value != null) {
+      if (Array.isArray(value)) {
+        for (const v of value) {
+          if (v != null) intermediate1ExtractedSet.add(String(v));
+        }
+      } else {
+        intermediate1ExtractedSet.add(String(value));
+      }
+    }
+  }
+
+  console.log(`[TripleCascaded] Level 1 extracted ${intermediate1ExtractedSet.size} values for Level 2 matching`);
+
+  if (intermediate1ExtractedSet.size === 0) {
+    return [];
+  }
+
+  // Filter intermediate2 items (e.g., filter Entitlements by resourceIds)
+  const filteredIntermediate2Items = intermediate2L.items.filter(item => {
+    const targetValue = getItemValue(item, intermediate2TargetField);
+    if (targetValue == null) return false;
+
+    if (Array.isArray(targetValue)) {
+      return targetValue.some(tv => tv != null && intermediate1ExtractedSet.has(String(tv)));
+    } else {
+      return intermediate1ExtractedSet.has(String(targetValue));
+    }
+  });
+
+  console.log(`[TripleCascaded] Level 2: ${intermediate2L.items.length} -> ${filteredIntermediate2Items.length} ${intermediate2Lane}`);
+
+  if (filteredIntermediate2Items.length === 0) {
+    return [];
+  }
+
+  // LEVEL 3: Extract values from filtered intermediate2 items (e.g., get accountIds/systemId from Entitlements)
+  const intermediate2ExtractedSet = new Set();
+  for (const item of filteredIntermediate2Items) {
+    for (const extractField of level2ExtractFields) {
+      const value = getItemValue(item, extractField);
+      if (value != null) {
+        if (Array.isArray(value)) {
+          for (const v of value) {
+            if (v != null) intermediate2ExtractedSet.add(String(v));
+          }
+        } else {
+          intermediate2ExtractedSet.add(String(value));
+        }
+      }
+    }
+  }
+
+  console.log(`[TripleCascaded] Level 2 extracted ${intermediate2ExtractedSet.size} values for Level 3 matching`);
+
+  if (intermediate2ExtractedSet.size === 0) {
+    return [];
+  }
+
+  // Filter final target items (e.g., filter Accounts/Systems by extracted IDs)
+  const filteredTargetItems = targetItems.filter(item => {
+    for (const tField of matchTargetFields) {
+      const targetValue = getItemValue(item, tField);
+      if (targetValue == null) continue;
+
+      if (Array.isArray(targetValue)) {
+        if (targetValue.some(tv => tv != null && intermediate2ExtractedSet.has(String(tv)))) {
+          return true;
+        }
+      } else {
+        if (intermediate2ExtractedSet.has(String(targetValue))) {
+          return true;
+        }
+      }
+    }
+    return false;
+  });
+
+  console.log(`[TripleCascaded] Level 3: ${targetItems.length} -> ${filteredTargetItems.length} target items`);
+
+  return filteredTargetItems;
+};
+
+/**
  * Apply a filter mapping to a lane's items
  * @param {Array} items - Lane items to filter
  * @param {Object} selectedNode - The selected node that drives filtering
@@ -467,6 +643,11 @@ const applyFilterMapping = (items, selectedNode, filterMapping, allLanes = []) =
   // Cascaded filter with name fallback for first level (e.g., Context -> Policy -> Entitlements)
   if (type === CrossLaneFilterType.CASCADED_WITH_NAME_FALLBACK) {
     return applyCascadedWithNameFallback(items, selectedNode, filterMapping, allLanes);
+  }
+
+  // 3-level cascaded filter with name fallback (e.g., Context -> Policies -> Entitlements -> Accounts/Systems)
+  if (type === CrossLaneFilterType.TRIPLE_CASCADED_WITH_NAME_FALLBACK) {
+    return applyTripleCascadedWithNameFallback(items, selectedNode, filterMapping, allLanes);
   }
 
   // Pre-compute source values once (outside the filter loop)

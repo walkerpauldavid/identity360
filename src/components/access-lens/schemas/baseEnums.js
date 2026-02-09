@@ -105,7 +105,8 @@ export const CrossLaneFilterType = Object.freeze({
   MULTI_FIELD_MATCH: 'multiFieldMatch',
   CASCADED_THROUGH: 'cascadedThrough',
   ARRAY_CONTAINS_WITH_NAME_FALLBACK: 'arrayContainsWithNameFallback',  // Tries ID match first, falls back to name match
-  CASCADED_WITH_NAME_FALLBACK: 'cascadedWithNameFallback'  // Cascaded filter where first level uses name fallback
+  CASCADED_WITH_NAME_FALLBACK: 'cascadedWithNameFallback',  // Cascaded filter where first level uses name fallback
+  TRIPLE_CASCADED_WITH_NAME_FALLBACK: 'tripleCascadedWithNameFallback'  // 3-level cascade: Source -> Intermediate1 -> Intermediate2 -> Target (first level uses name fallback)
 });
 
 // Lane display rules

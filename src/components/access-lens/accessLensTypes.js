@@ -1108,7 +1108,7 @@ export const LaneConfigSchema = {
         apiSource: { type: 'GraphQL', query: 'getIdentityContexts', idParam: 'identityUId' },
         position: { x: 380, y: 80 },
         crossLaneFilters: {
-          filtersLanes: [LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.IDENTITIES, LaneTypes.EFFECTIVE_ENTITLEMENTS],
+          filtersLanes: [LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.IDENTITIES, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS, LaneTypes.LOGICAL_APPLICATIONS],
           filteredByLanes: [LaneTypes.ASSIGNMENT_POLICIES],  // Contexts can be filtered by Assignment Policies (via AP_CONTEXTS)
           filterMappings: {
             // When Context is selected, filter Assignment Policies to show only those that reference this context
@@ -1138,9 +1138,61 @@ export const LaneConfigSchema = {
               fallbackIntermediateTargetField: 'metadata.contextNames',  // Fallback: policy's normalized names
               intermediateExtractField: 'metadata.resourceIds',  // Extract resourceIds from matched policies
               targetField: 'id'                               // Match against entitlement's id
+            },
+            // When Context is selected, filter Accounts via 3-level cascade
+            // Context -> Policies (by contextIds/contextNames) -> Entitlements (by resourceIds) -> Accounts (by accountIds)
+            [LaneTypes.ACCOUNTS]: {
+              type: CrossLaneFilterType.TRIPLE_CASCADED_WITH_NAME_FALLBACK,
+              // Level 1: Context -> Assignment Policies
+              intermediate1Lane: LaneTypes.ASSIGNMENT_POLICIES,
+              sourceField: 'id',                              // Context's id
+              fallbackSourceField: 'displayName',             // Fallback: Context's displayName
+              intermediate1TargetField: 'metadata.contextIds', // Match against policy's contextIds
+              fallbackIntermediate1TargetField: 'metadata.contextNames',  // Fallback: policy's normalized names
+              intermediate1ExtractField: 'metadata.resourceIds',  // Extract resourceIds from matched policies
+              // Level 2: Assignment Policies -> Entitlements
+              intermediate2Lane: LaneTypes.EFFECTIVE_ENTITLEMENTS,
+              intermediate2TargetField: 'id',                 // Match against entitlement's id
+              intermediate2ExtractField: 'metadata.accountIds',  // Extract accountIds from matched entitlements
+              // Level 3: Entitlements -> Accounts
+              targetField: 'id'                               // Match against account's id
+            },
+            // When Context is selected, filter Systems via 3-level cascade
+            // Context -> Policies (by contextIds/contextNames) -> Entitlements (by resourceIds) -> Systems (by systemId)
+            [LaneTypes.SYSTEMS]: {
+              type: CrossLaneFilterType.TRIPLE_CASCADED_WITH_NAME_FALLBACK,
+              // Level 1: Context -> Assignment Policies
+              intermediate1Lane: LaneTypes.ASSIGNMENT_POLICIES,
+              sourceField: 'id',
+              fallbackSourceField: 'displayName',
+              intermediate1TargetField: 'metadata.contextIds',
+              fallbackIntermediate1TargetField: 'metadata.contextNames',
+              intermediate1ExtractField: 'metadata.resourceIds',
+              // Level 2: Assignment Policies -> Entitlements
+              intermediate2Lane: LaneTypes.EFFECTIVE_ENTITLEMENTS,
+              intermediate2TargetField: 'id',
+              intermediate2ExtractFields: ['metadata.systemId', 'metadata.system'],  // Extract systemId or system name
+              // Level 3: Entitlements -> Systems
+              targetFields: ['id', 'displayName']             // Match against system's id or displayName
+            },
+            // When Context is selected, filter Logical Applications via 3-level cascade
+            // Context -> Policies (by contextIds/contextNames) -> Entitlements (by resourceIds) -> Logical Apps (by systemId)
+            [LaneTypes.LOGICAL_APPLICATIONS]: {
+              type: CrossLaneFilterType.TRIPLE_CASCADED_WITH_NAME_FALLBACK,
+              // Level 1: Context -> Assignment Policies
+              intermediate1Lane: LaneTypes.ASSIGNMENT_POLICIES,
+              sourceField: 'id',
+              fallbackSourceField: 'displayName',
+              intermediate1TargetField: 'metadata.contextIds',
+              fallbackIntermediate1TargetField: 'metadata.contextNames',
+              intermediate1ExtractField: 'metadata.resourceIds',
+              // Level 2: Assignment Policies -> Entitlements
+              intermediate2Lane: LaneTypes.EFFECTIVE_ENTITLEMENTS,
+              intermediate2TargetField: 'id',
+              intermediate2ExtractFields: ['metadata.systemId', 'metadata.system'],  // Extract systemId or system name
+              // Level 3: Entitlements -> Logical Applications
+              targetFields: ['id', 'displayName']             // Match against logical app's id or displayName
             }
-            // Note: Accounts and Systems require a 3-level cascade (Context -> Policies -> Entitlements -> Accounts/Systems)
-            // which is not yet supported. Users can click on a filtered Entitlement to see related Accounts/Systems.
           }
         }
       },
