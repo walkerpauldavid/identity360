@@ -670,6 +670,44 @@ const AccessLens = ({
   const lanesCollapsedOnLoad = preferences.identity360LanesCollapsedOnLoad ?? true;
   const collapseLanesOnFocusChange = preferences.identity360CollapseLanesOnFocusChange ?? true;
   const currentTheme = preferences.theme || 'light';
+  const colorPalette = preferences.colorPalette || {};
+
+  // Build CSS variables from color palette for light theme
+  const colorPaletteStyle = useMemo(() => {
+    if (currentTheme !== 'light' || !colorPalette) return {};
+    return {
+      '--cp-focus-card-bg': colorPalette.focusCardBackground,
+      '--cp-focus-card-text': colorPalette.focusCardText,
+      '--cp-card-header-bg': colorPalette.cardHeaderBackground,
+      '--cp-card-header-text': colorPalette.cardHeaderText,
+      '--cp-card-border': colorPalette.cardBorder,
+      '--cp-card-content-bg': colorPalette.cardContentBackground,
+      '--cp-lane-item-bg': colorPalette.laneItemBackground,
+      '--cp-lane-item-bg-hover': colorPalette.laneItemBackgroundHover,
+      '--cp-lane-item-title': colorPalette.laneItemTitle,
+      '--cp-lane-item-text': colorPalette.laneItemText,
+      '--cp-lane-item-selected-bg': colorPalette.laneItemSelectedBackground,
+      '--cp-lane-item-selected-border': colorPalette.laneItemSelectedBorder,
+      '--cp-pill-bg': colorPalette.pillBackground,
+      '--cp-pill-text': colorPalette.pillText,
+      '--cp-filter-source-bg': colorPalette.filterSourceBackground,
+      '--cp-filter-source-glow': colorPalette.filterSourceGlow,
+      '--cp-filtered-bg': colorPalette.filteredBackground,
+      '--cp-violations-bg': colorPalette.violationsBackground,
+      '--cp-violations-text': colorPalette.violationsText,
+      '--cp-count-badge': colorPalette.countBadgeColor,
+      // Status colors
+      '--cp-status-approved': colorPalette.statusApproved,
+      '--cp-status-not-approved': colorPalette.statusNotApproved,
+      '--cp-status-pending': colorPalette.statusPending,
+      '--cp-status-inherited': colorPalette.statusInherited,
+      // Neutral grays
+      '--cp-light-gray': colorPalette.lightGray,
+      '--cp-medium-gray': colorPalette.mediumGray,
+      '--cp-border-gray': colorPalette.borderGray,
+      '--cp-dark-neutral': colorPalette.darkNeutral
+    };
+  }, [currentTheme, colorPalette]);
 
   // Theme toggle handler
   const handleThemeChange = useCallback((newTheme) => {
@@ -2299,7 +2337,7 @@ const AccessLens = ({
   // Render loading state
   if (isLoading && !focusNode) {
     return (
-      <div className={`access-lens theme-${currentTheme} ${isFullscreen ? 'fullscreen' : ''}`}>
+      <div className={`access-lens theme-${currentTheme} ${isFullscreen ? 'fullscreen' : ''}`} style={colorPaletteStyle}>
         <div className="access-lens-loading">
           <div className="loading-spinner"></div>
           <p>Loading access graph...</p>
@@ -2311,7 +2349,7 @@ const AccessLens = ({
   // Render error state
   if (error) {
     return (
-      <div className={`access-lens theme-${currentTheme} ${isFullscreen ? 'fullscreen' : ''}`}>
+      <div className={`access-lens theme-${currentTheme} ${isFullscreen ? 'fullscreen' : ''}`} style={colorPaletteStyle}>
         <div className="access-lens-error">
           <span className="error-icon">⚠️</span>
           <p>Error: {error}</p>
@@ -2326,7 +2364,7 @@ const AccessLens = ({
   }
 
   return (
-    <div className={`access-lens theme-${currentTheme} ${isFullscreen ? 'fullscreen' : ''}`}>
+    <div className={`access-lens theme-${currentTheme} ${isFullscreen ? 'fullscreen' : ''}`} style={colorPaletteStyle}>
       {/* Unified Toolbar */}
       <FilterBar
         filters={filters}

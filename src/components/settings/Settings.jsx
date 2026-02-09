@@ -40,6 +40,50 @@ const Settings = () => {
   const [identity360ShowDisabledAssignments, setIdentity360ShowDisabledAssignments] = useState(preferences.identity360ShowDisabledAssignments ?? true);
   const [identity360SaveSuccess, setIdentity360SaveSuccess] = useState(false);
 
+  // Color palette state - Omada Brand Aligned
+  const defaultColorPalette = {
+    // Focus Node Card - Primary Blue gradient
+    focusCardBackground: '#005EB8',
+    focusCardText: '#ffffff',
+    // Access Card Headers - Primary Blue
+    cardHeaderBackground: '#005EB8',
+    cardHeaderText: '#ffffff',
+    cardBorder: '#D1D5DB',
+    cardContentBackground: '#ffffff',
+    // Lane Items - White background with dark text
+    laneItemBackground: '#ffffff',
+    laneItemBackgroundHover: '#EBF5FF',
+    laneItemTitle: '#2C3E50',
+    laneItemText: '#2C3E50',
+    // Selection - Light blue highlight
+    laneItemSelectedBackground: '#EBF5FF',
+    laneItemSelectedBorder: '#005EB8',
+    // Pills/Badges - Accent Teal
+    pillBackground: '#00B4D8',
+    pillText: '#ffffff',
+    // Filter States - Primary Blue for source
+    filterSourceBackground: '#005EB8',
+    filterSourceGlow: '#00B4D8',
+    filteredBackground: '#F59E0B',
+    // Violations - Error Red
+    violationsBackground: '#EF4444',
+    violationsText: '#ffffff',
+    // Count Badge
+    countBadgeColor: '#ffffff',
+    // Status Colors (semantic)
+    statusApproved: '#10B981',
+    statusNotApproved: '#EF4444',
+    statusPending: '#F59E0B',
+    statusInherited: '#00B4D8',
+    // Neutral Grays
+    lightGray: '#F3F4F6',
+    mediumGray: '#E5E7EB',
+    borderGray: '#D1D5DB',
+    darkNeutral: '#2C3E50'
+  };
+  const [colorPalette, setColorPalette] = useState(preferences.colorPalette || defaultColorPalette);
+  const [colorPaletteSaveSuccess, setColorPaletteSaveSuccess] = useState(false);
+
   useEffect(() => {
     loadCurrentToken();
   }, []);
@@ -183,6 +227,20 @@ const Settings = () => {
     setTimeout(() => setIdentity360SaveSuccess(false), 2000);
   };
 
+  const handleSaveColorPalette = () => {
+    setPreference('colorPalette', colorPalette);
+    setColorPaletteSaveSuccess(true);
+    setTimeout(() => setColorPaletteSaveSuccess(false), 2000);
+  };
+
+  const handleResetColorPalette = () => {
+    setColorPalette(defaultColorPalette);
+  };
+
+  const updateColor = (key, value) => {
+    setColorPalette(prev => ({ ...prev, [key]: value }));
+  };
+
   const isOverridden = !!localStorage.getItem('bearer_token_override');
 
   // Available locales
@@ -278,6 +336,12 @@ const Settings = () => {
           onClick={() => setActiveTab('identity360')}
         >
           🔍 Identity360
+        </button>
+        <button
+          className={`tab-button ${activeTab === 'colorPalette' ? 'active' : ''}`}
+          onClick={() => setActiveTab('colorPalette')}
+        >
+          🎨 Color Palette
         </button>
       </div>
 
@@ -778,6 +842,390 @@ const Settings = () => {
                   className={`btn btn-primary ${identity360SaveSuccess ? 'success' : ''}`}
                 >
                   {identity360SaveSuccess ? '✓ Settings Saved!' : 'Save Identity360 Settings'}
+                </button>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* Color Palette Tab */}
+        {activeTab === 'colorPalette' && (
+          <section className="settings-section">
+            <div className="section-header">
+              <h2>Identity360 Color Palette</h2>
+            </div>
+
+            <div className="preferences-form">
+              <p className="form-description" style={{ marginBottom: '1.5rem' }}>
+                Customize the colors used in the Identity360 dashboard. Changes apply to the light theme.
+              </p>
+
+              {/* Focus Node Card */}
+              <div className="color-group">
+                <h3>Focus Node Card</h3>
+                <div className="color-grid">
+                  <div className="color-item">
+                    <label>Background</label>
+                    <div className="color-input-wrapper">
+                      <input
+                        type="color"
+                        value={colorPalette.focusCardBackground}
+                        onChange={(e) => updateColor('focusCardBackground', e.target.value)}
+                      />
+                      <input
+                        type="text"
+                        value={colorPalette.focusCardBackground}
+                        onChange={(e) => updateColor('focusCardBackground', e.target.value)}
+                        className="color-text-input"
+                      />
+                    </div>
+                  </div>
+                  <div className="color-item">
+                    <label>Text</label>
+                    <div className="color-input-wrapper">
+                      <input
+                        type="color"
+                        value={colorPalette.focusCardText}
+                        onChange={(e) => updateColor('focusCardText', e.target.value)}
+                      />
+                      <input
+                        type="text"
+                        value={colorPalette.focusCardText}
+                        onChange={(e) => updateColor('focusCardText', e.target.value)}
+                        className="color-text-input"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Access Card Header */}
+              <div className="color-group">
+                <h3>Access Card Header</h3>
+                <div className="color-grid">
+                  <div className="color-item">
+                    <label>Background</label>
+                    <div className="color-input-wrapper">
+                      <input
+                        type="color"
+                        value={colorPalette.cardHeaderBackground}
+                        onChange={(e) => updateColor('cardHeaderBackground', e.target.value)}
+                      />
+                      <input
+                        type="text"
+                        value={colorPalette.cardHeaderBackground}
+                        onChange={(e) => updateColor('cardHeaderBackground', e.target.value)}
+                        className="color-text-input"
+                      />
+                    </div>
+                  </div>
+                  <div className="color-item">
+                    <label>Text</label>
+                    <div className="color-input-wrapper">
+                      <input
+                        type="color"
+                        value={colorPalette.cardHeaderText}
+                        onChange={(e) => updateColor('cardHeaderText', e.target.value)}
+                      />
+                      <input
+                        type="text"
+                        value={colorPalette.cardHeaderText}
+                        onChange={(e) => updateColor('cardHeaderText', e.target.value)}
+                        className="color-text-input"
+                      />
+                    </div>
+                  </div>
+                  <div className="color-item">
+                    <label>Border</label>
+                    <div className="color-input-wrapper">
+                      <input
+                        type="color"
+                        value={colorPalette.cardBorder}
+                        onChange={(e) => updateColor('cardBorder', e.target.value)}
+                      />
+                      <input
+                        type="text"
+                        value={colorPalette.cardBorder}
+                        onChange={(e) => updateColor('cardBorder', e.target.value)}
+                        className="color-text-input"
+                      />
+                    </div>
+                  </div>
+                  <div className="color-item">
+                    <label>Count Badge</label>
+                    <div className="color-input-wrapper">
+                      <input
+                        type="color"
+                        value={colorPalette.countBadgeColor}
+                        onChange={(e) => updateColor('countBadgeColor', e.target.value)}
+                      />
+                      <input
+                        type="text"
+                        value={colorPalette.countBadgeColor}
+                        onChange={(e) => updateColor('countBadgeColor', e.target.value)}
+                        className="color-text-input"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Lane Items */}
+              <div className="color-group">
+                <h3>Lane Items</h3>
+                <div className="color-grid">
+                  <div className="color-item">
+                    <label>Background</label>
+                    <div className="color-input-wrapper">
+                      <input
+                        type="color"
+                        value={colorPalette.laneItemBackground}
+                        onChange={(e) => updateColor('laneItemBackground', e.target.value)}
+                      />
+                      <input
+                        type="text"
+                        value={colorPalette.laneItemBackground}
+                        onChange={(e) => updateColor('laneItemBackground', e.target.value)}
+                        className="color-text-input"
+                      />
+                    </div>
+                  </div>
+                  <div className="color-item">
+                    <label>Hover</label>
+                    <div className="color-input-wrapper">
+                      <input
+                        type="color"
+                        value={colorPalette.laneItemBackgroundHover}
+                        onChange={(e) => updateColor('laneItemBackgroundHover', e.target.value)}
+                      />
+                      <input
+                        type="text"
+                        value={colorPalette.laneItemBackgroundHover}
+                        onChange={(e) => updateColor('laneItemBackgroundHover', e.target.value)}
+                        className="color-text-input"
+                      />
+                    </div>
+                  </div>
+                  <div className="color-item">
+                    <label>Title Text</label>
+                    <div className="color-input-wrapper">
+                      <input
+                        type="color"
+                        value={colorPalette.laneItemTitle}
+                        onChange={(e) => updateColor('laneItemTitle', e.target.value)}
+                      />
+                      <input
+                        type="text"
+                        value={colorPalette.laneItemTitle}
+                        onChange={(e) => updateColor('laneItemTitle', e.target.value)}
+                        className="color-text-input"
+                      />
+                    </div>
+                  </div>
+                  <div className="color-item">
+                    <label>Text</label>
+                    <div className="color-input-wrapper">
+                      <input
+                        type="color"
+                        value={colorPalette.laneItemText}
+                        onChange={(e) => updateColor('laneItemText', e.target.value)}
+                      />
+                      <input
+                        type="text"
+                        value={colorPalette.laneItemText}
+                        onChange={(e) => updateColor('laneItemText', e.target.value)}
+                        className="color-text-input"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Selection */}
+              <div className="color-group">
+                <h3>Selection State</h3>
+                <div className="color-grid">
+                  <div className="color-item">
+                    <label>Selected Background</label>
+                    <div className="color-input-wrapper">
+                      <input
+                        type="color"
+                        value={colorPalette.laneItemSelectedBackground}
+                        onChange={(e) => updateColor('laneItemSelectedBackground', e.target.value)}
+                      />
+                      <input
+                        type="text"
+                        value={colorPalette.laneItemSelectedBackground}
+                        onChange={(e) => updateColor('laneItemSelectedBackground', e.target.value)}
+                        className="color-text-input"
+                      />
+                    </div>
+                  </div>
+                  <div className="color-item">
+                    <label>Selected Border</label>
+                    <div className="color-input-wrapper">
+                      <input
+                        type="color"
+                        value={colorPalette.laneItemSelectedBorder}
+                        onChange={(e) => updateColor('laneItemSelectedBorder', e.target.value)}
+                      />
+                      <input
+                        type="text"
+                        value={colorPalette.laneItemSelectedBorder}
+                        onChange={(e) => updateColor('laneItemSelectedBorder', e.target.value)}
+                        className="color-text-input"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Pills/Badges */}
+              <div className="color-group">
+                <h3>Pills / Badges</h3>
+                <div className="color-grid">
+                  <div className="color-item">
+                    <label>Background</label>
+                    <div className="color-input-wrapper">
+                      <input
+                        type="color"
+                        value={colorPalette.pillBackground}
+                        onChange={(e) => updateColor('pillBackground', e.target.value)}
+                      />
+                      <input
+                        type="text"
+                        value={colorPalette.pillBackground}
+                        onChange={(e) => updateColor('pillBackground', e.target.value)}
+                        className="color-text-input"
+                      />
+                    </div>
+                  </div>
+                  <div className="color-item">
+                    <label>Text</label>
+                    <div className="color-input-wrapper">
+                      <input
+                        type="color"
+                        value={colorPalette.pillText}
+                        onChange={(e) => updateColor('pillText', e.target.value)}
+                      />
+                      <input
+                        type="text"
+                        value={colorPalette.pillText}
+                        onChange={(e) => updateColor('pillText', e.target.value)}
+                        className="color-text-input"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Filter States */}
+              <div className="color-group">
+                <h3>Filter States</h3>
+                <div className="color-grid">
+                  <div className="color-item">
+                    <label>Filter Source</label>
+                    <div className="color-input-wrapper">
+                      <input
+                        type="color"
+                        value={colorPalette.filterSourceBackground}
+                        onChange={(e) => updateColor('filterSourceBackground', e.target.value)}
+                      />
+                      <input
+                        type="text"
+                        value={colorPalette.filterSourceBackground}
+                        onChange={(e) => updateColor('filterSourceBackground', e.target.value)}
+                        className="color-text-input"
+                      />
+                    </div>
+                  </div>
+                  <div className="color-item">
+                    <label>Filter Glow</label>
+                    <div className="color-input-wrapper">
+                      <input
+                        type="color"
+                        value={colorPalette.filterSourceGlow}
+                        onChange={(e) => updateColor('filterSourceGlow', e.target.value)}
+                      />
+                      <input
+                        type="text"
+                        value={colorPalette.filterSourceGlow}
+                        onChange={(e) => updateColor('filterSourceGlow', e.target.value)}
+                        className="color-text-input"
+                      />
+                    </div>
+                  </div>
+                  <div className="color-item">
+                    <label>Filtered State</label>
+                    <div className="color-input-wrapper">
+                      <input
+                        type="color"
+                        value={colorPalette.filteredBackground}
+                        onChange={(e) => updateColor('filteredBackground', e.target.value)}
+                      />
+                      <input
+                        type="text"
+                        value={colorPalette.filteredBackground}
+                        onChange={(e) => updateColor('filteredBackground', e.target.value)}
+                        className="color-text-input"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Violations */}
+              <div className="color-group">
+                <h3>Violations Lane</h3>
+                <div className="color-grid">
+                  <div className="color-item">
+                    <label>Background</label>
+                    <div className="color-input-wrapper">
+                      <input
+                        type="color"
+                        value={colorPalette.violationsBackground}
+                        onChange={(e) => updateColor('violationsBackground', e.target.value)}
+                      />
+                      <input
+                        type="text"
+                        value={colorPalette.violationsBackground}
+                        onChange={(e) => updateColor('violationsBackground', e.target.value)}
+                        className="color-text-input"
+                      />
+                    </div>
+                  </div>
+                  <div className="color-item">
+                    <label>Text</label>
+                    <div className="color-input-wrapper">
+                      <input
+                        type="color"
+                        value={colorPalette.violationsText}
+                        onChange={(e) => updateColor('violationsText', e.target.value)}
+                      />
+                      <input
+                        type="text"
+                        value={colorPalette.violationsText}
+                        onChange={(e) => updateColor('violationsText', e.target.value)}
+                        className="color-text-input"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="form-actions">
+                <button
+                  onClick={handleSaveColorPalette}
+                  className={`btn btn-primary ${colorPaletteSaveSuccess ? 'success' : ''}`}
+                >
+                  {colorPaletteSaveSuccess ? '✓ Colors Saved!' : 'Save Color Palette'}
+                </button>
+                <button
+                  onClick={handleResetColorPalette}
+                  className="btn btn-secondary"
+                >
+                  Reset to Defaults
                 </button>
               </div>
             </div>

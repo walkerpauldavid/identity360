@@ -3089,24 +3089,432 @@
 }
 
 /* ============================================
-   LIGHT THEME OVERRIDES
+   LIGHT THEME OVERRIDES - Omada Brand Aligned
    ============================================ */
 
-/* Canvas - white background instead of gradient */
+/* Canvas - white background */
 .theme-light .access-lens-canvas {
-  background: #ffffff;
+  background: var(--cp-light-gray, #F3F4F6);
 }
 
 /* Scrollbar for light theme */
 .theme-light .canvas-scroll-container::-webkit-scrollbar-track {
-  background: #f0f3f4;
+  background: var(--cp-light-gray, #F3F4F6);
 }
 
 .theme-light .canvas-scroll-container::-webkit-scrollbar-thumb {
-  background: #c4ccde;
-  border: 2px solid #f0f3f4;
+  background: var(--cp-medium-gray, #E5E7EB);
+  border: 2px solid var(--cp-light-gray, #F3F4F6);
 }
 
 .theme-light .canvas-scroll-container::-webkit-scrollbar-thumb:hover {
-  background: #a0a8b8;
+  background: var(--cp-border-gray, #D1D5DB);
+}
+
+/* Lane cards - white background with Primary Blue header */
+.theme-light .lane-card {
+  background: var(--cp-card-content-bg, #ffffff);
+  border: 1px solid var(--cp-border-gray, #D1D5DB);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.theme-light .lane-header {
+  background: var(--cp-card-header-bg, #005EB8);
+}
+
+.theme-light .lane-title {
+  color: var(--cp-card-header-text, #ffffff);
+  font-weight: 700;
+}
+
+.theme-light .lane-count {
+  color: #ffffff;
+}
+
+.theme-light .lane-icon {
+  color: var(--cp-card-header-text, #ffffff);
+}
+
+.theme-light .lane-toggle {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.theme-light .lane-content {
+  background: var(--cp-card-content-bg, #ffffff);
+}
+
+/* Search bar and filter chips - light theme styling */
+.theme-light .lane-search-bar {
+  background: var(--cp-light-gray, #F3F4F6);
+  border-bottom: 1px solid var(--cp-medium-gray, #E5E7EB);
+}
+
+.theme-light .lane-search-input {
+  background: #ffffff;
+  border: 1px solid var(--cp-border-gray, #D1D5DB);
+  color: var(--cp-dark-neutral, #2C3E50);
+}
+
+.theme-light .lane-search-input::placeholder {
+  color: #9CA3AF;
+}
+
+.theme-light .lane-type-filter-bar {
+  background: var(--cp-light-gray, #F3F4F6);
+  border-bottom: 1px solid var(--cp-medium-gray, #E5E7EB);
+}
+
+.theme-light .type-chip {
+  background: #ffffff;
+  border: 1px solid var(--cp-border-gray, #D1D5DB);
+  color: var(--cp-dark-neutral, #2C3E50);
+}
+
+.theme-light .type-chip:hover {
+  background: var(--cp-lane-item-bg-hover, #EBF5FF);
+  border-color: var(--cp-card-header-bg, #005EB8);
+  color: var(--cp-dark-neutral, #2C3E50);
+}
+
+.theme-light .type-chip.selected {
+  background: var(--cp-card-header-bg, #005EB8);
+  border-color: var(--cp-card-header-bg, #005EB8);
+  color: #ffffff;
+}
+
+/* Lane item rows - white background with dark text and prominent border */
+.theme-light .lane-item-row {
+  background: #ffffff;
+  border: 2px solid #93C5FD;
+  color: #374151;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.theme-light .lane-item-row:hover {
+  background: #EBF5FF;
+  border-color: #3B82F6;
+}
+
+/* Selected lane item - prominent highlight */
+.theme-light .lane-item-row.selected {
+  background: #EBF5FF;
+  border: 2px solid #005EB8;
+  box-shadow: 0 0 0 2px rgba(0, 94, 184, 0.2), 0 4px 12px rgba(0, 94, 184, 0.15);
+  z-index: 5;
+}
+
+.theme-light .lane-item-row.selected:hover {
+  background: #EBF5FF;
+  border-color: #005EB8;
+}
+
+.theme-light .lane-item-name {
+  color: #374151;
+  font-weight: 500;
+}
+
+/* Lane item badges/pills - Accent Teal */
+.theme-light .lane-item-badge {
+  background: #DBEAFE;
+  color: #1E40AF;
+  border: 1px solid #93C5FD;
+}
+
+.theme-light .lane-item-badges .lane-item-badge {
+  background: #DBEAFE;
+  color: #1E40AF;
+  border: 1px solid #93C5FD;
+}
+
+/* Multi-path toggle - light theme */
+.theme-light .multi-path-toggle {
+  background: #ffffff;
+  border: 1px solid var(--cp-border-gray, #D1D5DB);
+  color: var(--cp-dark-neutral, #2C3E50);
+}
+
+.theme-light .multi-path-toggle:hover {
+  background: var(--cp-lane-item-bg-hover, #EBF5FF);
+  border-color: var(--cp-card-header-bg, #005EB8);
+  color: var(--cp-card-header-bg, #005EB8);
+}
+
+.theme-light .multi-path-toggle.active {
+  background: linear-gradient(135deg, #005EB8 0%, #00B4D8 100%);
+  border-color: #005EB8;
+  color: #ffffff;
+}
+
+/* Focus card - Solid soft blue */
+.theme-light .focus-card {
+  background: #2563EB;
+  border: none;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+}
+
+.theme-light .focus-card .focus-name {
+  color: var(--cp-focus-card-text, #ffffff);
+}
+
+.theme-light .focus-card .focus-identity-id,
+.theme-light .focus-card .focus-meta-item {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.theme-light .focus-card .meta-label {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.theme-light .focus-card-header .minimize-btn {
+  color: rgba(255, 255, 255, 0.8);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.theme-light .focus-card-header .minimize-btn:hover {
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* Violations Lane - Error Red styling for light theme */
+.theme-light .lane-card[data-lane-type="Violations"] {
+  border: 2px solid var(--cp-violations-bg, #EF4444);
+  background: var(--cp-card-content-bg, #ffffff);
+}
+
+.theme-light .lane-card[data-lane-type="Violations"] .lane-header {
+  background: var(--cp-violations-bg, #EF4444);
+}
+
+.theme-light .lane-card[data-lane-type="Violations"] .lane-title {
+  color: var(--cp-violations-text, #ffffff);
+}
+
+.theme-light .lane-card[data-lane-type="Violations"] .lane-count {
+  color: #ffffff;
+}
+
+.theme-light .lane-card[data-lane-type="Violations"] .lane-icon {
+  color: var(--cp-violations-text, #ffffff);
+}
+
+.theme-light .lane-card[data-lane-type="Violations"] .lane-content {
+  background: var(--cp-card-content-bg, #ffffff);
+}
+
+.theme-light .lane-card[data-lane-type="Violations"] .lane-item-row {
+  background: #FEF2F2;
+  border: 1px solid #FECACA;
+  color: var(--cp-dark-neutral, #2C3E50);
+}
+
+.theme-light .lane-card[data-lane-type="Violations"] .lane-item-row:hover {
+  background: #FEE2E2;
+  border-color: var(--cp-violations-bg, #EF4444);
+}
+
+/* ============================================
+   LIGHT THEME - FILTERING STATES
+   ============================================ */
+
+/* Lane card being FILTERED BY another lane - Warning Orange highlight */
+.theme-light .draggable-lane .lane-card.filtered {
+  border: 3px solid var(--cp-filtered-bg, #F59E0B);
+  box-shadow: 0 0 15px rgba(245, 158, 11, 0.3);
+}
+
+.theme-light .draggable-lane .lane-card.filtered .lane-header {
+  background: var(--cp-filtered-bg, #F59E0B);
+}
+
+.theme-light .draggable-lane .lane-card.filtered .lane-title {
+  color: #ffffff;
+}
+
+.theme-light .draggable-lane .lane-card.filtered .lane-count {
+  color: #ffffff;
+}
+
+.theme-light .draggable-lane .lane-card.filtered .lane-filter-badge {
+  background: #ffffff;
+  color: var(--cp-filtered-bg, #F59E0B);
+  font-weight: 700;
+}
+
+/* Lane card that IS the FILTER SOURCE - Primary Blue highlight */
+.theme-light .draggable-lane .lane-card.filter-source {
+  border: 4px solid var(--cp-filter-source-bg, #005EB8);
+  box-shadow:
+    0 0 20px rgba(0, 94, 184, 0.5),
+    0 0 40px rgba(0, 94, 184, 0.3),
+    0 0 60px rgba(0, 94, 184, 0.15);
+}
+
+.theme-light .draggable-lane .lane-card.filter-source .lane-header {
+  background: var(--cp-filter-source-bg, #005EB8);
+}
+
+.theme-light .draggable-lane .lane-card.filter-source .lane-title {
+  color: #ffffff;
+}
+
+.theme-light .draggable-lane .lane-card.filter-source .lane-count {
+  color: #ffffff;
+}
+
+.theme-light .draggable-lane .lane-card.filter-source .lane-filter-badge {
+  background: #ffffff;
+  color: var(--cp-filter-source-bg, #005EB8);
+  font-weight: 700;
+}
+
+/* Active filter item - the lane item row that is being used as filter */
+/* VERY PROMINENT styling so it's obvious which item is selected */
+.theme-light .lane-item-row.active-filter {
+  background: var(--cp-filter-source-bg, #005EB8) !important;
+  border: 3px solid var(--cp-filter-source-glow, #00B4D8) !important;
+  box-shadow:
+    0 0 0 3px rgba(0, 180, 216, 0.4),
+    0 0 15px rgba(0, 94, 184, 0.5),
+    0 4px 12px rgba(0, 94, 184, 0.3) !important;
+  z-index: 10;
+  position: relative;
+}
+
+.theme-light .lane-item-row.active-filter:hover {
+  background: color-mix(in srgb, var(--cp-filter-source-bg, #005EB8) 85%, black) !important;
+  box-shadow:
+    0 0 0 4px rgba(0, 180, 216, 0.5),
+    0 0 20px rgba(0, 94, 184, 0.6),
+    0 6px 16px rgba(0, 94, 184, 0.4) !important;
+}
+
+.theme-light .lane-item-row.active-filter .lane-item-name {
+  color: #ffffff !important;
+  font-weight: 700;
+}
+
+.theme-light .lane-item-row.active-filter .lane-item-badge {
+  background: #ffffff;
+  color: var(--cp-filter-source-bg, #005EB8);
+  font-weight: 600;
+}
+
+/* Logical system active filter in light theme */
+.theme-light .lane-item-row.logical-system.active-filter {
+  background: var(--cp-filter-source-bg, #005EB8) !important;
+  border: 3px solid var(--cp-filter-source-glow, #00B4D8) !important;
+  box-shadow:
+    0 0 0 3px rgba(0, 180, 216, 0.4),
+    0 0 15px rgba(0, 94, 184, 0.5),
+    0 4px 12px rgba(0, 94, 184, 0.3) !important;
+}
+
+/* Light theme - Main container and loading states */
+.theme-light.access-lens {
+  background: var(--cp-light-gray, #F3F4F6);
+}
+
+.theme-light .access-lens-loading,
+.theme-light .access-lens-error {
+  background: var(--cp-light-gray, #F3F4F6);
+  color: var(--cp-dark-neutral, #2C3E50);
+}
+
+.theme-light .pivot-loading-overlay {
+  background: rgba(243, 244, 246, 0.95);
+}
+
+.theme-light .pivot-loading-spinner {
+  border: 3px solid rgba(0, 94, 184, 0.2);
+  border-top-color: #005EB8;
+}
+
+.theme-light .pivot-loading-title {
+  color: #005EB8;
+}
+
+.theme-light .pivot-loading-status {
+  color: var(--cp-dark-neutral, #2C3E50);
+}
+
+/* Account entitlement count - soft blue to match badges */
+.theme-light .lane-item-account-details .account-entitlement-count {
+  color: #1E40AF;
+  background: #DBEAFE;
+  border: 1px solid #93C5FD;
+}
+
+/* Lane item details - dark text for light theme */
+.theme-light .lane-item-icon {
+  color: var(--cp-card-header-bg, #005EB8);
+}
+
+.theme-light .lane-item-description {
+  color: #6B7280;
+}
+
+.theme-light .lane-item-subtitle {
+  color: #6B7280;
+}
+
+.theme-light .lane-item-identity-details {
+  color: #6B7280;
+}
+
+.theme-light .lane-item-identity-details .identity-employee-id,
+.theme-light .lane-item-identity-details .identity-title,
+.theme-light .lane-item-identity-details .identity-email {
+  color: #6B7280;
+}
+
+/* Lane item status badges - semantic colors */
+.theme-light .lane-item-compliance.approved {
+  background: var(--cp-status-approved, #10B981);
+  color: #ffffff;
+}
+
+.theme-light .lane-item-compliance.not-approved {
+  background: var(--cp-status-not-approved, #EF4444);
+  color: #ffffff;
+}
+
+.theme-light .lane-item-compliance.pending {
+  background: var(--cp-status-pending, #F59E0B);
+  color: #ffffff;
+}
+
+/* Validity indicators */
+.theme-light .lane-item-validity {
+  color: #6B7280;
+  background: var(--cp-light-gray, #F3F4F6);
+  border: 1px solid var(--cp-border-gray, #D1D5DB);
+}
+
+.theme-light .lane-item-validity.expiring-soon {
+  background: #FEF3C7;
+  border-color: #F59E0B;
+  color: #92400E;
+}
+
+/* Action buttons */
+/* Make action buttons always visible in light theme */
+.theme-light .lane-item-actions {
+  opacity: 1;
+}
+
+.theme-light .lane-item-actions .action-btn {
+  color: #3B82F6;
+  border: 2px solid #93C5FD;
+  background: #EBF5FF;
+}
+
+.theme-light .lane-item-actions .action-btn:hover {
+  background: #3B82F6;
+  border-color: #2563EB;
+  color: #ffffff;
+}
+
+.theme-light .lane-item-actions .action-btn.pivot {
+  color: #2563EB;
 }

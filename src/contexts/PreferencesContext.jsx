@@ -56,7 +56,58 @@ const DEFAULT_PREFERENCES = {
   // Identity360 display preferences
   identity360LanesCollapsedOnLoad: true, // Start with lanes collapsed when Identity360 first loads
   identity360CollapseLanesOnFocusChange: true, // Collapse lanes when changing the focus node (identity)
-  identity360ShowDisabledAssignments: true // Include disabled assignments in Identity360 queries (default: show them)
+  identity360ShowDisabledAssignments: true, // Include disabled assignments in Identity360 queries (default: show them)
+
+  // Identity360 Color Palette (Light Theme) - Omada Brand Aligned
+  colorPalette: {
+    // Focus Node Card - Primary Blue gradient
+    focusCardBackground: '#005EB8',
+    focusCardText: '#ffffff',
+
+    // Access Card (Lane Card) - Primary Blue headers, white content
+    cardHeaderBackground: '#005EB8',
+    cardHeaderText: '#ffffff',
+    cardBorder: '#D1D5DB',
+    cardContentBackground: '#ffffff',
+
+    // Lane Items - White background with subtle styling
+    laneItemBackground: '#ffffff',
+    laneItemBackgroundHover: '#EBF5FF',
+    laneItemTitle: '#2C3E50',
+    laneItemText: '#2C3E50',
+
+    // Lane Item Selection - Light blue highlight
+    laneItemSelectedBackground: '#EBF5FF',
+    laneItemSelectedBorder: '#005EB8',
+
+    // Pills/Badges - Accent Teal
+    pillBackground: '#00B4D8',
+    pillText: '#ffffff',
+
+    // Filter States
+    filterSourceBackground: '#005EB8',
+    filterSourceGlow: '#00B4D8',
+    filteredBackground: '#F59E0B',
+
+    // Violations Lane - Error Red
+    violationsBackground: '#EF4444',
+    violationsText: '#ffffff',
+
+    // Count Badge
+    countBadgeColor: '#ffffff',
+
+    // Status Colors (semantic)
+    statusApproved: '#10B981',
+    statusNotApproved: '#EF4444',
+    statusPending: '#F59E0B',
+    statusInherited: '#00B4D8',
+
+    // Neutral Grays
+    lightGray: '#F3F4F6',
+    mediumGray: '#E5E7EB',
+    borderGray: '#D1D5DB',
+    darkNeutral: '#2C3E50'
+  }
 };
 
 // Preferences Context
