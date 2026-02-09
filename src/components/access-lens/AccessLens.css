@@ -1529,18 +1529,18 @@
 }
 
 /* Lane card filter states */
-/* "filtered" state - lane is being filtered BY another lane (yellow styling) */
+/* "filtered" state - lane is being filtered BY another lane (slate/neutral styling) */
 .draggable-lane .lane-card.filtered {
-  border-color: #ebcb8b;
+  border-color: #94a3b8;
 }
 
 .draggable-lane .lane-card.filtered .lane-header {
-  background: rgba(235, 203, 139, 0.1);
+  background: rgba(148, 163, 184, 0.15);
 }
 
 .draggable-lane .lane-card.filtered .lane-filter-badge {
-  background: rgba(235, 203, 139, 0.2);
-  color: #ebcb8b;
+  background: rgba(148, 163, 184, 0.25);
+  color: #94a3b8;
 }
 
 /* "filter-source" state - this lane IS the master filter (blue styling) */
@@ -3356,14 +3356,14 @@
    LIGHT THEME - FILTERING STATES
    ============================================ */
 
-/* Lane card being FILTERED BY another lane - Warning Orange highlight */
+/* Lane card being FILTERED BY another lane - Slate gray (neutral, professional) */
 .theme-light .draggable-lane .lane-card.filtered {
-  border: 3px solid var(--cp-filtered-bg, #F59E0B);
-  box-shadow: 0 0 15px rgba(245, 158, 11, 0.3);
+  border: 3px solid var(--cp-filtered-bg, #64748B);
+  box-shadow: 0 0 15px rgba(100, 116, 139, 0.3);
 }
 
 .theme-light .draggable-lane .lane-card.filtered .lane-header {
-  background: var(--cp-filtered-bg, #F59E0B);
+  background: var(--cp-filtered-bg, #64748B);
 }
 
 .theme-light .draggable-lane .lane-card.filtered .lane-title {
@@ -3376,7 +3376,7 @@
 
 .theme-light .draggable-lane .lane-card.filtered .lane-filter-badge {
   background: #ffffff;
-  color: var(--cp-filtered-bg, #F59E0B);
+  color: var(--cp-filtered-bg, #64748B);
   font-weight: 700;
 }
 
@@ -3667,7 +3667,8 @@
 }
 
 .theme-light .fact-item {
-  border-bottom: 1px solid var(--cp-medium-gray, #E5E7EB);
+  background: #ffffff;
+  border: 1px solid var(--cp-medium-gray, #E5E7EB);
 }
 
 .theme-light .fact-label {
@@ -3697,4 +3698,25 @@
 
 .theme-light .fact-separator {
   background: linear-gradient(to right, var(--cp-border-gray, #D1D5DB), transparent);
+}
+
+.theme-light .fact-value.fact-id {
+  background: #EBF5FF;
+  color: #005EB8;
+}
+
+.theme-light .fact-group-header {
+  border-top-color: var(--cp-border-gray, #D1D5DB);
+}
+
+.theme-light .explanation-body {
+  background: var(--cp-light-gray, #F3F4F6);
+}
+
+.theme-light .explanation-loading {
+  color: #6B7280;
+}
+
+.theme-light .explanation-loading p {
+  color: #6B7280;
 }
