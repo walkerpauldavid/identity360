@@ -983,7 +983,7 @@ export const LaneConfigSchema = {
         position: { x: -380, y: -220 },
         crossLaneFilters: {
           filtersLanes: [LaneTypes.ACCOUNTS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.ASSIGNMENT_POLICIES],
-          filteredByLanes: [LaneTypes.ACCOUNTS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.VIOLATIONS],
+          filteredByLanes: [LaneTypes.ACCOUNTS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.VIOLATIONS, LaneTypes.CONTEXTS],
           filterMappings: {
             // When System is selected, filter Accounts by system
             [LaneTypes.ACCOUNTS]: {
@@ -1025,7 +1025,7 @@ export const LaneConfigSchema = {
         position: { x: 750, y: -380 },  // North-East - matches COMPASS_POSITIONS[NE]
         crossLaneFilters: {
           filtersLanes: [LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.SYSTEMS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.ASSIGNMENT_POLICIES],
-          filteredByLanes: [LaneTypes.SYSTEMS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.VIOLATIONS],
+          filteredByLanes: [LaneTypes.SYSTEMS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.VIOLATIONS, LaneTypes.CONTEXTS],
           filterMappings: {
             // When Account is selected, filter Entitlements by account
             // Uses ARRAY_CONTAINS because deduplicated entitlements store arrays of accountIds
@@ -1204,7 +1204,7 @@ export const LaneConfigSchema = {
         position: { x: 600, y: 80 },
         crossLaneFilters: {
           filtersLanes: [LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.SYSTEMS, LaneTypes.ACCOUNTS, LaneTypes.ASSIGNMENT_POLICIES],
-          filteredByLanes: [LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.VIOLATIONS],
+          filteredByLanes: [LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.VIOLATIONS, LaneTypes.CONTEXTS],
           filterMappings: {
             // When Logical App is selected, filter Entitlements to those on this logical system
             [LaneTypes.EFFECTIVE_ENTITLEMENTS]: {
