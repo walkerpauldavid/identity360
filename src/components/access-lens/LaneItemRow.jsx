@@ -122,6 +122,16 @@ const LaneItemRow = ({
   const assignmentPathCount = Array.isArray(reasonArray) ? reasonArray.length : (reasonArray ? 1 : 0);
   const hasMultiplePaths = assignmentPathCount > 1;
 
+  // Check if this is a DIRECT-only assignment (no inherited, no policy-assigned)
+  // Direct assignments have reasonType of 'Direct' or 'DirectAssignment' or 'ActualDirect'
+  // Inherited assignments have reasonType like 'Inherited', 'RoleMembership', etc.
+  // Policy-assigned have reasonType like 'PolicyRule', 'Birthright', etc.
+  const reasonsForCheck = Array.isArray(reasonArray) ? reasonArray : (reasonArray ? [reasonArray] : []);
+  const reasonTypesForCheck = reasonsForCheck.map(r => r?.reasonType).filter(Boolean);
+  const isDirectOnly = reasonTypesForCheck.length > 0 && reasonTypesForCheck.every(rt =>
+    rt === 'Direct' || rt === 'DirectAssignment' || rt === 'ActualDirect'
+  );
+
   // Get validity period for entitlements (validFrom/validTo at assignment level)
   const validFrom = rawData?.validFrom || node.metadata?.validFrom;
   const validTo = rawData?.validTo || node.metadata?.validTo;
@@ -340,7 +350,7 @@ const LaneItemRow = ({
             {/* Show validity period for all entitlements (including those with violations) */}
             {isEntitlementNode && validityDisplay && (
               <span
-                className={`lane-item-validity ${validityDisplay.isExpiring ? 'time-limited' : 'permanent'} ${validityDisplay.isExpiringSoon ? 'expiring-soon' : ''} ${validityDisplay.isNeverExpires ? 'never-expires' : ''}`}
+                className={`lane-item-validity ${validityDisplay.isExpiring ? 'time-limited' : 'permanent'} ${validityDisplay.isExpiringSoon ? 'expiring-soon' : ''} ${validityDisplay.isNeverExpires ? 'never-expires' : ''} ${validityDisplay.isNeverExpires && isDirectOnly ? 'direct-never-expires' : ''}`}
                 title={`Assignment validity: ${validityDisplay.text}`}
               >
                 {validityDisplay.text}

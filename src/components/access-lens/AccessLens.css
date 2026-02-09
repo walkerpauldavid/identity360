@@ -855,6 +855,23 @@
   border-color: #88c0d0;
 }
 
+/* Export CSV button - matches other layout action buttons */
+.export-csv-btn {
+  padding: 0.35rem 0.6rem;
+  background: rgba(163, 190, 140, 0.1);
+  border: 1px solid rgba(163, 190, 140, 0.3);
+  border-radius: 4px;
+  color: #a3be8c;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.export-csv-btn:hover {
+  background: rgba(163, 190, 140, 0.2);
+  border-color: #a3be8c;
+}
+
 /* Animation for lanes appearing - only on initial render */
 /* NOTE: Animation disabled because transform is now handled inline */
 .draggable-lane:not(.dragging) {
@@ -2130,6 +2147,13 @@
   /* Same as base - consistent appearance */
 }
 
+/* Direct assignments that never expire - warning orange to flag permanent direct access */
+.lane-item-validity.direct-never-expires {
+  background: rgba(245, 158, 11, 0.2);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
 /* Time-limited - has an expiration date - same styling */
 .lane-item-validity.time-limited {
   /* Same as base - no changes needed */
@@ -3092,9 +3116,20 @@
    LIGHT THEME OVERRIDES - Omada Brand Aligned
    ============================================ */
 
-/* Canvas - white background */
+/* Canvas - light background with subtle concentric rings */
 .theme-light .access-lens-canvas {
-  background: var(--cp-light-gray, #F3F4F6);
+  background:
+    /* Subtle concentric rings emanating from center */
+    repeating-radial-gradient(
+      circle at 50% 40%,
+      transparent 0px,
+      transparent 98px,
+      rgba(0, 94, 184, 0.03) 100px,
+      transparent 102px,
+      transparent 200px
+    ),
+    /* Base background color */
+    var(--cp-light-gray, #F3F4F6);
 }
 
 /* Scrollbar for light theme */
@@ -3303,14 +3338,18 @@
 }
 
 .theme-light .lane-card[data-lane-type="Violations"] .lane-item-row {
-  background: #FEF2F2;
-  border: 1px solid #FECACA;
-  color: var(--cp-dark-neutral, #2C3E50);
+  background: #ffffff;
+  border: 2px solid #93C5FD;
+  color: #374151;
 }
 
 .theme-light .lane-card[data-lane-type="Violations"] .lane-item-row:hover {
-  background: #FEE2E2;
-  border-color: var(--cp-violations-bg, #EF4444);
+  background: #F0F9FF;
+  border-color: #60A5FA;
+}
+
+.theme-light .lane-card[data-lane-type="Violations"] .lane-item-name {
+  color: #374151;
 }
 
 /* ============================================
@@ -3495,6 +3534,13 @@
   background: #FEF3C7;
   border-color: #F59E0B;
   color: #92400E;
+}
+
+/* Direct assignments that never expire - warning orange for light theme */
+.theme-light .lane-item-validity.direct-never-expires {
+  background: #FEF3C7;
+  border-color: #F59E0B;
+  color: #D97706;
 }
 
 /* Action buttons */

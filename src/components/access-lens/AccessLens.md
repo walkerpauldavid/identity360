@@ -303,6 +303,39 @@ As a user, when an entitlement assignment has no expiry date (validTo is null/un
 **US-145: Never Expires with Start Date Display**
 As a user, when an entitlement assignment has a start date but no expiry date, I want to see "From MM/YY · Never expires" as the validity display, so that I can see both the start date and the permanent nature of the assignment.
 
+### Three-Level Cascade Filtering
+
+**US-150: Context Filtering of Accounts**
+As a user, when I select a Context in the Contexts lane, I want the Accounts lane to be filtered to show only accounts that have entitlements assigned through Assignment Policies triggered by that context, so that I can understand which accounts are affected by context-based policies.
+
+**US-151: Context Filtering of Systems**
+As a user, when I select a Context in the Contexts lane, I want the Systems lane to be filtered to show only systems that have entitlements assigned through Assignment Policies triggered by that context, so that I can understand which systems are affected by context-based policies.
+
+**US-152: Context Filtering of Logical Applications**
+As a user, when I select a Context in the Contexts lane, I want the Logical Applications lane to be filtered to show only logical applications that have entitlements assigned through Assignment Policies triggered by that context, so that I can understand which applications are affected by context-based policies.
+
+**US-153: Three-Level Cascade Filter Flow**
+As a user, I want the Context→Accounts/Systems/Logical Applications filtering to work through a 3-level cascade (Context → Assignment Policies → Entitlements → Target lanes), so that the filtering accurately reflects the relationship between contexts, policies, and access assignments.
+
+### CSV Export
+
+**US-154: Export Current View to CSV**
+As a user, I want to export the current Access Lens view to a CSV file, so that I can analyze the data in Excel or other tools, share it with colleagues, or use it for compliance reporting.
+
+**US-155: CSV Export Includes All Visible Lanes**
+As a user, when I export to CSV, I want all currently visible lane data to be included, so that I get a comprehensive snapshot of the access view.
+
+**US-156: CSV Export Includes Metadata**
+As a user, when I export to CSV, I want each row to include focus node info, lane name, item name, type, ID, system, compliance status, reason types, validity dates, and additional metadata, so that I have all relevant information for analysis.
+
+### UI Enhancements
+
+**US-157: Professional Focus Card Color**
+As a user, I want the focus card to use the Omada Primary Blue (#005EB8) color instead of a brighter blue, so that the interface looks professional and aligns with Omada brand guidelines.
+
+**US-158: Orange "Never Expires" for Direct Assignments**
+As a user, when an entitlement with only DIRECT assignment reasons has a "Never expires" validity, I want the pill to display in orange color, so that I can quickly identify permanent direct access that may need review. Inherited and policy-assigned entitlements should retain the default color.
+
 ---
 
 ## Business Rules
@@ -644,6 +677,51 @@ The validity display function shall treat a null/undefined `validTo` the same as
 
 **BR-062: Validity Display with Start Date**
 When an entitlement has a valid start date (not null and not year 1999) but no end date (null or year 9999), the validity display shall show "From MM/YY · Never expires" to indicate both the start date and permanent nature.
+
+### Three-Level Cascade Filtering Rules
+
+**BR-063: Context to Target Lanes Filter Path**
+When a Context is selected, the filter shall cascade through three levels:
+1. Context → Assignment Policies (by contextIds or contextNames)
+2. Assignment Policies → Effective Entitlements (by resourceIds)
+3. Effective Entitlements → Target lanes (Accounts by accountIds, Systems by systemId, Logical Applications by systemId)
+
+**BR-064: Name Fallback for Context Matching**
+When matching Contexts to Assignment Policies, the system shall first attempt ID-based matching (`metadata.contextIds`), then fall back to name-based matching (`metadata.contextNames`) to handle UUID mismatches between GraphQL and OData data sources.
+
+**BR-065: Target Lane FilteredByLanes Configuration**
+Systems, Accounts, and Logical Applications lanes shall include `LaneTypes.CONTEXTS` in their `filteredByLanes` arrays to enable filtering when a Context is selected.
+
+**BR-066: Cascaded Filter Type**
+The `TRIPLE_CASCADED_WITH_NAME_FALLBACK` filter type shall be used for Context→Target lane filtering, supporting the 3-level cascade with name fallback on the first level.
+
+**BR-067: Auto-Expand Filtered Lanes**
+Lanes that transition from unfiltered to filtered state shall automatically expand if they were collapsed, ensuring filtered results are immediately visible.
+
+### CSV Export Rules
+
+**BR-068: CSV Export Data Columns**
+CSV export shall include the following columns: Focus Node, Focus Node Type, Lane, Item Name, Item Type, Item ID, System, Compliance Status, Reason Types, Valid From, Valid To, Is Filtered, Additional Metadata.
+
+**BR-069: CSV Value Escaping**
+CSV values containing commas, quotes, or newlines shall be properly escaped according to RFC 4180 (quoted with internal quotes doubled).
+
+**BR-070: CSV Filename Format**
+CSV export filename shall follow the format: `access-lens-export-{focus-node-name}-{timestamp}.csv` where timestamp is ISO 8601 format with colons and periods replaced by hyphens.
+
+### UI Enhancement Rules
+
+**BR-071: Focus Card Color**
+The focus card in light theme shall use Omada Primary Blue (#005EB8) as the background color with matching box-shadow.
+
+**BR-072: Violations Lane Item Styling**
+Violations lane items shall use standard white background and blue border styling (matching other lanes) while the lane card header retains the red error color.
+
+**BR-073: Canvas Concentric Rings**
+The light theme canvas background shall display subtle concentric rings emanating from the focus node center using a repeating radial gradient with Omada Primary Blue (#005EB8) at 3% opacity.
+
+**BR-074: Direct Never Expires Orange Styling**
+Entitlements with ONLY Direct/DirectAssignment/ActualDirect reason types that have "Never expires" validity shall display the validity pill in orange (#D97706 text, #FEF3C7 background) to flag permanent direct access requiring review. Entitlements with any inherited or policy-based reasons shall retain default styling.
 
 ### Layout Rules
 
@@ -1271,3 +1349,5 @@ API logs show:
 | 1.19 | 2025-01 | **Schema audit & cleanup**: Added `LaneGridConstraints` to `schemas/index.js` re-exports. Updated `getLanesForNodeType` fallback switch-case to match `LaneConfigSchema` definitions (added missing Violations, Assignment Policies, Logical Applications for Identity/System/Account views). Removed `.env.production` and `.env.development` from git tracking (contained Azure AD credentials); added `.gitignore` entries and `.env.*.template` files with placeholder values; purged sensitive files from entire git history. |
 | 1.20 | 2026-02 | **Entitlement Focus Node Enhancements** (US-140 through US-145, BR-055 through BR-062): Added Resource Folder and Child Resources (CHILDROLES) lanes when Entitlement is focus node. Resource Folder lane shows folder with Approval badge from OData enrichment. Child Resources lane uses EFFECTIVE_ENTITLEMENTS type to display child entitlements. Fixed infinite loop in enrichment useEffects by adding refs (`policiesEnrichedRef`, `foldersEnrichedRef`) to track enrichment status per focus node. Added `RESOURCE_FOLDERS` to default `visibleLanes` filter. Added useEffect to clear Object Inspector state (`selectedItem`, `explanation`, `selectedReasonId`) when `focusNode.type` changes to prevent stale data display during pivot. Fixed "Never expires" pill: now displays when `validTo` is null/undefined OR year 9999. Shows "From MM/YY · Never expires" when there's a start date but no end date. Moved enrichment debug logs behind `shouldLog('POLICIES')` flag. |
 | 1.21 | 2026-02 | **Child Resource Enrichment** (US-146, BR-058a, BR-058b): Fixed regression where child resources in the Child Resources lane only showed the resource name. Added OData enrichment for CHILDROLES: each child resource is now queried via `/OData/DataObjects/Resource` to fetch full details including RESOURCETYPE, SYSTEMNAME, and DESCRIPTION. Child resource lane items now display three badges: "CHILD" (always), system name (if available), and resource type (if available). Updated `buildChildResourcesLaneForEntitlement()` and `childResources` extractor in `accessLensDataService.js` to populate badges and metadata from enriched data. Added enrichment limit of 50 child resources to prevent excessive API calls. |
+| 1.22 | 2026-02 | **3-Level Cascade Filtering for Contexts** (US-150 through US-153, BR-063 through BR-068): Added 3-level cascaded filtering so selecting a Context in the Contexts lane now filters Accounts, Systems, and Logical Applications lanes. Filter path: Context → Assignment Policies (by contextIds/contextNames) → Effective Entitlements (by resourceIds) → Target lanes (by accountIds/systemId). Added `TRIPLE_CASCADED_WITH_NAME_FALLBACK` filter type to `CrossLaneFilterType` enum. Implemented `applyTripleCascadedWithNameFallback()` in `crossLaneFilterService.js`. Added `LaneTypes.CONTEXTS` to `filteredByLanes` arrays for Systems, Accounts, and Logical Applications. Filtered lanes auto-expand when cross-lane filter is applied. |
+| 1.23 | 2026-02 | **CSV Export & UI Enhancements** (US-154 through US-158, BR-069 through BR-074): Added "Export CSV" button to toolbar that exports all visible lane data including focus node info, lane names, item details, compliance status, reason types, validity dates, and metadata. Updated focus card color from #2563EB to Omada Primary Blue #005EB8 for professional appearance. Fixed Violations lane items to match standard styling (white background, blue border) while keeping red border on card header. Added subtle concentric rings to light theme canvas background. "Never expires" validity pill now shows in orange (#D97706) for DIRECT-only entitlements to flag permanent direct access; inherited and policy-assigned entitlements retain default styling. |

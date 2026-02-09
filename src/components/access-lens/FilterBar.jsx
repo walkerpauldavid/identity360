@@ -28,6 +28,7 @@ const FilterBar = ({
   onClearAllSelections, // Callback to clear all lane selections
   onExpandAll, // Callback to expand all lanes
   onResetLayout, // Callback to reset lane positions and clear filters
+  onExportCSV, // Callback to export current view to CSV
   currentTheme = 'dark', // Current theme
   onThemeChange, // Callback to change theme
 }) => {
@@ -70,6 +71,11 @@ const FilterBar = ({
         <button className="reset-positions-btn" onClick={onResetLayout} title="Reset lane positions and clear filters">
           ↺ Reset Layout
         </button>
+        {onExportCSV && (
+          <button className="export-csv-btn" onClick={onExportCSV} title="Export current view to CSV">
+            ⬇ Export CSV
+          </button>
+        )}
       </div>
 
       <div className="filter-divider"></div>

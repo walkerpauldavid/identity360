@@ -1879,6 +1879,103 @@ const AccessLens = ({
     setTimeout(() => setLanesForceExpanded(false), 100);
   };
 
+  // Export current view to CSV
+  const handleExportCSV = useCallback(() => {
+    if (!focusNode || !visibleLanes || visibleLanes.length === 0) {
+      console.warn('[Export] No data to export');
+      return;
+    }
+
+    // Build CSV content
+    const rows = [];
+
+    // Header row
+    rows.push([
+      'Focus Node',
+      'Focus Node Type',
+      'Lane',
+      'Item Name',
+      'Item Type',
+      'Item ID',
+      'System',
+      'Compliance Status',
+      'Reason Types',
+      'Valid From',
+      'Valid To',
+      'Is Filtered',
+      'Additional Metadata'
+    ].join(','));
+
+    // Helper to escape CSV values
+    const escapeCSV = (value) => {
+      if (value === null || value === undefined) return '';
+      const str = String(value);
+      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+
+    // Focus node info
+    const focusName = focusNode.displayName || focusNode.name || 'Unknown';
+    const focusType = focusNode.type || 'Unknown';
+
+    // Iterate through visible lanes
+    visibleLanes.forEach(lane => {
+      const laneName = lane.title || lane.laneType;
+      const items = lane.items || [];
+      const isFiltered = lane.isFiltered ? 'Yes' : 'No';
+
+      items.forEach(item => {
+        const node = item.node || {};
+        const rawData = item.rawData || {};
+        const metadata = node.metadata || {};
+
+        // Extract reason types
+        const reasons = rawData.reason || [];
+        const reasonTypes = Array.isArray(reasons)
+          ? reasons.map(r => r?.reasonType).filter(Boolean).join('; ')
+          : (reasons?.reasonType || '');
+
+        // Additional metadata as JSON
+        const additionalMeta = {};
+        if (metadata.resourceCount) additionalMeta.resourceCount = metadata.resourceCount;
+        if (metadata.accountIds) additionalMeta.accountCount = metadata.accountIds.length;
+        if (metadata.hasViolations) additionalMeta.hasViolations = true;
+        if (rawData.disabled) additionalMeta.disabled = true;
+
+        rows.push([
+          escapeCSV(focusName),
+          escapeCSV(focusType),
+          escapeCSV(laneName),
+          escapeCSV(node.displayName || node.name),
+          escapeCSV(node.type),
+          escapeCSV(node.id),
+          escapeCSV(metadata.system || metadata.systemId || ''),
+          escapeCSV(metadata.complianceStatus || rawData.complianceStatus || ''),
+          escapeCSV(reasonTypes),
+          escapeCSV(rawData.validFrom || metadata.validFrom || ''),
+          escapeCSV(rawData.validTo || metadata.validTo || ''),
+          escapeCSV(isFiltered),
+          escapeCSV(Object.keys(additionalMeta).length > 0 ? JSON.stringify(additionalMeta) : '')
+        ].join(','));
+      });
+    });
+
+    // Create and download file
+    const csvContent = rows.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    link.setAttribute('download', `access-lens-export-${focusName.replace(/[^a-zA-Z0-9]/g, '_')}-${timestamp}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, [focusNode, visibleLanes]);
+
   // ============================================================================
   // CROSS-LANE FILTERING LOGIC (Memoized for performance)
   // The toolbar filters (Compliance, Reason Types, Entitlement Type) filter the
@@ -2380,6 +2477,7 @@ const AccessLens = ({
         onClearAllSelections={handleClearAllSelections}
         onExpandAll={handleExpandAll}
         onResetLayout={handleResetPositions}
+        onExportCSV={handleExportCSV}
         currentTheme={currentTheme}
         onThemeChange={handleThemeChange}
       />
