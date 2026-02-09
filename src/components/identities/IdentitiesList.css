@@ -760,3 +760,265 @@
     justify-content: center;
   }
 }
+
+/* ============================================
+   LIGHT THEME STYLES - Omada Brand Colors
+   ============================================ */
+
+.theme-light .identities-list-page {
+  background-color: #e2e6ef;
+  color: #32445b;
+}
+
+.theme-light .identities-header h1 {
+  color: #1e7c88;
+}
+
+.theme-light .total-count {
+  color: #5a6b7d;
+}
+
+.theme-light .count-number {
+  color: #1e7c88;
+}
+
+/* Filters Container */
+.theme-light .filters-container {
+  background: #ffffff;
+  border: 2px solid #012839;
+}
+
+.theme-light .filters-toggle-header {
+  background: #f9fafc;
+}
+
+.theme-light .filters-toggle-header:hover {
+  background: #f0f3f4;
+}
+
+.theme-light .filters-title {
+  color: #32445b;
+}
+
+.theme-light .active-filters-count {
+  background: #1e7c88;
+}
+
+.theme-light .btn-clear-all-filters {
+  border-color: #1e7c88;
+  color: #1e7c88;
+}
+
+.theme-light .btn-clear-all-filters:hover {
+  background: #1e7c88;
+  color: white;
+}
+
+.theme-light .filters-toggle-arrow {
+  color: #1e7c88;
+}
+
+.theme-light .filters-content {
+  background: #ffffff;
+}
+
+.theme-light .filter-label {
+  color: #5a6b7d;
+}
+
+.theme-light .btn-clear-filters {
+  border-color: #1e7c88;
+  color: #1e7c88;
+}
+
+.theme-light .btn-clear-filters:hover {
+  background: #1e7c88;
+  color: white;
+}
+
+.theme-light .filter-pill {
+  background: #f9fafc;
+  border: 2px solid #e7eaf2;
+  color: #32445b;
+}
+
+.theme-light .filter-pill:hover {
+  border-color: #1e7c88;
+  background: #ffffff;
+}
+
+.theme-light .filter-pill.active {
+  background: #1e7c88;
+  border-color: #1e7c88;
+  color: white;
+}
+
+/* Category Accordion */
+.theme-light .category-accordion {
+  background-color: #ffffff;
+  border: 2px solid #012839;
+}
+
+.theme-light .accordion-header {
+  background-color: #f9fafc;
+  border-left: 4px solid #1e7c88;
+}
+
+.theme-light .accordion-header:hover {
+  background-color: #f0f3f4;
+}
+
+.theme-light .accordion-header.expanded {
+  background-color: #f0f3f4;
+}
+
+.theme-light .accordion-title h3 {
+  color: #32445b;
+}
+
+.theme-light .count-badge {
+  background-color: #1e7c88;
+}
+
+.theme-light .accordion-toggle {
+  color: #1e7c88;
+}
+
+.theme-light .accordion-content {
+  background-color: #ffffff;
+}
+
+/* Identities Table */
+.theme-light .identities-table {
+  border-left: 3px solid #1e7c88;
+  background-color: #ffffff;
+}
+
+.theme-light .identities-table thead {
+  background-color: #f9fafc;
+}
+
+.theme-light .identities-table th {
+  color: #1e7c88;
+  border-bottom: 2px solid #1e7c88;
+}
+
+.theme-light .identities-table th.sortable:hover {
+  background-color: #f0f3f4;
+}
+
+.theme-light .identities-table td {
+  border-bottom: 1px solid #e7eaf2;
+  color: #32445b;
+}
+
+.theme-light .identities-table tbody tr:nth-child(even) {
+  background-color: #f9fafc;
+}
+
+.theme-light .identities-table tbody tr.clickable-row:hover {
+  background-color: #e7eaf2;
+}
+
+.theme-light .column-filter-input {
+  background-color: #ffffff;
+  border: 1px solid #e7eaf2;
+  color: #32445b;
+}
+
+.theme-light .column-filter-input:focus {
+  border-color: #1e7c88;
+  background-color: #ffffff;
+}
+
+.theme-light .identities-table th .sort-arrow {
+  color: #b0b0b0;
+}
+
+.theme-light .identities-table th .sort-arrow.active {
+  color: #1e7c88;
+}
+
+/* Access Lens Button */
+.theme-light .access-lens-btn {
+  border: 1px solid #e7eaf2;
+  color: #1e7c88;
+}
+
+.theme-light .access-lens-btn:hover {
+  background-color: #1e7c88;
+  color: #ffffff;
+  border-color: #1e7c88;
+}
+
+/* Pagination */
+.theme-light .pagination-controls {
+  border-top: 1px solid #e7eaf2;
+}
+
+.theme-light .pagination-info {
+  color: #5a6b7d;
+}
+
+.theme-light .page-indicator {
+  color: #32445b;
+}
+
+.theme-light .page-size-selector label {
+  color: #5a6b7d;
+}
+
+.theme-light .page-size-select {
+  background-color: #ffffff;
+  color: #32445b;
+  border: 1px solid #1e7c88;
+}
+
+.theme-light .page-size-select:hover {
+  background-color: #f9fafc;
+}
+
+/* Buttons */
+.theme-light .btn-primary {
+  background-color: #1e7c88;
+}
+
+.theme-light .btn-primary:hover {
+  background-color: #58c1a1;
+}
+
+.theme-light .btn-secondary {
+  background-color: #ffffff;
+  color: #32445b;
+  border: 1px solid #1e7c88;
+}
+
+.theme-light .btn-secondary:hover {
+  background-color: #f9fafc;
+}
+
+/* Loading & Error States */
+.theme-light .spinner {
+  border: 4px solid #e7eaf2;
+  border-top: 4px solid #1e7c88;
+}
+
+.theme-light .empty-state {
+  color: #5a6b7d;
+}
+
+/* Context Menu */
+.theme-light .context-menu {
+  background: #ffffff;
+  border: 1px solid #1e7c88;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.theme-light .context-menu-item {
+  color: #32445b;
+}
+
+.theme-light .context-menu-item:hover {
+  background: #1e7c88;
+  color: white;
+}

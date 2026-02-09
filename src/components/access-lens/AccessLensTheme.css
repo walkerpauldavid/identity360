@@ -81,11 +81,12 @@
    LIGHT THEME (Omada Brand)
    ============================================ */
 .access-lens.theme-light {
-  /* Backgrounds */
-  --al-bg-primary: #f9fafc;
+  /* Backgrounds - White/Light */
+  --al-bg-primary: #ffffff;
   --al-bg-secondary: #ffffff;
-  --al-bg-tertiary: #e7eaf2;
+  --al-bg-tertiary: #f9fafc;
   --al-bg-card: #ffffff;
+  --al-bg-canvas: #ffffff;
   --al-bg-hover: rgba(88, 193, 161, 0.1);
   --al-bg-active: rgba(88, 193, 161, 0.15);
   --al-bg-input: #ffffff;

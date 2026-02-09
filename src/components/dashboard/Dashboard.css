@@ -1,7 +1,56 @@
+/* Dashboard Theme Variables */
 .dashboard {
+  /* Dark theme (default fallback) */
+  --dash-bg-primary: #1a1a1a;
+  --dash-bg-secondary: #1a1a2e;
+  --dash-bg-tertiary: #1e1e1e;
+  --dash-border-color: #2a2a3e;
+  --dash-border-light: #3a3a4a;
+  --dash-text-primary: #e0e0e0;
+  --dash-text-secondary: #a0a0b0;
+  --dash-text-muted: #606070;
+  --dash-divider: #2a2a2a;
+  --dash-accent: #88c0d0;
+  --dash-accent-hover: rgba(136, 192, 208, 0.1);
+
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
+}
+
+/* Light theme overrides - Omada Brand Colors */
+.dashboard.theme-light {
+  /* Backgrounds - Omada grays */
+  --dash-bg-primary: #ffffff;
+  --dash-bg-secondary: #f9fafc;
+  --dash-bg-tertiary: #f0f3f4;
+  --dash-bg-page: #e2e6ef;
+
+  /* Borders - Omada style */
+  --dash-border-color: #e7eaf2;
+  --dash-border-light: #e4e4e4;
+
+  /* Text - Omada dark blue */
+  --dash-text-primary: #32445b;
+  --dash-text-secondary: #323232;
+  --dash-text-muted: rgba(90, 100, 118, 0.7);
+  --dash-divider: #e7eaf2;
+
+  /* Accents - Omada teal/green */
+  --dash-accent: #1e7c88;
+  --dash-accent-secondary: #58c1a1;
+  --dash-accent-hover: rgba(88, 193, 161, 0.1);
+
+  /* Tile specific - Omada navigation style borders */
+  --dash-tile-border: #58c1a1;
+  --dash-tile-border-hover: #1e7c88;
+}
+
+/* Light theme page background - matches Omada navigation panel */
+.dashboard.theme-light {
+  background: #e2e6ef;
+  padding: 1rem;
+  border-radius: 8px;
 }
 
 .dashboard-header {
@@ -37,17 +86,17 @@
   justify-content: center;
   padding: 0.4rem;
   background: transparent;
-  border: 1px solid #3a3a4a;
+  border: 1px solid var(--dash-border-light);
   border-radius: 4px;
-  color: #a0a0b0;
+  color: var(--dash-text-secondary);
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .toggle-all-btn:hover {
-  border-color: #88c0d0;
-  color: #88c0d0;
-  background: rgba(136, 192, 208, 0.1);
+  border-color: var(--dash-accent);
+  color: var(--dash-accent);
+  background: var(--dash-accent-hover);
 }
 
 .dashboard-grid {
@@ -75,10 +124,10 @@
   grid-column: 1 / -1;
   text-align: center;
   padding: 3rem;
-  color: #606070;
-  background: #1a1a1a;
+  color: var(--dash-text-muted);
+  background: var(--dash-bg-primary);
   border-radius: 8px;
-  border: 2px dashed #3a3a4a;
+  border: 2px dashed var(--dash-border-light);
 }
 
 .dashboard-empty p {
@@ -86,12 +135,13 @@
 }
 
 .dashboard-empty a {
-  color: #88c0d0;
+  color: var(--dash-accent);
   text-decoration: underline;
 }
 
 .dashboard-empty a:hover {
-  color: #a3d5e3;
+  color: var(--dash-accent);
+  opacity: 0.8;
 }
 
 /* Heatmap Section with Toggle */
@@ -104,9 +154,15 @@
   align-items: center;
   margin-bottom: 1rem;
   padding: 0.75rem 1rem;
-  background: #1a1a2e;
+  background: var(--dash-bg-secondary);
   border-radius: 8px;
-  border: 1px solid #2a2a3e;
+  border: 1px solid var(--dash-border-color);
+}
+
+/* Light theme - match tile border */
+.dashboard.theme-light .heatmap-toggle-container {
+  background: #ffffff;
+  border: 2px solid #012839;
 }
 
 .heatmap-toggle {
@@ -121,7 +177,7 @@
 .toggle-label {
   font-size: 0.95rem;
   font-weight: 500;
-  color: #e0e0e0;
+  color: var(--dash-text-primary);
 }
 
 .toggle-switch {
@@ -143,7 +199,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: #3a3a4a;
+  background-color: var(--dash-border-light);
   transition: 0.3s;
   border-radius: 24px;
 }
@@ -155,13 +211,13 @@
   width: 18px;
   left: 3px;
   bottom: 3px;
-  background-color: #808090;
+  background-color: var(--dash-text-muted);
   transition: 0.3s;
   border-radius: 50%;
 }
 
 .toggle-switch input:checked + .toggle-slider {
-  background-color: #88c0d0;
+  background-color: var(--dash-accent);
 }
 
 .toggle-switch input:checked + .toggle-slider:before {
@@ -170,7 +226,7 @@
 }
 
 .toggle-switch input:focus + .toggle-slider {
-  box-shadow: 0 0 1px #88c0d0;
+  box-shadow: 0 0 1px var(--dash-accent);
 }
 
 /* Heatmap Collapse All Button */
@@ -181,17 +237,17 @@
   padding: 6px;
   margin-left: 12px;
   background: transparent;
-  border: 1px solid #3a3a4a;
+  border: 1px solid var(--dash-border-light);
   border-radius: 4px;
-  color: #888;
+  color: var(--dash-text-muted);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .heatmap-collapse-all-btn:hover {
-  border-color: #88c0d0;
-  color: #88c0d0;
-  background: rgba(136, 192, 208, 0.1);
+  border-color: var(--dash-accent);
+  color: var(--dash-accent);
+  background: var(--dash-accent-hover);
 }
 
 /* Heatmap Wrapper */
@@ -213,9 +269,9 @@
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px;
-  background: #1e1e1e;
+  background: var(--dash-bg-tertiary);
   border-radius: 12px;
-  border: 1px solid #333;
+  border: 1px solid var(--dash-border-color);
 }
 
 /* When expanded, position the bar as floating button */
@@ -225,16 +281,30 @@
   right: 20px;
   z-index: 10;
   padding: 0;
-  background: rgba(30, 30, 30, 0.9);
-  border: 1px solid #444;
+  background: var(--dash-bg-tertiary);
+  border: 1px solid var(--dash-border-light);
   border-radius: 6px;
   backdrop-filter: blur(4px);
+}
+
+.dashboard.theme-dark .heatmap-wrapper:not(.minimized) .heatmap-minimize-bar {
+  background: rgba(30, 30, 30, 0.9);
+}
+
+.dashboard.theme-light .heatmap-wrapper:not(.minimized) .heatmap-minimize-bar {
+  background: rgba(255, 255, 255, 0.9);
+}
+
+/* Light theme - remove border from minimize bar titles */
+.dashboard.theme-light .heatmap-wrapper .heatmap-minimize-bar {
+  border: none;
+  background: transparent;
 }
 
 .heatmap-minimize-title {
   font-size: 0.95rem;
   font-weight: 600;
-  color: #888;
+  color: var(--dash-text-muted);
 }
 
 /* Hide title when expanded (just show the button) */
@@ -250,21 +320,21 @@
   background: transparent;
   border: none;
   border-radius: 4px;
-  color: #888;
+  color: var(--dash-text-muted);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .heatmap-minimize-btn:hover {
-  color: #88c0d0;
-  background: rgba(136, 192, 208, 0.15);
+  color: var(--dash-accent);
+  background: var(--dash-accent-hover);
 }
 
 /* When minimized, give the button a border */
 .heatmap-wrapper.minimized .heatmap-minimize-btn {
-  border: 1px solid #444;
+  border: 1px solid var(--dash-border-light);
 }
 
 .heatmap-wrapper.minimized .heatmap-minimize-btn:hover {
-  border-color: #88c0d0;
+  border-color: var(--dash-accent);
 }

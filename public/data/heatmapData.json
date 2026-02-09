@@ -1,0 +1,566 @@
+{
+  "description": "Heatmap compliance data exported from Omada API. Copy this file to public/data/heatmapData.json",
+  "generatedAt": "2026-01-20T10:28:46.987Z",
+  "systems": [
+    {
+      "id": "35cc1d03-a6bd-46e5-95a8-77156232bf3d",
+      "name": "Active Directory corporate.com",
+      "description": "",
+      "systemType": "Unknown",
+      "assignmentCount": 2558,
+      "accountCount": 325,
+      "identityCount": 319,
+      "compliance": {
+        "total": 1000,
+        "compliant": 991,
+        "nonCompliant": 9,
+        "pending": 0,
+        "complianceRate": 99,
+        "byStatus": {
+          "Orphan Assignment": 5,
+          "Explicitly Approved": 11,
+          "Implicitly Approved": 796,
+          "None": 4,
+          "Not Approved": 184
+        }
+      }
+    },
+    {
+      "id": "f05c44fa-7256-4b8b-8471-eaf598d9a99e",
+      "name": "Omada Identity",
+      "description": "The Omada Identity System",
+      "systemType": "Unknown",
+      "assignmentCount": 919,
+      "accountCount": 320,
+      "identityCount": 317,
+      "compliance": {
+        "total": 919,
+        "compliant": 902,
+        "nonCompliant": 17,
+        "pending": 0,
+        "complianceRate": 98,
+        "byStatus": {
+          "Not Approved": 15,
+          "Explicitly Approved": 67,
+          "Implicitly Approved": 820,
+          "Orphan Assignment": 4,
+          "Implicitly Assigned": 13
+        }
+      }
+    },
+    {
+      "id": "1c2768e9-86fd-43fd-9e0d-5c8fee21b59b",
+      "name": "Global Directory",
+      "description": "",
+      "systemType": "Unknown",
+      "assignmentCount": 630,
+      "accountCount": 316,
+      "identityCount": 315,
+      "compliance": {
+        "total": 630,
+        "compliant": 628,
+        "nonCompliant": 2,
+        "pending": 0,
+        "complianceRate": 100,
+        "byStatus": {
+          "Implicitly Approved": 627,
+          "Explicitly Approved": 1,
+          "Orphan Assignment": 2
+        }
+      }
+    },
+    {
+      "id": "f23e3e04-a8e0-47e0-8716-6fe3ec8d1c1f",
+      "name": "Document Management",
+      "description": "",
+      "systemType": "Unknown",
+      "assignmentCount": 439,
+      "accountCount": 316,
+      "identityCount": 316,
+      "compliance": {
+        "total": 439,
+        "compliant": 421,
+        "nonCompliant": 18,
+        "pending": 0,
+        "complianceRate": 96,
+        "byStatus": {
+          "Explicitly Approved": 6,
+          "Implicitly Assigned": 15,
+          "Implicitly Approved": 415,
+          "None": 2,
+          "In Violation": 1
+        }
+      }
+    },
+    {
+      "id": "34e7a0ed-f800-448d-8a7f-67115649a594",
+      "name": "Exchange Hybrid",
+      "description": "",
+      "systemType": "Unknown",
+      "assignmentCount": 943,
+      "accountCount": 315,
+      "identityCount": 315,
+      "compliance": {
+        "total": 943,
+        "compliant": 942,
+        "nonCompliant": 1,
+        "pending": 0,
+        "complianceRate": 100,
+        "byStatus": {
+          "Implicitly Approved": 942,
+          "None": 1
+        }
+      }
+    },
+    {
+      "id": "1f18d52c-9212-4754-b15f-afd5951ea713",
+      "name": "Active Directory connectivity.com",
+      "description": "",
+      "systemType": "Unknown",
+      "assignmentCount": 314,
+      "accountCount": 314,
+      "identityCount": 314,
+      "compliance": {
+        "total": 314,
+        "compliant": 314,
+        "nonCompliant": 0,
+        "pending": 0,
+        "complianceRate": 100,
+        "byStatus": {
+          "Implicitly Approved": 314
+        }
+      }
+    },
+    {
+      "id": "70a75084-3797-45d2-bd79-b9f81ac2af39",
+      "name": "ServiceNow",
+      "description": "",
+      "systemType": "Unknown",
+      "assignmentCount": 628,
+      "accountCount": 314,
+      "identityCount": 314,
+      "compliance": {
+        "total": 628,
+        "compliant": 628,
+        "nonCompliant": 0,
+        "pending": 0,
+        "complianceRate": 100,
+        "byStatus": {
+          "Implicitly Approved": 628
+        }
+      }
+    },
+    {
+      "id": "c3dd1cdb-aca8-4595-847d-42ba44662c98",
+      "name": "Anti-Fraud",
+      "description": "test",
+      "systemType": "Unknown",
+      "assignmentCount": 98,
+      "accountCount": 98,
+      "identityCount": 98,
+      "compliance": {
+        "total": 98,
+        "compliant": 96,
+        "nonCompliant": 2,
+        "pending": 0,
+        "complianceRate": 98,
+        "byStatus": {
+          "Implicitly Approved": 93,
+          "Explicitly Approved": 3,
+          "None": 2
+        }
+      }
+    },
+    {
+      "id": "eeb4792e-3b0f-45f9-a92e-09deb0cecace",
+      "name": "SAP ERP",
+      "description": "",
+      "systemType": "Unknown",
+      "assignmentCount": 38,
+      "accountCount": 38,
+      "identityCount": 38,
+      "compliance": {
+        "total": 38,
+        "compliant": 38,
+        "nonCompliant": 0,
+        "pending": 0,
+        "complianceRate": 100,
+        "byStatus": {
+          "Implicitly Approved": 38
+        }
+      }
+    },
+    {
+      "id": "b47870b9-c5d0-4bf6-9668-1644694a838b",
+      "name": "Trading System",
+      "description": "",
+      "systemType": "Unknown",
+      "assignmentCount": 32,
+      "accountCount": 31,
+      "identityCount": 31,
+      "compliance": {
+        "total": 32,
+        "compliant": 20,
+        "nonCompliant": 12,
+        "pending": 0,
+        "complianceRate": 63,
+        "byStatus": {
+          "In Violation": 5,
+          "Implicitly Assigned": 7,
+          "Implicitly Approved": 20
+        }
+      }
+    },
+    {
+      "id": "3efe188a-9048-4845-99e2-0c82464cd0fe",
+      "name": "Salesforce",
+      "description": "",
+      "systemType": "Unknown",
+      "assignmentCount": 31,
+      "accountCount": 14,
+      "identityCount": 14,
+      "compliance": {
+        "total": 31,
+        "compliant": 31,
+        "nonCompliant": 0,
+        "pending": 0,
+        "complianceRate": 100,
+        "byStatus": {
+          "Explicitly Approved": 5,
+          "Implicitly Approved": 26
+        }
+      }
+    },
+    {
+      "id": "87c5fbf5-fade-4707-a50c-2afa0e092852",
+      "name": "Legacy",
+      "description": "",
+      "systemType": "Unknown",
+      "assignmentCount": 14,
+      "accountCount": 12,
+      "identityCount": 3,
+      "compliance": {
+        "total": 14,
+        "compliant": 4,
+        "nonCompliant": 10,
+        "pending": 0,
+        "complianceRate": 29,
+        "byStatus": {
+          "Not Approved": 2,
+          "Orphan Assignment": 10,
+          "Explicitly Approved": 2
+        }
+      }
+    },
+    {
+      "id": "958af681-9811-4f53-b6e1-8a6ac3c99661",
+      "name": "Time Management",
+      "description": "",
+      "systemType": "Unknown",
+      "assignmentCount": 6,
+      "accountCount": 5,
+      "identityCount": 5,
+      "compliance": {
+        "total": 6,
+        "compliant": 6,
+        "nonCompliant": 0,
+        "pending": 0,
+        "complianceRate": 100,
+        "byStatus": {
+          "Explicitly Approved": 6
+        }
+      }
+    },
+    {
+      "id": "3eb7037b-f7ec-4fd3-ab44-1a2b0292b507",
+      "name": "Finance System",
+      "description": "",
+      "systemType": "Unknown",
+      "assignmentCount": 3,
+      "accountCount": 2,
+      "identityCount": 2,
+      "compliance": {
+        "total": 3,
+        "compliant": 3,
+        "nonCompliant": 0,
+        "pending": 0,
+        "complianceRate": 100,
+        "byStatus": {
+          "Explicitly Approved": 3
+        }
+      }
+    },
+    {
+      "id": "56b6b6b5-f565-420e-b48a-305a919c51b5",
+      "name": "Global Banking Group HR System",
+      "description": "HR source.",
+      "systemType": "Unknown",
+      "assignmentCount": 0,
+      "accountCount": 0,
+      "identityCount": 0,
+      "compliance": {
+        "total": 0,
+        "compliant": 0,
+        "nonCompliant": 0,
+        "pending": 0,
+        "complianceRate": 0,
+        "byStatus": {}
+      }
+    },
+    {
+      "id": "766702d6-2983-473b-819a-91e8d928d377",
+      "name": "Global Warehose Group HR System",
+      "description": "",
+      "systemType": "Unknown",
+      "assignmentCount": 0,
+      "accountCount": 0,
+      "identityCount": 0,
+      "compliance": {
+        "total": 0,
+        "compliant": 0,
+        "nonCompliant": 0,
+        "pending": 0,
+        "complianceRate": 0,
+        "byStatus": {}
+      }
+    },
+    {
+      "id": "fdbc4a9b-98cc-444d-b152-cd026cfd2b68",
+      "name": "SAP SuccessFactors",
+      "description": "",
+      "systemType": "Unknown",
+      "assignmentCount": 0,
+      "accountCount": 0,
+      "identityCount": 0,
+      "compliance": {
+        "total": 0,
+        "compliant": 0,
+        "nonCompliant": 0,
+        "pending": 0,
+        "complianceRate": 0,
+        "byStatus": {}
+      }
+    },
+    {
+      "id": "44da2346-d2e0-475c-8466-f3843ba944e7",
+      "name": "SAP HCM",
+      "description": "",
+      "systemType": "Unknown",
+      "assignmentCount": 0,
+      "accountCount": 0,
+      "identityCount": 0,
+      "compliance": {
+        "total": 0,
+        "compliant": 0,
+        "nonCompliant": 0,
+        "pending": 0,
+        "complianceRate": 0,
+        "byStatus": {}
+      }
+    },
+    {
+      "id": "784118c6-9aeb-4204-a3ee-7b3405fe5ee6",
+      "name": "Azure AD connectivity.com",
+      "description": "",
+      "systemType": "Unknown",
+      "assignmentCount": 0,
+      "accountCount": 0,
+      "identityCount": 0,
+      "compliance": {
+        "total": 0,
+        "compliant": 0,
+        "nonCompliant": 0,
+        "pending": 0,
+        "complianceRate": 0,
+        "byStatus": {}
+      }
+    },
+    {
+      "id": "b9a3b93b-fee0-4a8a-9eee-b42598bbd27a",
+      "name": "MijnCaress",
+      "description": "",
+      "systemType": "Unknown",
+      "assignmentCount": 0,
+      "accountCount": 0,
+      "identityCount": 0,
+      "compliance": {
+        "total": 0,
+        "compliant": 0,
+        "nonCompliant": 0,
+        "pending": 0,
+        "complianceRate": 0,
+        "byStatus": {}
+      }
+    },
+    {
+      "id": "7acd8f91-abde-4ea7-83cd-5161b6101aee",
+      "name": "Entrust",
+      "description": "",
+      "systemType": "Unknown",
+      "assignmentCount": 0,
+      "accountCount": 0,
+      "identityCount": 0,
+      "compliance": {
+        "total": 0,
+        "compliant": 0,
+        "nonCompliant": 0,
+        "pending": 0,
+        "complianceRate": 0,
+        "byStatus": {}
+      }
+    },
+    {
+      "id": "0733a16f-0493-4bf8-af44-1d6fa55b953a",
+      "name": "Slack",
+      "description": "",
+      "systemType": "Unknown",
+      "assignmentCount": 0,
+      "accountCount": 0,
+      "identityCount": 0,
+      "compliance": {
+        "total": 0,
+        "compliant": 0,
+        "nonCompliant": 0,
+        "pending": 0,
+        "complianceRate": 0,
+        "byStatus": {}
+      }
+    },
+    {
+      "id": "d87f3fcc-08d6-4f64-9c55-ba77bf27a619",
+      "name": "Okta",
+      "description": "",
+      "systemType": "Unknown",
+      "assignmentCount": 0,
+      "accountCount": 0,
+      "identityCount": 0,
+      "compliance": {
+        "total": 0,
+        "compliant": 0,
+        "nonCompliant": 0,
+        "pending": 0,
+        "complianceRate": 0,
+        "byStatus": {}
+      }
+    },
+    {
+      "id": "f32e44c9-6c00-4fe3-8f2c-fa5a16873dd1",
+      "name": "Amazon Web Services",
+      "description": "",
+      "systemType": "Unknown",
+      "assignmentCount": 0,
+      "accountCount": 0,
+      "identityCount": 0,
+      "compliance": {
+        "total": 0,
+        "compliant": 0,
+        "nonCompliant": 0,
+        "pending": 0,
+        "complianceRate": 0,
+        "byStatus": {}
+      }
+    },
+    {
+      "id": "cd8e8ffe-f787-4984-aefb-a297a9d92dc9",
+      "name": "Google Workspace",
+      "description": "",
+      "systemType": "Unknown",
+      "assignmentCount": 0,
+      "accountCount": 0,
+      "identityCount": 0,
+      "compliance": {
+        "total": 0,
+        "compliant": 0,
+        "nonCompliant": 0,
+        "pending": 0,
+        "complianceRate": 0,
+        "byStatus": {}
+      }
+    },
+    {
+      "id": "92e01e29-0318-4158-a5c8-1a516f703120",
+      "name": "HCM",
+      "description": "",
+      "systemType": "Unknown",
+      "assignmentCount": 0,
+      "accountCount": 0,
+      "identityCount": 0,
+      "compliance": {
+        "total": 0,
+        "compliant": 0,
+        "nonCompliant": 0,
+        "pending": 0,
+        "complianceRate": 0,
+        "byStatus": {}
+      }
+    },
+    {
+      "id": "4e7f27cb-a1fa-4097-ad36-233ddb97f54e",
+      "name": "SAP GRC",
+      "description": "",
+      "systemType": "Unknown",
+      "assignmentCount": 0,
+      "accountCount": 0,
+      "identityCount": 0,
+      "compliance": {
+        "total": 0,
+        "compliant": 0,
+        "nonCompliant": 0,
+        "pending": 0,
+        "complianceRate": 0,
+        "byStatus": {}
+      }
+    },
+    {
+      "id": "f3c09332-454b-423f-b76e-a4dc2d456a76",
+      "name": "Point Of Sale",
+      "description": "PoS system",
+      "systemType": "Unknown",
+      "assignmentCount": 0,
+      "accountCount": 0,
+      "identityCount": 0,
+      "compliance": {
+        "total": 0,
+        "compliant": 0,
+        "nonCompliant": 0,
+        "pending": 0,
+        "complianceRate": 0,
+        "byStatus": {}
+      }
+    },
+    {
+      "id": "7b7db069-eb67-4494-92ac-8dde054c6c0e",
+      "name": "GWG Purchasing",
+      "description": "Purchasing application for Global Warehouse Group",
+      "systemType": "Unknown",
+      "assignmentCount": 0,
+      "accountCount": 0,
+      "identityCount": 0,
+      "compliance": {
+        "total": 0,
+        "compliant": 0,
+        "nonCompliant": 0,
+        "pending": 0,
+        "complianceRate": 0,
+        "byStatus": {}
+      }
+    },
+    {
+      "id": "9d62ea25-ebe6-461a-beb6-2493d0bb7607",
+      "name": "Azure AD online.com",
+      "description": "",
+      "systemType": "Unknown",
+      "assignmentCount": 0,
+      "accountCount": 0,
+      "identityCount": 0,
+      "compliance": {
+        "total": 0,
+        "compliant": 0,
+        "nonCompliant": 0,
+        "pending": 0,
+        "complianceRate": 0,
+        "byStatus": {}
+      }
+    }
+  ]
+}

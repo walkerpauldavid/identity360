@@ -6,6 +6,7 @@
 
 import { useState, useMemo } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import { usePreferences } from '../../contexts/PreferencesContext';
 import { useGetIdentityCategoryCounts, useGetIdentitiesByCategoryId } from '../../hooks/useOmadaApi';
 import CategoryAccordion from './CategoryAccordion';
 import './IdentitiesList.css';
@@ -68,8 +69,10 @@ const CategoryAccordionWrapper = ({ category, bearerToken, impersonateUser, sele
 
 const IdentitiesList = () => {
   const { getBearerToken, user } = useAuth();
+  const { preferences } = usePreferences();
   const bearerToken = getBearerToken();
   const impersonateUser = user?.email;
+  const currentTheme = preferences.theme || 'light';
 
   // Track selected filters
   const [selectedStatuses, setSelectedStatuses] = useState([]);
@@ -116,7 +119,7 @@ const IdentitiesList = () => {
 
   if (isLoading) {
     return (
-      <div className="identities-list-page">
+      <div className={`identities-list-page theme-${currentTheme}`}>
         <div className="loading-container">
           <div className="spinner"></div>
           <p>Loading category counts...</p>
@@ -127,7 +130,7 @@ const IdentitiesList = () => {
 
   if (error) {
     return (
-      <div className="identities-list-page">
+      <div className={`identities-list-page theme-${currentTheme}`}>
         <div className="error-container">
           <h2>Error Loading Identities</h2>
           <p>{error.message || 'Failed to load identity counts'}</p>
@@ -145,7 +148,7 @@ const IdentitiesList = () => {
     .sort((a, b) => a.name.localeCompare(b.name));
 
   return (
-    <div className="identities-list-page">
+    <div className={`identities-list-page theme-${currentTheme}`}>
       {/* Stats Bar */}
       <div className="identities-stats-bar">
         <div className="total-count">

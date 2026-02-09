@@ -4,11 +4,18 @@
  */
 
 .compliance-status-heatmap {
-  background: #1e1e1e;
+  background: var(--dash-bg-primary, #1e1e1e);
   border-radius: 12px;
   padding: 20px;
   margin-bottom: 24px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* Light theme - Omada brand styling */
+.theme-light .compliance-status-heatmap {
+  background: #ffffff;
+  border: 2px solid #012839;
+  box-shadow: 0 2px 8px rgba(1, 40, 57, 0.1);
 }
 
 /* Header */
@@ -30,14 +37,14 @@
   margin: 0;
   font-size: 1.3rem;
   font-weight: 600;
-  color: #e0e0e0;
+  color: var(--dash-text-primary, #e0e0e0);
 }
 
 .status-heatmap-header .header-subtitle {
   display: block;
   margin-top: 4px;
   font-size: 0.85rem;
-  color: #888;
+  color: var(--dash-text-muted, #888);
 }
 
 .status-heatmap-header .header-stats {
@@ -56,12 +63,12 @@
 .status-heatmap-header .header-stat .stat-value {
   font-size: 1.4rem;
   font-weight: 700;
-  color: #e0e0e0;
+  color: var(--dash-text-primary, #e0e0e0);
 }
 
 .status-heatmap-header .header-stat .stat-label {
   font-size: 0.75rem;
-  color: #888;
+  color: var(--dash-text-muted, #888);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -75,7 +82,7 @@
 }
 
 .status-heatmap-header .header-stat.highlight {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--dash-bg-secondary, rgba(255, 255, 255, 0.05));
   padding: 8px 12px;
   border-radius: 8px;
 }
@@ -84,9 +91,9 @@
 .system-filter-section {
   margin-bottom: 16px;
   padding: 12px;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--dash-bg-secondary, rgba(255, 255, 255, 0.03));
   border-radius: 8px;
-  border: 1px solid #333;
+  border: 1px solid var(--dash-border-color, #333);
 }
 
 .system-filter-header {
@@ -98,7 +105,7 @@
 
 .system-filter-header .filter-label {
   font-size: 0.85rem;
-  color: #aaa;
+  color: var(--dash-text-secondary, #aaa);
   font-weight: 500;
 }
 
@@ -109,8 +116,8 @@
 
 .filter-action-btn {
   background: transparent;
-  border: 1px solid #555;
-  color: #888;
+  border: 1px solid var(--dash-border-light, #555);
+  color: var(--dash-text-muted, #888);
   padding: 4px 10px;
   border-radius: 4px;
   font-size: 0.75rem;

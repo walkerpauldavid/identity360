@@ -20,9 +20,12 @@ import './Dashboard.css';
 const Dashboard = () => {
   const navigate = useNavigate();
   const { getBearerToken, user } = useAuth();
-  const { getPreference, setPreference } = usePreferences();
+  const { getPreference, setPreference, preferences } = usePreferences();
   const bearerToken = getBearerToken();
   const impersonateUser = user?.email;
+
+  // Get current theme
+  const currentTheme = preferences.theme || 'light';
 
   // Configure drag sensors with distance threshold
   // This allows clicks to work normally, while drag only activates after moving 8px
@@ -225,32 +228,32 @@ const Dashboard = () => {
           error: identityError,
           onClick: () => navigate('/identities'),
           subtitle: (
-            <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: '#b0b0b0', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <div className="tile-subtitle-content">
+              <div className="tile-stat-row">
                 <span>Recent Joiners:</span>
-                <span style={{ color: '#4caf50', fontWeight: '600' }}>{taskCounts.identities.recentJoiners}</span>
+                <span className="stat-value stat-green">{taskCounts.identities.recentJoiners}</span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <div className="tile-stat-row">
                 <span>Scheduled Joiners:</span>
-                <span style={{ color: '#8bc34a', fontWeight: '600' }}>{taskCounts.identities.scheduledJoiners}</span>
+                <span className="stat-value stat-green-light">{taskCounts.identities.scheduledJoiners}</span>
               </div>
-              <div style={{ marginTop: '0.3rem', paddingTop: '0.3rem', borderTop: '1px solid #2a2a2a' }} />
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <div className="tile-divider" />
+              <div className="tile-stat-row">
                 <span>Current Movers:</span>
-                <span style={{ color: '#ff9800', fontWeight: '600' }}>{taskCounts.identities.currentMovers}</span>
+                <span className="stat-value stat-orange">{taskCounts.identities.currentMovers}</span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <div className="tile-stat-row">
                 <span>Scheduled Movers:</span>
-                <span style={{ color: '#ffc107', fontWeight: '600' }}>{taskCounts.identities.scheduledMovers}</span>
+                <span className="stat-value stat-yellow">{taskCounts.identities.scheduledMovers}</span>
               </div>
-              <div style={{ marginTop: '0.3rem', paddingTop: '0.3rem', borderTop: '1px solid #2a2a2a' }} />
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <div className="tile-divider" />
+              <div className="tile-stat-row">
                 <span>Scheduled Leavers:</span>
-                <span style={{ color: '#f44336', fontWeight: '600' }}>{taskCounts.identities.scheduledLeavers}</span>
+                <span className="stat-value stat-red">{taskCounts.identities.scheduledLeavers}</span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <div className="tile-stat-row">
                 <span>Recent Leavers:</span>
-                <span style={{ color: '#e91e63', fontWeight: '600' }}>{taskCounts.identities.recentLeavers}</span>
+                <span className="stat-value stat-pink">{taskCounts.identities.recentLeavers}</span>
               </div>
             </div>
           )
@@ -264,18 +267,18 @@ const Dashboard = () => {
           loading: false,
           onClick: () => navigate('/my-team'),
           subtitle: (
-            <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: '#b0b0b0', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <div className="tile-subtitle-content">
+              <div className="tile-stat-row">
                 <span>Compliant Access:</span>
-                <span style={{ color: taskCounts.myTeam.compliantAccess >= 90 ? '#4caf50' : taskCounts.myTeam.compliantAccess >= 75 ? '#ff9800' : '#f44336', fontWeight: '600' }}>{taskCounts.myTeam.compliantAccess}%</span>
+                <span className={`stat-value ${taskCounts.myTeam.compliantAccess >= 90 ? 'stat-green' : taskCounts.myTeam.compliantAccess >= 75 ? 'stat-orange' : 'stat-red'}`}>{taskCounts.myTeam.compliantAccess}%</span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <div className="tile-stat-row">
                 <span>Policy Assigned Access:</span>
-                <span style={{ color: taskCounts.myTeam.policyAssignedAccess >= 90 ? '#4caf50' : taskCounts.myTeam.policyAssignedAccess >= 75 ? '#ff9800' : '#f44336', fontWeight: '600' }}>{taskCounts.myTeam.policyAssignedAccess}%</span>
+                <span className={`stat-value ${taskCounts.myTeam.policyAssignedAccess >= 90 ? 'stat-green' : taskCounts.myTeam.policyAssignedAccess >= 75 ? 'stat-orange' : 'stat-red'}`}>{taskCounts.myTeam.policyAssignedAccess}%</span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <div className="tile-stat-row">
                 <span>Review Coverage:</span>
-                <span style={{ color: taskCounts.myTeam.reviewCoverage >= 90 ? '#4caf50' : taskCounts.myTeam.reviewCoverage >= 75 ? '#ff9800' : '#f44336', fontWeight: '600' }}>{taskCounts.myTeam.reviewCoverage}%</span>
+                <span className={`stat-value ${taskCounts.myTeam.reviewCoverage >= 90 ? 'stat-green' : taskCounts.myTeam.reviewCoverage >= 75 ? 'stat-orange' : 'stat-red'}`}>{taskCounts.myTeam.reviewCoverage}%</span>
               </div>
             </div>
           )
@@ -289,18 +292,18 @@ const Dashboard = () => {
           loading: accessRequestsLoading,
           onClick: () => navigate('/access-requests'),
           subtitle: (
-            <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: '#b0b0b0', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <div className="tile-subtitle-content">
+              <div className="tile-stat-row">
                 <span>Requests for Others:</span>
-                <span style={{ color: '#4caf50', fontWeight: '600' }}>{taskCounts.accessRequests.forOthers}</span>
+                <span className="stat-value stat-green">{taskCounts.accessRequests.forOthers}</span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <div className="tile-stat-row">
                 <span>Requests for Me:</span>
-                <span style={{ color: '#ff9800', fontWeight: '600' }}>{taskCounts.accessRequests.forMe}</span>
+                <span className="stat-value stat-orange">{taskCounts.accessRequests.forMe}</span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <div className="tile-stat-row">
                 <span>Requests I Made:</span>
-                <span style={{ color: '#88c0d0', fontWeight: '600' }}>{taskCounts.accessRequests.iMade}</span>
+                <span className="stat-value stat-teal">{taskCounts.accessRequests.iMade}</span>
               </div>
             </div>
           )
@@ -313,14 +316,14 @@ const Dashboard = () => {
           value: totalApprovals,
           loading: false,
           subtitle: (
-            <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: '#b0b0b0', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <div className="tile-subtitle-content">
+              <div className="tile-stat-row">
                 <span>New:</span>
-                <span style={{ color: '#ff9800', fontWeight: '600' }}>{taskCounts.approvals.new}</span>
+                <span className="stat-value stat-orange">{taskCounts.approvals.new}</span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <div className="tile-stat-row">
                 <span>Existing:</span>
-                <span style={{ color: '#88c0d0', fontWeight: '600' }}>{taskCounts.approvals.existing}</span>
+                <span className="stat-value stat-teal">{taskCounts.approvals.existing}</span>
               </div>
             </div>
           )
@@ -333,27 +336,27 @@ const Dashboard = () => {
           value: totalReviews,
           loading: false,
           subtitle: (
-            <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: '#b0b0b0', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <div className="tile-subtitle-content">
+              <div className="tile-stat-row">
                 <span>New:</span>
-                <span style={{ color: '#ff9800', fontWeight: '600' }}>{taskCounts.reviews.new}</span>
+                <span className="stat-value stat-orange">{taskCounts.reviews.new}</span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <div className="tile-stat-row">
                 <span>Existing:</span>
-                <span style={{ color: '#88c0d0', fontWeight: '600' }}>{taskCounts.reviews.existing}</span>
+                <span className="stat-value stat-teal">{taskCounts.reviews.existing}</span>
               </div>
-              <div style={{ marginTop: '0.3rem', paddingTop: '0.3rem', borderTop: '1px solid #2a2a2a' }} />
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <div className="tile-divider" />
+              <div className="tile-stat-row">
                 <span>Late:</span>
-                <span style={{ color: '#f44336', fontWeight: '600' }}>{taskCounts.reviews.late}</span>
+                <span className="stat-value stat-red">{taskCounts.reviews.late}</span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <div className="tile-stat-row">
                 <span>Scheduled:</span>
-                <span style={{ color: '#4caf50', fontWeight: '600' }}>{taskCounts.reviews.scheduled}</span>
+                <span className="stat-value stat-green">{taskCounts.reviews.scheduled}</span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <div className="tile-stat-row">
                 <span>JIT:</span>
-                <span style={{ color: '#9c27b0', fontWeight: '600' }}>{taskCounts.reviews.jit}</span>
+                <span className="stat-value stat-purple">{taskCounts.reviews.jit}</span>
               </div>
             </div>
           )
@@ -366,14 +369,14 @@ const Dashboard = () => {
           value: totalOther,
           loading: false,
           subtitle: (
-            <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: '#b0b0b0', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <div className="tile-subtitle-content">
+              <div className="tile-stat-row">
                 <span>New:</span>
-                <span style={{ color: '#ff9800', fontWeight: '600' }}>{taskCounts.other.new}</span>
+                <span className="stat-value stat-orange">{taskCounts.other.new}</span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <div className="tile-stat-row">
                 <span>Existing:</span>
-                <span style={{ color: '#88c0d0', fontWeight: '600' }}>{taskCounts.other.existing}</span>
+                <span className="stat-value stat-teal">{taskCounts.other.existing}</span>
               </div>
             </div>
           )
@@ -385,7 +388,7 @@ const Dashboard = () => {
   };
 
   return (
-    <div className="dashboard">
+    <div className={`dashboard theme-${currentTheme}`}>
       <div className="dashboard-controls">
         <button className="toggle-all-btn" onClick={toggleAll} title={allExpanded ? 'Collapse All' : 'Expand All'}>
           <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">

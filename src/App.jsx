@@ -1,6 +1,7 @@
 ﻿import { useState, useEffect, lazy, Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './contexts/AuthContext'
+import { usePreferences } from './contexts/PreferencesContext'
 import Login from './components/auth/Login'
 import Callback from './components/auth/Callback'
 import Navbar from './components/layout/Navbar'
@@ -21,8 +22,11 @@ const AgentChat = lazy(() => import('./components/dashboard/AgentChat'))
 
 // Layout wrapper for protected routes
 const ProtectedLayout = ({ children, title }) => {
+  const { preferences } = usePreferences();
+  const currentTheme = preferences.theme || 'light';
+
   return (
-    <div className="app-container">
+    <div className={`app-container theme-${currentTheme}`}>
       <Navbar title={title} />
       <Breadcrumbs />
       <div className="main-content">

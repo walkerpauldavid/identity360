@@ -3087,3 +3087,26 @@
     width: 100%;
   }
 }
+
+/* ============================================
+   LIGHT THEME OVERRIDES
+   ============================================ */
+
+/* Canvas - white background instead of gradient */
+.theme-light .access-lens-canvas {
+  background: #ffffff;
+}
+
+/* Scrollbar for light theme */
+.theme-light .canvas-scroll-container::-webkit-scrollbar-track {
+  background: #f0f3f4;
+}
+
+.theme-light .canvas-scroll-container::-webkit-scrollbar-thumb {
+  background: #c4ccde;
+  border: 2px solid #f0f3f4;
+}
+
+.theme-light .canvas-scroll-container::-webkit-scrollbar-thumb:hover {
+  background: #a0a8b8;
+}

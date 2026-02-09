@@ -7,6 +7,11 @@
   box-sizing: border-box;
 }
 
+/* Light theme root background */
+#root:has(.theme-light) {
+  background: #e2e6ef;
+}
+
 .app-container {
   display: flex;
   flex-direction: column;
@@ -16,6 +21,11 @@
   box-sizing: border-box;
   background: #000000;
   width: 100%;
+}
+
+/* Light theme app container - Omada style */
+.app-container.theme-light {
+  background: #e2e6ef;
 }
 
 .page-title-inline {
@@ -106,6 +116,45 @@
   font-weight: 500;
 }
 
+/* Light theme header buttons */
+.theme-light .header-nav-button {
+  border: 1px solid #e7eaf2;
+  color: #32445b;
+}
+
+.theme-light .header-nav-button:hover {
+  background: rgba(88, 193, 161, 0.1);
+  border-color: #58c1a1;
+  color: #1e7c88;
+}
+
+.theme-light .header-nav-button.active {
+  background: rgba(88, 193, 161, 0.15);
+  border-color: #58c1a1;
+  color: #1e7c88;
+}
+
+/* Light theme page title */
+.theme-light .page-title-inline {
+  color: #32445b;
+}
+
+/* Light theme user section */
+.theme-light .user-email-header {
+  color: #5a6b7d;
+}
+
+.theme-light .logout-icon-button {
+  border: 1px solid #e7eaf2;
+  color: #5a6b7d;
+}
+
+.theme-light .logout-icon-button:hover {
+  background: rgba(244, 67, 54, 0.1);
+  border-color: #f44;
+  color: #f44;
+}
+
 .datetime-frame {
   padding: 1rem;
   background: #1a1a1a;
@@ -114,6 +163,19 @@
   box-sizing: border-box;
   display: flex;
   border-radius: 0;
+}
+
+/* Light theme datetime frame */
+.theme-light .datetime-frame {
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border-bottom: 1px solid #e7eaf2;
+}
+
+.theme-light .datetime-value {
+  color: #32445b;
+  background: rgba(88, 193, 161, 0.1);
+  border-left: 3px solid #58c1a1;
 }
 
 .datetime-content {

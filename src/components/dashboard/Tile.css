@@ -1,21 +1,61 @@
+/* Tile inherits theme variables from .dashboard parent */
 .tile {
-  background: #1a1a1a;
+  background: var(--dash-bg-primary, #1a1a1a);
   border-radius: 8px;
   padding: 1rem;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   transition: all 0.3s ease;
   cursor: pointer;
   display: flex;
   flex-direction: column;
   min-height: 150px;
-  border: 1px solid rgba(100, 108, 255, 0.2);
+  border: 1px solid var(--dash-border-color, rgba(100, 108, 255, 0.2));
   box-sizing: border-box;
 }
 
+/* Light theme tile - Omada brand styling */
+.theme-light .tile {
+  background: #ffffff;
+  border: 2px solid #012839;
+  box-shadow: 0 2px 8px rgba(1, 40, 57, 0.1);
+}
+
+.theme-light .tile:hover {
+  border-color: #1e7c88;
+  box-shadow: 0 4px 16px rgba(30, 124, 136, 0.18);
+}
+
+/* Light theme tile text colors */
+.theme-light .tile-title {
+  color: #32445b;
+}
+
+.theme-light .tile-value {
+  color: #1e7c88;
+}
+
+.theme-light .tile-subtitle-content {
+  color: #323232;
+}
+
+.theme-light .tile-toggle,
+.theme-light .tile-remove {
+  color: rgba(90, 100, 118, 0.6);
+}
+
+.theme-light .tile-toggle:hover {
+  color: #1e7c88;
+  background: rgba(88, 193, 161, 0.1);
+}
+
 .tile:hover {
-  box-shadow: 0 4px 16px rgba(100, 108, 255, 0.3);
+  box-shadow: 0 4px 16px rgba(30, 124, 136, 0.2);
   transform: translateY(-2px);
-  border-color: rgba(100, 108, 255, 0.4);
+  border-color: var(--dash-accent, rgba(100, 108, 255, 0.4));
+}
+
+.theme-light .tile:hover {
+  box-shadow: 0 4px 16px rgba(30, 124, 136, 0.15);
 }
 
 .tile-header {
@@ -28,7 +68,7 @@
 .tile-title {
   margin: 0;
   font-size: 0.75rem;
-  color: #a0a0b0;
+  color: var(--dash-text-secondary, #a0a0b0);
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -43,7 +83,7 @@
 .tile-toggle {
   background: transparent;
   border: none;
-  color: #606070;
+  color: var(--dash-text-muted, #606070);
   cursor: pointer;
   padding: 2px;
   display: flex;
@@ -54,14 +94,14 @@
 }
 
 .tile-toggle:hover {
-  color: #88c0d0;
-  background: rgba(136, 192, 208, 0.1);
+  color: var(--dash-accent, #88c0d0);
+  background: var(--dash-accent-hover, rgba(136, 192, 208, 0.1));
 }
 
 .tile-remove {
   background: transparent;
   border: none;
-  color: #606070;
+  color: var(--dash-text-muted, #606070);
   cursor: pointer;
   padding: 4px;
   display: flex;
@@ -117,7 +157,7 @@
 .tile-value {
   font-size: clamp(1.5rem, 4vw, 2.5rem);
   font-weight: bold;
-  color: #88c0d0;
+  color: var(--dash-accent, #88c0d0);
   line-height: 1;
 }
 
@@ -128,8 +168,8 @@
 }
 
 .spinner-small {
-  border: 3px solid #f3f3f3;
-  border-top: 3px solid #88c0d0;
+  border: 3px solid var(--dash-border-color, #f3f3f3);
+  border-top: 3px solid var(--dash-accent, #88c0d0);
   border-radius: 50%;
   width: 30px;
   height: 30px;
@@ -145,3 +185,42 @@
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
 }
+
+/* Tile Subtitle Content Styles */
+.tile-subtitle-content {
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--dash-text-secondary, #b0b0b0);
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.tile-stat-row {
+  display: flex;
+  justify-content: space-between;
+}
+
+.tile-divider {
+  margin-top: 0.3rem;
+  padding-top: 0.3rem;
+  border-top: 1px solid var(--dash-divider, #2a2a2a);
+}
+
+/* Stat value colors - work in both themes */
+.stat-value {
+  font-weight: 600;
+}
+
+.stat-green { color: #4caf50; }
+.stat-green-light { color: #8bc34a; }
+.stat-orange { color: #ff9800; }
+.stat-yellow { color: #ffc107; }
+.stat-red { color: #f44336; }
+.stat-pink { color: #e91e63; }
+.stat-purple { color: #9c27b0; }
+.stat-teal { color: var(--dash-accent, #88c0d0); }
+
+/* Adjust some colors for light theme for better contrast */
+.theme-light .stat-yellow { color: #f59e0b; }
+.theme-light .stat-green-light { color: #65a30d; }

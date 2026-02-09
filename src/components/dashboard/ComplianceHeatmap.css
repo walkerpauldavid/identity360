@@ -5,8 +5,8 @@
  */
 
 .compliance-heatmap {
-  background: #1a1a1a;
-  border: 1px solid rgba(100, 108, 255, 0.2);
+  background: var(--dash-bg-primary, #1a1a1a);
+  border: 1px solid var(--dash-border-color, rgba(100, 108, 255, 0.2));
   border-radius: 12px;
   padding: 1.5rem;
   margin-top: 1.5rem;
@@ -25,14 +25,14 @@
 }
 
 .header-left h2 {
-  color: #e0e0e0;
+  color: var(--dash-text-primary, #e0e0e0);
   font-size: 1.5rem;
   font-weight: 600;
   margin: 0 0 0.25rem 0;
 }
 
 .header-subtitle {
-  color: #808090;
+  color: var(--dash-text-muted, #808090);
   font-size: 0.9rem;
 }
 
@@ -47,32 +47,32 @@
   flex-direction: column;
   align-items: center;
   padding: 0.5rem 0.75rem;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--dash-bg-secondary, rgba(255, 255, 255, 0.03));
   border-radius: 8px;
 }
 
 .header-stat .stat-value {
   font-size: 1.5rem;
   font-weight: 600;
-  color: #88c0d0;
+  color: var(--dash-accent, #88c0d0);
 }
 
 .header-stat .stat-label {
   font-size: 0.8rem;
-  color: #808090;
+  color: var(--dash-text-muted, #808090);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
 .header-stat.highlight {
-  background: rgba(100, 108, 255, 0.1);
-  border: 1px solid rgba(100, 108, 255, 0.2);
+  background: var(--dash-accent-hover, rgba(100, 108, 255, 0.1));
+  border: 1px solid var(--dash-border-color, rgba(100, 108, 255, 0.2));
 }
 
 .refresh-btn {
-  background: rgba(100, 108, 255, 0.1);
-  border: 1px solid rgba(100, 108, 255, 0.3);
-  color: #88c0d0;
+  background: var(--dash-accent-hover, rgba(100, 108, 255, 0.1));
+  border: 1px solid var(--dash-border-color, rgba(100, 108, 255, 0.3));
+  color: var(--dash-accent, #88c0d0);
   width: 36px;
   height: 36px;
   border-radius: 8px;
@@ -85,14 +85,14 @@
 }
 
 .refresh-btn:hover {
-  background: rgba(100, 108, 255, 0.2);
+  background: var(--dash-accent-hover, rgba(100, 108, 255, 0.2));
   transform: rotate(180deg);
 }
 
 /* Filters */
 .heatmap-filters {
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(100, 108, 255, 0.15);
+  background: var(--dash-bg-secondary, rgba(255, 255, 255, 0.02));
+  border: 1px solid var(--dash-border-color, rgba(100, 108, 255, 0.15));
   border-radius: 8px;
   padding: 0.75rem 1rem;
   margin-bottom: 1rem;
@@ -766,4 +766,32 @@
   .detail-stat.highlight {
     grid-column: span 1;
   }
+}
+
+/* Light theme - Omada brand styling */
+.theme-light .compliance-heatmap {
+  background: #ffffff;
+  border: 2px solid #012839;
+  box-shadow: 0 2px 8px rgba(1, 40, 57, 0.1);
+}
+
+.theme-light .filter-label {
+  color: #32445b;
+}
+
+.theme-light .filter-chip {
+  background: rgba(88, 193, 161, 0.08);
+  border: 1px solid #e7eaf2;
+  color: #32445b;
+}
+
+.theme-light .filter-chip:hover {
+  border-color: #58c1a1;
+  background: rgba(88, 193, 161, 0.15);
+}
+
+.theme-light .filter-chip.active {
+  background: #58c1a1;
+  border-color: #58c1a1;
+  color: #ffffff;
 }

@@ -10,6 +10,13 @@
   z-index: 1100; /* Higher than identity detail panel (1001) and its backdrop (1000) */
 }
 
+/* Light theme navbar - Omada style */
+.theme-light .navbar {
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border-bottom: 1px solid #e7eaf2;
+}
+
 .navbar-content {
   display: flex;
   flex-direction: row;
@@ -36,6 +43,11 @@
   opacity: 0.8;
 }
 
+/* Light theme logo - invert colors so it's visible on white background */
+.theme-light .navbar-logo {
+  filter: invert(1) hue-rotate(180deg);
+}
+
 .navbar-back-btn {
   display: flex;
   align-items: center;
@@ -55,12 +67,30 @@
   color: #88c0d0;
 }
 
+/* Light theme back button */
+.theme-light .navbar-back-btn {
+  background: rgba(88, 193, 161, 0.1);
+  border: 1px solid #e7eaf2;
+  color: #32445b;
+}
+
+.theme-light .navbar-back-btn:hover {
+  background: rgba(88, 193, 161, 0.2);
+  border-color: #58c1a1;
+  color: #1e7c88;
+}
+
 .navbar-title {
   margin: 0;
   font-size: 1rem;
   color: #fff;
   font-weight: 500;
   white-space: nowrap;
+}
+
+/* Light theme navbar title */
+.theme-light .navbar-title {
+  color: #32445b;
 }
 
 .welcome-cycling {
@@ -119,6 +149,24 @@
   color: #88c0d0;
 }
 
+/* Light theme navbar buttons */
+.theme-light .navbar-icon-btn {
+  border: 1px solid #e7eaf2;
+  color: #5a6b7d;
+}
+
+.theme-light .navbar-icon-btn:hover {
+  background: rgba(88, 193, 161, 0.1);
+  border-color: #58c1a1;
+  color: #1e7c88;
+}
+
+.theme-light .navbar-icon-btn.active {
+  background: rgba(88, 193, 161, 0.15);
+  border-color: #58c1a1;
+  color: #1e7c88;
+}
+
 .navbar-icon-btn.logout:hover {
   background: rgba(255, 68, 68, 0.1);
   border-color: #f44;
@@ -144,6 +192,15 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Light theme divider and user email */
+.theme-light .navbar-divider {
+  background: #e7eaf2;
+}
+
+.theme-light .navbar-user-email {
+  color: #5a6b7d;
 }
 
 /* Responsive adjustments */
