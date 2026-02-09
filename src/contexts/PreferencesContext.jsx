@@ -18,7 +18,7 @@ const DEFAULT_PREFERENCES = {
   lastIdentityRiskLevelFilters: [],
 
   // UI preferences
-  theme: 'dark',
+  theme: 'light',  // Default to light theme (Omada brand colors)
   expandedCategories: [], // Array of category IDs that should be expanded by default
 
   // Localization

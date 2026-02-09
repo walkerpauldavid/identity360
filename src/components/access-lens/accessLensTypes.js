@@ -119,6 +119,7 @@ export const LaneSchema = {
     selectionStateKey: 'systemId',        // Key in selections object for cross-lane filtering
     dependsOnEntitlements: true,           // Clear when entitlements filter is empty
     displayRule: 'SINGLE_COLUMN',
+    rows: 4,                               // Default visible rows for this lane
     icon: '🖥️',
     color: '#d08770',
     label: 'Systems',
@@ -161,6 +162,7 @@ export const LaneSchema = {
     selectionStateKey: 'logicalAppId',     // Key in selections object for cross-lane filtering
     dependsOnEntitlements: true,           // Clear when entitlements filter is empty
     displayRule: 'SINGLE_COLUMN',
+    rows: 4,                               // Default visible rows for this lane
     icon: '☁️',  // Cloud icon to represent logical/virtual application
     color: '#8fbcbb',  // Teal color to distinguish from physical systems
     label: 'Logical Applications',
@@ -198,6 +200,7 @@ export const LaneSchema = {
     supportsComplianceFiltering: true,     // Can be filtered by compliance status
     showFilters: true,                     // Show search field in lane header
     displayRule: 'SINGLE_COLUMN',
+    rows: 4,                               // Default visible rows for this lane
     icon: '💻',
     color: '#bf616a',
     label: 'Accounts',
@@ -243,6 +246,7 @@ export const LaneSchema = {
     dataType: NodeTypes.CONTEXT,
     selectionStateKey: 'contextId',        // Key in selections object for cross-lane filtering
     displayRule: 'SINGLE_COLUMN',
+    rows: 4,                               // Default visible rows for this lane
     icon: '🏷️',
     color: '#5e81ac',
     label: 'Contexts',
@@ -355,6 +359,7 @@ export const LaneSchema = {
     selectionStateKey: 'policyId',         // Key in selections object for cross-lane filtering
     dependsOnEntitlements: true,           // Clear when entitlements filter is empty
     displayRule: 'SINGLE_COLUMN',
+    rows: 4,                               // Default visible rows for this lane
     icon: '📜',
     color: '#d08770',  // Orange color to distinguish from other policies
     label: 'Assignment Policies',
@@ -551,10 +556,11 @@ export const getLaneDisplayConfig = (laneType) => {
   const displayRules = LaneDisplayRules[schema.displayRule] || LaneDisplayRules.SINGLE_COLUMN;
 
   // Merge schema with computed display rules
+  // Schema-level rows/maxVisibleItems override displayRules defaults
   return {
     ...schema,
     columns: displayRules.columns,
-    rows: displayRules.rows,
+    rows: schema.rows || displayRules.rows,
     width: displayRules.width,
     minColumns: schema.minColumns || 1,  // Lane-specific minimum columns (default: 1)
     maxVisibleItems: schema.maxVisibleItems || displayRules.maxVisibleItems
