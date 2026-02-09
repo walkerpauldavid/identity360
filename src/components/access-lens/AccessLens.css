@@ -3564,3 +3564,137 @@
 .theme-light .lane-item-actions .action-btn.pivot {
   color: #2563EB;
 }
+
+/* Object Inspector - Light Theme */
+.theme-light .access-lens-explanation {
+  background: var(--cp-light-gray, #F3F4F6);
+  border-left: 1px solid var(--cp-border-gray, #D1D5DB);
+}
+
+.theme-light .explanation-header {
+  background: #005EB8;
+  border-bottom: 1px solid var(--cp-border-gray, #D1D5DB);
+}
+
+.theme-light .explanation-title {
+  color: #ffffff;
+}
+
+.theme-light .inspector-icon {
+  color: #ffffff;
+}
+
+.theme-light .collapse-toggle {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.3);
+  color: #ffffff;
+}
+
+.theme-light .collapse-toggle:hover {
+  background: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+.theme-light .explanation-close {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.theme-light .explanation-close:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.3);
+  color: #ffffff;
+}
+
+.theme-light .explanation-placeholder {
+  color: #6B7280;
+}
+
+.theme-light .explanation-placeholder h4 {
+  color: #005EB8;
+}
+
+.theme-light .selected-node-info {
+  background: #ffffff;
+  border-bottom: 1px solid var(--cp-border-gray, #D1D5DB);
+}
+
+.theme-light .node-type {
+  color: #6B7280;
+}
+
+.theme-light .node-name {
+  color: #374151;
+}
+
+.theme-light .explanation-summary {
+  background: #ffffff;
+  color: #4B5563;
+  border-bottom: 1px solid var(--cp-border-gray, #D1D5DB);
+}
+
+.theme-light .explanation-reasons,
+.theme-light .explanation-path,
+.theme-light .explanation-facts {
+  border-bottom: 1px solid var(--cp-border-gray, #D1D5DB);
+}
+
+.theme-light .explanation-reasons h4,
+.theme-light .explanation-path h4,
+.theme-light .explanation-facts h4 {
+  color: #005EB8;
+}
+
+.theme-light .reason-item {
+  background: #ffffff;
+  border: 1px solid var(--cp-border-gray, #D1D5DB);
+}
+
+.theme-light .reason-item:hover {
+  background: var(--cp-light-gray, #F3F4F6);
+}
+
+.theme-light .reason-item.selected {
+  background: #EBF5FF;
+  border-color: #93C5FD;
+}
+
+.theme-light .reason-title {
+  color: #374151;
+}
+
+.theme-light .reason-description {
+  color: #6B7280;
+}
+
+.theme-light .fact-item {
+  border-bottom: 1px solid var(--cp-medium-gray, #E5E7EB);
+}
+
+.theme-light .fact-label {
+  color: #6B7280;
+}
+
+.theme-light .fact-value {
+  color: #374151;
+}
+
+.theme-light .fact-value.monospace {
+  background: #EBF5FF;
+  color: #005EB8;
+}
+
+.theme-light .fact-group-label {
+  color: #4B5563;
+}
+
+.theme-light .fact-nested {
+  border-left-color: #93C5FD;
+}
+
+.theme-light .fact-nested .fact-label {
+  color: #6B7280;
+}
+
+.theme-light .fact-separator {
+  background: linear-gradient(to right, var(--cp-border-gray, #D1D5DB), transparent);
+}

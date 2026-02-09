@@ -255,7 +255,7 @@ const FilterBar = ({
         </div>
       )}
 
-      {/* Theme Toggle & Search (right-aligned) */}
+      {/* Theme Toggle (right-aligned) */}
       <div className="filter-group toolbar-right">
         {/* Theme Toggle */}
         <button
@@ -266,16 +266,6 @@ const FilterBar = ({
           <span className="theme-icon">{currentTheme === 'dark' ? '🌙' : '☀️'}</span>
           <span className="theme-label">{currentTheme === 'dark' ? 'Dark' : 'Light'}</span>
         </button>
-
-        <input
-          type="text"
-          id="access-lens-search"
-          name="access-lens-search"
-          className="filter-search"
-          placeholder="Search..."
-          autoComplete="off"
-          onChange={(e) => onSearch?.(e.target.value)}
-        />
       </div>
     </div>
   );

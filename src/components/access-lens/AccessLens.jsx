@@ -1879,103 +1879,6 @@ const AccessLens = ({
     setTimeout(() => setLanesForceExpanded(false), 100);
   };
 
-  // Export current view to CSV
-  const handleExportCSV = useCallback(() => {
-    if (!focusNode || !visibleLanes || visibleLanes.length === 0) {
-      console.warn('[Export] No data to export');
-      return;
-    }
-
-    // Build CSV content
-    const rows = [];
-
-    // Header row
-    rows.push([
-      'Focus Node',
-      'Focus Node Type',
-      'Lane',
-      'Item Name',
-      'Item Type',
-      'Item ID',
-      'System',
-      'Compliance Status',
-      'Reason Types',
-      'Valid From',
-      'Valid To',
-      'Is Filtered',
-      'Additional Metadata'
-    ].join(','));
-
-    // Helper to escape CSV values
-    const escapeCSV = (value) => {
-      if (value === null || value === undefined) return '';
-      const str = String(value);
-      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
-        return `"${str.replace(/"/g, '""')}"`;
-      }
-      return str;
-    };
-
-    // Focus node info
-    const focusName = focusNode.displayName || focusNode.name || 'Unknown';
-    const focusType = focusNode.type || 'Unknown';
-
-    // Iterate through visible lanes
-    visibleLanes.forEach(lane => {
-      const laneName = lane.title || lane.laneType;
-      const items = lane.items || [];
-      const isFiltered = lane.isFiltered ? 'Yes' : 'No';
-
-      items.forEach(item => {
-        const node = item.node || {};
-        const rawData = item.rawData || {};
-        const metadata = node.metadata || {};
-
-        // Extract reason types
-        const reasons = rawData.reason || [];
-        const reasonTypes = Array.isArray(reasons)
-          ? reasons.map(r => r?.reasonType).filter(Boolean).join('; ')
-          : (reasons?.reasonType || '');
-
-        // Additional metadata as JSON
-        const additionalMeta = {};
-        if (metadata.resourceCount) additionalMeta.resourceCount = metadata.resourceCount;
-        if (metadata.accountIds) additionalMeta.accountCount = metadata.accountIds.length;
-        if (metadata.hasViolations) additionalMeta.hasViolations = true;
-        if (rawData.disabled) additionalMeta.disabled = true;
-
-        rows.push([
-          escapeCSV(focusName),
-          escapeCSV(focusType),
-          escapeCSV(laneName),
-          escapeCSV(node.displayName || node.name),
-          escapeCSV(node.type),
-          escapeCSV(node.id),
-          escapeCSV(metadata.system || metadata.systemId || ''),
-          escapeCSV(metadata.complianceStatus || rawData.complianceStatus || ''),
-          escapeCSV(reasonTypes),
-          escapeCSV(rawData.validFrom || metadata.validFrom || ''),
-          escapeCSV(rawData.validTo || metadata.validTo || ''),
-          escapeCSV(isFiltered),
-          escapeCSV(Object.keys(additionalMeta).length > 0 ? JSON.stringify(additionalMeta) : '')
-        ].join(','));
-      });
-    });
-
-    // Create and download file
-    const csvContent = rows.join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    link.setAttribute('download', `access-lens-export-${focusName.replace(/[^a-zA-Z0-9]/g, '_')}-${timestamp}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  }, [focusNode, visibleLanes]);
-
   // ============================================================================
   // CROSS-LANE FILTERING LOGIC (Memoized for performance)
   // The toolbar filters (Compliance, Reason Types, Entitlement Type) filter the
@@ -2260,6 +2163,41 @@ const AccessLens = ({
                 }
                 break;
 
+              case LaneTypes.CONTEXTS:
+                // Filter contexts based on which policies grant the filtered entitlements
+                // First, get the filtered policies lane to extract context IDs
+                {
+                  const filteredPoliciesLane = filteredLanes.find(l => l.laneType === LaneTypes.ASSIGNMENT_POLICIES);
+                  if (filteredPoliciesLane?.items?.length > 0) {
+                    const relatedContextIds = new Set();
+                    const relatedContextNames = new Set();
+
+                    // Extract context IDs and names from filtered policies
+                    filteredPoliciesLane.items.forEach(policyItem => {
+                      const contextIds = policyItem.node?.metadata?.contextIds || policyItem.node?.metadata?.contextUIds || [];
+                      const contextNames = policyItem.node?.metadata?.contextNames || [];
+
+                      contextIds.forEach(id => relatedContextIds.add(String(id)));
+                      contextNames.forEach(name => relatedContextNames.add(String(name).toLowerCase()));
+                    });
+
+                    if (relatedContextIds.size > 0 || relatedContextNames.size > 0) {
+                      filteredItems = filteredItems.filter(item => {
+                        const contextId = String(item.node?.id || '');
+                        const contextUId = String(item.node?.metadata?.uId || '');
+                        const contextName = String(item.node?.displayName || item.node?.name || '').toLowerCase();
+
+                        // Match by ID, UId, or name
+                        return relatedContextIds.has(contextId) ||
+                               relatedContextIds.has(contextUId) ||
+                               relatedContextNames.has(contextName);
+                      });
+                      isFiltered = true;
+                    }
+                  }
+                }
+                break;
+
               default:
                 // Other lanes pass through unchanged
                 break;
@@ -2344,6 +2282,106 @@ const AccessLens = ({
     filters.multiPathOnly,
     focusNode
   ]);
+
+  // Export current view to CSV - must be defined after visibleLanes
+  // Format: Focus node info at top, then grouped by access card with headers
+  const handleExportCSV = useCallback(() => {
+    if (!focusNode || !visibleLanes || visibleLanes.length === 0) {
+      console.warn('[Export] No data to export');
+      return;
+    }
+
+    // Helper to escape CSV values
+    const escapeCSV = (value) => {
+      if (value === null || value === undefined) return '';
+      const str = String(value);
+      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+
+    // Build CSV content
+    const rows = [];
+
+    // Focus node info at the start
+    const focusName = focusNode.displayName || focusNode.name || 'Unknown';
+    const focusType = focusNode.type || 'Unknown';
+
+    rows.push('FOCUS NODE');
+    rows.push('Type,Name,ID');
+    rows.push([escapeCSV(focusType), escapeCSV(focusName), escapeCSV(focusNode.id || '')].join(','));
+    rows.push(''); // Empty line separator
+
+    // Export timestamp
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    rows.push(`Export Date,${new Date().toLocaleString()}`);
+    rows.push(''); // Empty line separator
+
+    // Iterate through each visible lane (access card) as a separate section
+    visibleLanes.forEach(lane => {
+      const laneName = lane.title || lane.laneType;
+      const items = lane.items || [];
+      const itemCount = items.length;
+      const totalCount = lane.totalCount || itemCount;
+      const isFiltered = lane.isFiltered;
+
+      // Section header for this access card
+      rows.push(`=== ${laneName.toUpperCase()} ===`);
+      rows.push(`Items: ${itemCount}${isFiltered ? ` (filtered from ${totalCount})` : ''}`);
+
+      if (items.length === 0) {
+        rows.push('No items');
+        rows.push(''); // Empty line separator
+        return;
+      }
+
+      // Column headers for this lane's data
+      rows.push('Name,Type,ID,System,Compliance Status,Reason Types,Valid From,Valid To,Description');
+
+      // Data rows for each item in this lane
+      items.forEach(item => {
+        const node = item.node || {};
+        const rawData = item.rawData || {};
+        const metadata = node.metadata || {};
+
+        // Extract reason types
+        const reasons = rawData.reason || [];
+        const reasonTypes = Array.isArray(reasons)
+          ? reasons.map(r => r?.reasonType).filter(Boolean).join('; ')
+          : (reasons?.reasonType || '');
+
+        // Get description
+        const description = node.description || metadata.description || rawData.description || '';
+
+        rows.push([
+          escapeCSV(node.displayName || node.name),
+          escapeCSV(node.type),
+          escapeCSV(node.id),
+          escapeCSV(metadata.system || metadata.systemId || rawData.system || ''),
+          escapeCSV(metadata.complianceStatus || rawData.complianceStatus || ''),
+          escapeCSV(reasonTypes),
+          escapeCSV(rawData.validFrom || metadata.validFrom || ''),
+          escapeCSV(rawData.validTo || metadata.validTo || ''),
+          escapeCSV(description)
+        ].join(','));
+      });
+
+      rows.push(''); // Empty line separator between sections
+    });
+
+    // Create and download file
+    const csvContent = rows.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `access-lens-export-${focusName.replace(/[^a-zA-Z0-9]/g, '_')}-${timestamp}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, [focusNode, visibleLanes]);
 
   // Get positions for visible lanes only - use dynamic positioning for lanes with data
   // This ensures lanes don't overlap when only some lanes have data
