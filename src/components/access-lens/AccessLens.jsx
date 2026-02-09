@@ -669,7 +669,7 @@ const AccessLens = ({
   const { preferences, setPreference } = usePreferences();
   const lanesCollapsedOnLoad = preferences.identity360LanesCollapsedOnLoad ?? true;
   const collapseLanesOnFocusChange = preferences.identity360CollapseLanesOnFocusChange ?? true;
-  const currentTheme = preferences.theme || 'dark';
+  const currentTheme = preferences.theme || 'light';
 
   // Theme toggle handler
   const handleThemeChange = useCallback((newTheme) => {

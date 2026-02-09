@@ -1700,7 +1700,7 @@ const AccessLensPage = () => {
   }, [getBearerToken, user]);
 
   // Get theme from preferences for page wrapper
-  const currentTheme = preferences.theme || 'dark';
+  const currentTheme = preferences.theme || 'light';
 
   return (
     <div className={`access-lens-page theme-${currentTheme}`}>
