@@ -3394,6 +3394,156 @@ function buildResourceFolderLaneForEntitlement(entitlementNode) {
 }
 
 /**
+ * Build Child Resources lane from childResourceIds array (new simpler approach)
+ * Uses the childResourceIds returned directly from calculatedAssignments API
+ * @param {string[]} childResourceIds - Array of child resource UUIDs from resource.childResourceIds
+ * @param {Object} entitlementNode - The parent entitlement node (for context)
+ * @returns {Object} Lane object with child resource items
+ */
+export function buildChildResourcesLaneFromIds(childResourceIds, entitlementNode) {
+  if (!childResourceIds || !Array.isArray(childResourceIds) || childResourceIds.length === 0) {
+    return {
+      laneType: LaneTypes.EFFECTIVE_ENTITLEMENTS,
+      totalCount: 0,
+      items: [],
+      allItemsData: [],
+      canLoadMore: false,
+      apiSource: 'childResourceIds'
+    };
+  }
+
+  console.log(`[buildChildResourcesLaneFromIds] Building lane with ${childResourceIds.length} child resource IDs`);
+
+  // Build items from IDs - we have IDs only, details can be fetched lazily
+  const items = childResourceIds.map((resourceId, index) => ({
+    node: {
+      id: resourceId,
+      type: NodeTypes.ENTITLEMENT,
+      displayName: `Child Resource ${index + 1}`, // Placeholder - will be enriched
+      status: 'active',
+      metadata: {
+        isChild: true,
+        parentId: entitlementNode?.id,
+        parentName: entitlementNode?.displayName || entitlementNode?.name,
+        needsEnrichment: true // Flag to indicate details need fetching
+      }
+    },
+    badges: ['CHILD'],
+    rawData: { id: resourceId }
+  }));
+
+  return {
+    laneType: LaneTypes.EFFECTIVE_ENTITLEMENTS,
+    title: 'Child Resources',
+    totalCount: items.length,
+    items,
+    allItemsData: items,
+    canLoadMore: false,
+    apiSource: 'childResourceIds'
+  };
+}
+
+/**
+ * Fetch and enrich child resources by querying calculatedAssignments for each childResourceId
+ * This provides full details (name, description, system, etc.) for each child resource
+ * @param {string[]} childResourceIds - Array of child resource UUIDs
+ * @param {Object} apiContext - API context with { bearerToken, impersonateUser, omadaApi }
+ * @returns {Promise<Object>} Lane object with fully enriched child resource items
+ */
+export async function fetchChildResourcesFromIds(childResourceIds, apiContext) {
+  if (!childResourceIds || childResourceIds.length === 0 || !apiContext?.omadaApi) {
+    return {
+      laneType: LaneTypes.EFFECTIVE_ENTITLEMENTS,
+      totalCount: 0,
+      items: [],
+      allItemsData: [],
+      canLoadMore: false
+    };
+  }
+
+  const { bearerToken, impersonateUser, omadaApi } = apiContext;
+
+  try {
+    console.log(`[fetchChildResourcesFromIds] Fetching details for ${childResourceIds.length} child resources`);
+
+    // Query calculatedAssignments for all child resource IDs at once
+    // The API supports filtering by multiple resourceIds
+    const results = await Promise.all(
+      childResourceIds.slice(0, 50).map(async (resourceId) => {
+        try {
+          const result = await omadaApi.assignment.getIdentitiesHavingResource(
+            resourceId,
+            null, // resourceName
+            null, // systemId
+            bearerToken,
+            impersonateUser,
+            { page: 1, rows: 1 } // Just need one assignment to get resource details
+          );
+          if (result.status === 'success' && result.data?.[0]?.resource) {
+            return result.data[0].resource;
+          }
+          return null;
+        } catch (e) {
+          console.warn(`[fetchChildResourcesFromIds] Failed to fetch resource ${resourceId}:`, e);
+          return null;
+        }
+      })
+    );
+
+    // Filter out failed fetches and build lane items
+    const resources = results.filter(r => r !== null);
+
+    const items = resources.map(resource => ({
+      node: {
+        id: resource.id,
+        type: NodeTypes.ENTITLEMENT,
+        displayName: resource.name || resource.displayName || 'Unknown',
+        description: resource.description,
+        status: 'active',
+        metadata: {
+          isChild: true,
+          system: resource.system?.name,
+          systemId: resource.system?.id,
+          resourceType: resource.resourceType?.name,
+          childResourceIds: resource.childResourceIds || [] // These are grandchildren
+        }
+      },
+      badges: buildBadgesForResource(resource),
+      rawData: resource
+    }));
+
+    console.log(`[fetchChildResourcesFromIds] Successfully enriched ${items.length} child resources`);
+
+    return {
+      laneType: LaneTypes.EFFECTIVE_ENTITLEMENTS,
+      title: 'Child Resources',
+      totalCount: items.length,
+      items,
+      allItemsData: items,
+      canLoadMore: childResourceIds.length > 50,
+      apiSource: 'childResourceIds:enriched'
+    };
+  } catch (error) {
+    console.error('[fetchChildResourcesFromIds] Error:', error);
+    return {
+      laneType: LaneTypes.EFFECTIVE_ENTITLEMENTS,
+      totalCount: 0,
+      items: [],
+      allItemsData: [],
+      canLoadMore: false
+    };
+  }
+}
+
+// Helper to build badges for a resource
+function buildBadgesForResource(resource) {
+  const badges = ['CHILD'];
+  if (resource?.system?.name) badges.push(resource.system.name);
+  if (resource?.resourceType?.name) badges.push(resource.resourceType.name);
+  return badges;
+}
+
+/**
  * Build Child Resources lane for entitlement-centric view
  * Extracts child resources (CHILDROLES) from the entitlement node's rawData
  * @param {Object} entitlementNode - The entitlement node being viewed

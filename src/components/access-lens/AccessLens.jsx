@@ -26,7 +26,7 @@ const getSelectionForLane = (laneType, selections) => {
   const key = LaneSchema[laneType]?.selectionStateKey;
   return key ? (selections[key] || null) : null;
 };
-import accessLensDataService, { buildContextsLane, buildLanesFromAssignments, extractUniqueReasonTypes, extractUniqueComplianceStatuses, extractViolationCount, enrichPoliciesWithOData, enrichResourceFoldersWithOData, fetchChildResourcesForEntitlement } from './accessLensDataService';
+import accessLensDataService, { buildContextsLane, buildLanesFromAssignments, extractUniqueReasonTypes, extractUniqueComplianceStatuses, extractViolationCount, enrichPoliciesWithOData, enrichResourceFoldersWithOData, fetchChildResourcesForEntitlement, fetchChildResourcesFromIds } from './accessLensDataService';
 import { usePreferences } from '../../contexts/PreferencesContext';
 import {
   applyCrossLaneFilters,
@@ -1264,25 +1264,51 @@ const AccessLens = ({
         return;
       }
 
-      // Extract identity IDs from the lane items
-      console.log('[DEBUG:ChildResources] First identity item:', JSON.stringify(identitiesLane.items[0]?.node, null, 2));
-      const identityIds = identitiesLane.items
-        .map(item => item.node?.id)
-        .filter(id => id != null);
+      // NEW APPROACH: Check if focusNode has childResourceIds from API response
+      // This is more reliable than the identity-based approach
+      const childResourceIds = focusNode.rawData?.childResourceIds ||
+                               focusNode.metadata?.childResourceIds ||
+                               focusNode.rawData?.resource?.childResourceIds ||
+                               [];
 
-      console.log('[DEBUG:ChildResources] Extracted identity IDs:', identityIds.length, identityIds.slice(0, 5));
-
-      if (identityIds.length === 0) {
-        console.log('[DEBUG:ChildResources] SKIP: No valid identity IDs found');
-        return;
-      }
+      console.log('[DEBUG:ChildResources] childResourceIds from focusNode:', childResourceIds?.length || 0);
 
       // Mark as enriched before async call to prevent duplicate calls
       childResourcesEnrichedRef.current = true;
 
+      let childResourcesLane;
+
       try {
-        console.log(`[DEBUG:ChildResources] CALLING fetchChildResourcesForEntitlement with ${identityIds.length} identities, focusNode ID: ${focusNode.id}`);
-        const childResourcesLane = await fetchChildResourcesForEntitlement(focusNode, identityIds, apiContext);
+        if (childResourceIds.length > 0) {
+          // NEW SIMPLER APPROACH: Use childResourceIds directly
+          console.log(`[DEBUG:ChildResources] Using NEW approach with ${childResourceIds.length} childResourceIds`);
+          childResourcesLane = await fetchChildResourcesFromIds(childResourceIds, apiContext);
+        } else {
+          // FALLBACK: Use old identity-based approach if no childResourceIds
+          console.log('[DEBUG:ChildResources] No childResourceIds, falling back to identity-based approach');
+
+          // Get identity IDs from the Identities lane
+          const identitiesLane = lanes.find(l => l.laneType === LaneTypes.IDENTITIES);
+
+          if (!identitiesLane || !identitiesLane.items || identitiesLane.items.length === 0) {
+            console.log('[DEBUG:ChildResources] SKIP: No identities for fallback approach');
+            childResourcesEnrichedRef.current = false;
+            return;
+          }
+
+          const identityIds = identitiesLane.items
+            .map(item => item.node?.id)
+            .filter(id => id != null);
+
+          if (identityIds.length === 0) {
+            console.log('[DEBUG:ChildResources] SKIP: No valid identity IDs found');
+            childResourcesEnrichedRef.current = false;
+            return;
+          }
+
+          console.log(`[DEBUG:ChildResources] CALLING fetchChildResourcesForEntitlement with ${identityIds.length} identities`);
+          childResourcesLane = await fetchChildResourcesForEntitlement(focusNode, identityIds, apiContext);
+        }
 
         console.log('[DEBUG:ChildResources] API response:', {
           laneType: childResourcesLane?.laneType,

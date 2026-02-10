@@ -64,7 +64,7 @@ const Settings = () => {
     // Filter States - Primary Blue for source
     filterSourceBackground: '#005EB8',
     filterSourceGlow: '#00B4D8',
-    filteredBackground: '#F59E0B',
+    filteredBackground: '#64748B',  // Slate gray - easier on eyes
     // Violations - Error Red
     violationsBackground: '#EF4444',
     violationsText: '#ffffff',

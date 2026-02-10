@@ -3,13 +3,13 @@
   padding: 0;
   width: 100%;
   min-height: 100vh;
-  background: #000000;
+  background: #e2e6ef;  /* Light theme default */
   box-sizing: border-box;
 }
 
-/* Light theme root background */
-#root:has(.theme-light) {
-  background: #e2e6ef;
+/* Dark theme root background */
+#root:has(.theme-dark) {
+  background: #000000;
 }
 
 .app-container {
@@ -19,11 +19,16 @@
   padding: 0;
   min-height: 100vh;
   box-sizing: border-box;
-  background: #000000;
+  background: #e2e6ef;  /* Light theme default */
   width: 100%;
 }
 
-/* Light theme app container - Omada style */
+/* Dark theme app container */
+.app-container.theme-dark {
+  background: #000000;
+}
+
+/* Light theme app container - Omada style (explicit) */
 .app-container.theme-light {
   background: #e2e6ef;
 }

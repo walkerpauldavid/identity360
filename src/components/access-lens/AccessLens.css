@@ -3146,6 +3146,26 @@
   background: var(--cp-border-gray, #D1D5DB);
 }
 
+/* Layout action buttons - consistent styling with black text */
+.theme-light .expand-all-btn,
+.theme-light .reset-positions-btn,
+.theme-light .export-csv-btn {
+  background: #ffffff;
+  border: 1px solid var(--cp-border-gray, #D1D5DB);
+  color: #374151;
+  font-weight: 500;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.8rem;
+}
+
+.theme-light .expand-all-btn:hover,
+.theme-light .reset-positions-btn:hover,
+.theme-light .export-csv-btn:hover {
+  background: var(--cp-lane-item-bg-hover, #EBF5FF);
+  border-color: var(--cp-card-header-bg, #005EB8);
+  color: #374151;
+}
+
 /* Lane cards - white background with Primary Blue header */
 .theme-light .lane-card {
   background: var(--cp-card-content-bg, #ffffff);

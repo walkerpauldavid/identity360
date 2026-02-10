@@ -1441,6 +1441,17 @@ const AccessLensPage = () => {
             }
           }
 
+          // Extract childResourceIds from GraphQL response (simpler than CHILDROLES enrichment)
+          // The GraphQL API returns childResourceIds as an array of UUIDs in resource block
+          const childResourceIds = assignmentsResult.data?.[0]?.resource?.childResourceIds ||
+                                   node.rawData?.resource?.childResourceIds ||
+                                   node.rawData?.childResourceIds ||
+                                   [];
+
+          if (childResourceIds.length > 0) {
+            console.log(`[Entitlement Pivot] Found ${childResourceIds.length} childResourceIds from GraphQL API`);
+          }
+
           // Create a clean entitlement-focused node without relationship data
           // When the entitlement is the central focus, we only want entitlement properties,
           // NOT the relationship data from the previous Identity→Entitlement assignment
@@ -1458,7 +1469,9 @@ const AccessLensPage = () => {
               // Owner information from OData
               owners: resourceOwners?.owners || [],
               explicitOwners: resourceOwners?.explicitOwners || [],
-              allOwners: resourceOwners?.allOwners || []
+              allOwners: resourceOwners?.allOwners || [],
+              // childResourceIds from GraphQL API (simpler approach)
+              childResourceIds: childResourceIds
             },
             // Clean rawData - only entitlement properties, no relationship data
             rawData: {
@@ -1470,8 +1483,10 @@ const AccessLensPage = () => {
               resourceCategory: node.rawData?.resourceCategory || node.rawData?.resource?.resourceCategory,
               resourceFolder: node.rawData?.resourceFolder || node.rawData?.resource?.resourceFolder,
               maxValidity: node.rawData?.maxValidity || node.rawData?.resource?.maxValidity,
-              // CHILDROLES for child resources lane building
+              // CHILDROLES for child resources lane building (OData fallback)
               CHILDROLES: childRoles,
+              // childResourceIds from GraphQL API (preferred simpler approach)
+              childResourceIds: childResourceIds,
               // Owner information
               owners: resourceOwners?.owners || [],
               explicitOwners: resourceOwners?.explicitOwners || [],
