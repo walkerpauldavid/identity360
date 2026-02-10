@@ -44,6 +44,8 @@ Access Lens is an interactive identity access visualization component that provi
 | US-012 | As a user, I want to drag lane cards to reposition them around the central node. | Implemented |
 | US-013 | As a user, I want a "Reset Layout" button that restores defaults, collapses lanes, and clears filters. | Implemented |
 | US-014 | As a user, I want an "Expand All" button to expand all lanes simultaneously. | Implemented |
+| US-015 | As a user, I want a right-click context menu on the canvas background with options for Expand All, Reset Layout, and Toggle Object Inspector. | Implemented |
+| US-016 | As a user, when the Object Inspector opens, I want the lanes to shift left automatically so cards are not hidden behind the inspector. | Implemented |
 
 ### Cross-Lane Filtering
 
@@ -54,6 +56,7 @@ Access Lens is an interactive identity access visualization component that provi
 | US-022 | As a user, when I click on a logical application, I want to see only resources belonging to that app. | Implemented |
 | US-023 | As a user, I want the filter source lane to be visually prominent (blue glow effect). | Implemented |
 | US-024 | As a user, I want filtered lanes to display a "Filtered" badge. | Implemented |
+| US-025 | As a user, when I select an entitlement that is part of a violation, I want the Violations lane to filter to show only related violations. | Implemented |
 
 ### Entitlements Lane Features
 
@@ -102,6 +105,9 @@ Access Lens is an interactive identity access visualization component that provi
 | US-101 | As a user, when toolbar filters are active, I want to see "Filtered" badges on all affected access cards. | Implemented |
 | US-102 | As a user, when I select a reason type filter, I want all access cards to cascade-filter. | Implemented |
 | US-121 | As a user, I want a "Multi-Path" filter toggle to show only entitlements with multiple assignment paths. | Implemented |
+| US-163 | As a user, I want Reason Types filter to show only dynamic types from the API data, not hardcoded static types. | Implemented |
+| US-164 | As a user, I want compliance statuses like "Implicitly Approved" preserved correctly in the filter (not defaulted to generic "Approved"). | Implemented |
+| US-165 | As a user, I want Reason Types filter to correctly handle API responses where reasons are returned as arrays. | Implemented |
 
 ### Entitlement Display Enhancements
 
@@ -136,6 +142,14 @@ Access Lens is an interactive identity access visualization component that provi
 | US-160 | As a user, I want entitlements with violations to be visually highlighted. | Implemented |
 | US-161 | As a user, I want to see a Violations lane when the identity has SoD conflicts or compliance issues. | Implemented |
 | US-162 | As a user, I want violation indicators consistently displayed across all views. | Implemented |
+
+### Performance & Stability
+
+| ID | Story | Status |
+|----|-------|--------|
+| US-170 | As a user, I want optimized React rendering with useReducer for consolidated state management. | Implemented |
+| US-171 | As a user, I want stable function references via useCallback to prevent unnecessary re-renders. | Implemented |
+| US-172 | As a user, I want per-route Suspense boundaries so that errors in one route don't crash the entire application. | Implemented |
 
 ---
 
@@ -186,6 +200,9 @@ For complete technical specifications, business rules, and implementation detail
 | 1.18 | 2025-01 | Unified toolbar, canvas positioning improvements |
 | 1.20 | 2026-02 | Entitlement focus node enhancements (Resource Folders, Child Resources) |
 | 1.21 | 2026-02 | Child resource OData enrichment with full details |
+| 1.22 | 2026-02-10 | Performance: useReducer refactor, useCallback optimizations, per-route Suspense boundaries |
+| 1.23 | 2026-02-10 | Filter fixes: Reason Types array handling, compliance status preservation, dynamic filter types |
+| 1.24 | 2026-02-10 | UX: Right-click context menu, lane auto-shift on inspector open, Entitlement→Violations cross-filter |
 
 ---
 
