@@ -1886,7 +1886,7 @@ const AccessLens = ({
   }, []);
 
   // Reset lane positions - recalculate dynamic positions, collapse all lanes, and clear filters
-  const handleResetPositions = () => {
+  const handleResetPositions = useCallback(() => {
     // Clear all manually set positions so dynamic positioning takes over
     setLanePositions({});
     // Clear all selection/filter states
@@ -1895,15 +1895,15 @@ const AccessLens = ({
     setLanesForceCollapsed(true);
     // Reset the forceCollapsed flag after a brief delay so lanes can be expanded again
     setTimeout(() => setLanesForceCollapsed(false), 100);
-  };
+  }, []);
 
   // Expand all lanes
-  const handleExpandAll = () => {
+  const handleExpandAll = useCallback(() => {
     // Trigger expansion of all lanes
     setLanesForceExpanded(true);
     // Reset the forceExpanded flag after a brief delay
     setTimeout(() => setLanesForceExpanded(false), 100);
-  };
+  }, []);
 
   // ============================================================================
   // CROSS-LANE FILTERING LOGIC (Memoized for performance)
@@ -2309,6 +2309,17 @@ const AccessLens = ({
     focusNode
   ]);
 
+  // Memoized item click handlers per lane type - avoids creating new function refs on each render
+  const itemClickHandlers = useMemo(() => {
+    const handlers = {};
+    if (visibleLanes) {
+      visibleLanes.forEach(lane => {
+        handlers[lane.laneType] = (item) => handleItemClick(item, lane.laneType);
+      });
+    }
+    return handlers;
+  }, [visibleLanes, handleItemClick]);
+
   // Export current view to CSV - must be defined after visibleLanes
   // Format: Focus node info at top, then grouped by access card with headers
   const handleExportCSV = useCallback(() => {
@@ -2638,7 +2649,7 @@ const AccessLens = ({
                   focusNodeType={focusNode?.type}
                   selectedItemId={selectedItem?.node?.id}
                   selectedReasonId={selectedReasonId}
-                  onItemClick={(item) => handleItemClick(item, lane.laneType)}
+                  onItemClick={itemClickHandlers[lane.laneType]}
                   onPivot={handlePivot}
                   onReasonClick={handleReasonClick}
                   onLoadMore={handleLoadMore}
