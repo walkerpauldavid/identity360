@@ -3948,19 +3948,26 @@ export function extractUniqueReasonTypes(assignments) {
   const reasonTypesSet = new Set();
 
   assignments.forEach(assignment => {
-    // Extract reason type from assignment.reason.reasonType
-    if (assignment.reason?.reasonType) {
-      reasonTypesSet.add(assignment.reason.reasonType);
-    }
-    // Also check for reason.description as a fallback identifier
-    if (assignment.reason?.description) {
-      // Try to categorize based on description keywords
-      const desc = assignment.reason.description.toLowerCase();
-      if (desc.includes('role')) reasonTypesSet.add('RoleMembership');
-      if (desc.includes('direct')) reasonTypesSet.add('DirectAssignment');
-      if (desc.includes('birthright')) reasonTypesSet.add('Birthright');
-      if (desc.includes('policy')) reasonTypesSet.add('PolicyRule');
-    }
+    // Handle both array and object formats for assignment.reason
+    const reasonArray = Array.isArray(assignment.reason)
+      ? assignment.reason
+      : (assignment.reason ? [assignment.reason] : []);
+
+    reasonArray.forEach(reason => {
+      // Extract reason type from reason.reasonType
+      if (reason?.reasonType) {
+        reasonTypesSet.add(reason.reasonType);
+      }
+      // Also check for reason.description as a fallback identifier
+      if (reason?.description) {
+        // Try to categorize based on description keywords
+        const desc = reason.description.toLowerCase();
+        if (desc.includes('role')) reasonTypesSet.add('RoleMembership');
+        if (desc.includes('direct')) reasonTypesSet.add('DirectAssignment');
+        if (desc.includes('birthright')) reasonTypesSet.add('Birthright');
+        if (desc.includes('policy')) reasonTypesSet.add('PolicyRule');
+      }
+    });
   });
 
   // Return sorted array of unique reason types
