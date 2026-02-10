@@ -2060,6 +2060,53 @@ const AccessLens = ({
   }, []);
 
   // ============================================================================
+  // CANVAS CONTEXT MENU
+  // Right-click menu for quick access to common actions
+  // ============================================================================
+  const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0 });
+
+  const handleCanvasContextMenu = useCallback((e) => {
+    // Only show context menu if clicking on the canvas background, not on lanes or other elements
+    if (e.target.closest('.lane-card') || e.target.closest('.fulcrum-wrapper') || e.target.closest('.focus-card')) {
+      return; // Don't show context menu when clicking on lanes or focus card
+    }
+    e.preventDefault();
+    setContextMenu({
+      visible: true,
+      x: e.clientX,
+      y: e.clientY
+    });
+  }, []);
+
+  const handleContextMenuAction = useCallback((action) => {
+    setContextMenu({ visible: false, x: 0, y: 0 });
+    switch (action) {
+      case 'expandAll':
+        handleExpandAll();
+        break;
+      case 'resetLayout':
+        handleResetPositions();
+        break;
+      case 'toggleInspector':
+        setShowObjectInspector(prev => !prev);
+        break;
+      default:
+        break;
+    }
+  }, [handleExpandAll, handleResetPositions]);
+
+  // Close context menu when clicking elsewhere
+  useEffect(() => {
+    const handleClickOutside = () => {
+      if (contextMenu.visible) {
+        setContextMenu({ visible: false, x: 0, y: 0 });
+      }
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [contextMenu.visible]);
+
+  // ============================================================================
   // CROSS-LANE FILTERING LOGIC (Memoized for performance)
   // The toolbar filters (Compliance, Reason Types, Entitlement Type) filter the
   // Effective Entitlements lane. Then, Accounts and Systems lanes are filtered
@@ -2753,7 +2800,29 @@ const AccessLens = ({
           )}
 
           {/* Canvas with draggable lanes */}
-          <div className="access-lens-canvas">
+          <div className="access-lens-canvas" onContextMenu={handleCanvasContextMenu}>
+          {/* Context Menu */}
+          {contextMenu.visible && (
+            <div
+              className="canvas-context-menu"
+              style={{ left: contextMenu.x, top: contextMenu.y }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button className="context-menu-item" onClick={() => handleContextMenuAction('expandAll')}>
+                <span className="context-menu-icon">⬇️</span>
+                Expand All Cards
+              </button>
+              <button className="context-menu-item" onClick={() => handleContextMenuAction('resetLayout')}>
+                <span className="context-menu-icon">🔄</span>
+                Reset Layout
+              </button>
+              <div className="context-menu-divider"></div>
+              <button className="context-menu-item" onClick={() => handleContextMenuAction('toggleInspector')}>
+                <span className="context-menu-icon">{showObjectInspector ? '👁️' : '👁️‍🗨️'}</span>
+                {showObjectInspector ? 'Hide Object Inspector' : 'Show Object Inspector'}
+              </button>
+            </div>
+          )}
           {/* Connector Lines SVG - only show for revealed lanes */}
           {/* C-02 fix: Pass laneRefs to avoid querySelector and enable batched DOM reads */}
           <ConnectorLines

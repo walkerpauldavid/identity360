@@ -3740,3 +3740,77 @@
 .theme-light .explanation-loading p {
   color: #6B7280;
 }
+
+/* ===== Canvas Context Menu ===== */
+.canvas-context-menu {
+  position: fixed;
+  background: #1a1a2e;
+  border: 1px solid #3a3a5a;
+  border-radius: 6px;
+  padding: 4px 0;
+  min-width: 180px;
+  z-index: 1000;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  animation: contextMenuFadeIn 0.15s ease-out;
+}
+
+@keyframes contextMenuFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 14px;
+  background: transparent;
+  border: none;
+  color: #e0e0e0;
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s ease;
+}
+
+.context-menu-item:hover {
+  background: rgba(100, 100, 200, 0.2);
+}
+
+.context-menu-item .menu-icon {
+  font-size: 14px;
+  width: 20px;
+  text-align: center;
+}
+
+.context-menu-divider {
+  height: 1px;
+  background: #3a3a5a;
+  margin: 4px 0;
+}
+
+/* Light theme context menu */
+.theme-light .canvas-context-menu {
+  background: #ffffff;
+  border-color: #D1D5DB;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.theme-light .context-menu-item {
+  color: #374151;
+}
+
+.theme-light .context-menu-item:hover {
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.theme-light .context-menu-divider {
+  background: #E5E7EB;
+}
