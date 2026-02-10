@@ -928,7 +928,10 @@ export function buildEntitlementsLaneFromAPResources(apResources, assignments = 
         complianceStatus: assignmentData?.complianceStatuses?.has('Not Approved')
           ? 'Not Approved'
           : assignmentData?.complianceStatuses?.has('Pending')
-            ? 'Pending' : 'Approved',
+            ? 'Pending'
+            : assignmentData?.complianceStatuses?.size > 0
+              ? Array.from(assignmentData.complianceStatuses)[0]  // Preserve actual status (e.g., Implicitly Approved)
+              : 'Approved',
         // Resource folder for cross-lane filtering (from ROLEFOLDER OData field)
         resourceFolderId: resource.ROLEFOLDER?.UId || resource.ROLEFOLDER?.Id || null,
         resourceFolderName: resource.ROLEFOLDER?.DisplayName || null
@@ -2132,12 +2135,17 @@ function buildEntitlementsLane(assignments, filters) {
     const identityIdsArr = Array.from(entry.identityIds);
     const complianceStatusesArr = Array.from(entry.complianceStatuses);
 
-    // Determine overall compliance status (prefer "Not Approved" if any exist)
+    // Determine overall compliance status
+    // Priority: Not Approved > Pending > preserve actual status (e.g., Implicitly Approved, Explicitly Approved)
     let overallComplianceStatus = 'Approved';
     if (entry.complianceStatuses.has('Not Approved')) {
       overallComplianceStatus = 'Not Approved';
     } else if (entry.complianceStatuses.has('Pending')) {
       overallComplianceStatus = 'Pending';
+    } else if (entry.complianceStatuses.size > 0) {
+      // Preserve the actual status (e.g., "Implicitly Approved", "Explicitly Approved")
+      // Take the first status from the set
+      overallComplianceStatus = Array.from(entry.complianceStatuses)[0];
     }
 
     // Check for ChildResource reasonType and extract parent name from "Ancestors:" description
