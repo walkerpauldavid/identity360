@@ -3,16 +3,11 @@
  * Top bar filters for AccessLens
  */
 
-import { LaneTypes, BaseReasonTypes, ViewModes } from './accessLensTypes';
+import { LaneTypes, ViewModes } from './accessLensTypes';
 import { usePreferences } from '../../contexts/PreferencesContext';
 
-// Help descriptions for each base reason type (module-level constant to avoid re-creation per render)
-const REASON_TYPE_HELP = {
-  'Direct': 'Assignments made directly through Omada (managed direct assignments)',
-  'External': 'Assignments made outside of Omada in the target system (unmanaged)',
-  'Implicit': 'Assignments inherited through group membership or hierarchy',
-  'Explicit': 'Assignments explicitly granted to the user'
-};
+// Reason types are now dynamically populated from the API
+// The old BaseReasonTypes (Direct, External, Implicit, Explicit) have been removed
 
 const FilterBar = ({
   filters,
@@ -157,52 +152,27 @@ const FilterBar = ({
             </div>
             <div className="dropdown-divider"></div>
             {/* Base reason types - always shown with descriptions */}
-            {Object.values(BaseReasonTypes).map((type) => {
-              const sanitizedId = `reason-type-${type.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-]/g, '')}`;
-              return (
-                <label
-                  key={type}
-                  className="dropdown-item with-help"
-                  htmlFor={sanitizedId}
-                  title={REASON_TYPE_HELP[type] || type}
-                >
-                  <input
-                    type="checkbox"
-                    id={sanitizedId}
-                    name={sanitizedId}
-                    checked={reasonTypes.includes(type)}
-                    onChange={() => toggleReasonType(type)}
-                  />
-                  <span className="reason-type-label">
-                    {type}
-                    <span className="reason-type-hint">{REASON_TYPE_HELP[type]}</span>
-                  </span>
-                </label>
-              );
-            })}
             {/* Dynamic reason types from API */}
-            {availableReasonTypes.length > 0 && (
-              <>
-                <div className="dropdown-divider"></div>
-                {availableReasonTypes
-                  .filter(type => !Object.values(BaseReasonTypes).includes(type))
-                  .sort((a, b) => a.localeCompare(b))
-                  .map((type) => {
-                    const sanitizedId = `reason-type-${type.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-]/g, '')}`;
-                    return (
-                      <label key={type} className="dropdown-item" htmlFor={sanitizedId}>
-                        <input
-                          type="checkbox"
-                          id={sanitizedId}
-                          name={sanitizedId}
-                          checked={reasonTypes.includes(type)}
-                          onChange={() => toggleReasonType(type)}
-                        />
-                        {type.replace(/([A-Z])/g, ' $1').trim()}
-                      </label>
-                    );
-                  })}
-              </>
+            {availableReasonTypes.length > 0 ? (
+              availableReasonTypes
+                .sort((a, b) => a.localeCompare(b))
+                .map((type) => {
+                  const sanitizedId = `reason-type-${type.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-]/g, '')}`;
+                  return (
+                    <label key={type} className="dropdown-item" htmlFor={sanitizedId}>
+                      <input
+                        type="checkbox"
+                        id={sanitizedId}
+                        name={sanitizedId}
+                        checked={reasonTypes.includes(type)}
+                        onChange={() => toggleReasonType(type)}
+                      />
+                      {type.replace(/([A-Z])/g, ' $1').trim()}
+                    </label>
+                  );
+                })
+            ) : (
+              <div className="dropdown-item disabled">No reason types available</div>
             )}
             {reasonTypes.length > 0 && (
               <button
