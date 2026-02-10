@@ -150,6 +150,7 @@ const AccessLensPage = () => {
     try {
       // OData query: /OData/DataObjects/System?$filter=UId eq {systemUId}
       // Note: UId is a UUID string, so it needs to be passed as a GUID
+      // Don't use $select - OData reference properties (OWNERREF, CLT_TAGS, SYSTEMTYPE) may not work with $select
       const result = await omadaApi.odata.query(
         'System',
         bearerToken,

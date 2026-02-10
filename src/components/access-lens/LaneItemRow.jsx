@@ -96,7 +96,12 @@ const LaneItemRow = ({
   const isSystemNode = node.type === 'System';
   const systemType = node.metadata?.systemType || null;
   // System owner - check multiple possible locations from OData enrichment
-  const systemOwner = node.metadata?.owner || rawData?.owner || rawData?.OWNER || rawData?.OWNERREF?.DisplayNameValue || rawData?.OWNERREF?.DisplayName || null;
+  // OWNERREF can be an array or object depending on OData response format
+  const ownerRefData = rawData?.OWNERREF;
+  const ownerFromRef = Array.isArray(ownerRefData)
+    ? (ownerRefData[0]?.DisplayName || ownerRefData[0]?.DisplayNameValue || ownerRefData[0]?.Name)
+    : (ownerRefData?.DisplayName || ownerRefData?.DisplayNameValue || ownerRefData?.Name);
+  const systemOwner = node.metadata?.owner || rawData?.owner || rawData?.OWNER || ownerFromRef || null;
   const systemClassification = node.metadata?.classification || null;
 
   // Check if this is an Identity type node (for enhanced display in access cards)

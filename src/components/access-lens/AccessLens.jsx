@@ -4,7 +4,7 @@
  * Features: Identity integration, draggable lanes, connector lines
  */
 
-import { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, memo, useReducer } from 'react';
 import { DndContext, useDraggable, DragOverlay, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import {
@@ -46,6 +46,156 @@ import ObjectInspector from './ObjectInspector';
 import { getStringValue } from './accessLensUtils';
 import './AccessLens.css';
 import './AccessLensTheme.css';
+
+// ============================================================================
+// ACCESS LENS STATE REDUCER
+// Consolidates 27 useState calls into a single reducer for better performance
+// ============================================================================
+
+const MAX_HISTORY = 15;
+
+// Default filter state
+const defaultFilters = {
+  visibleLanes: [
+    LaneTypes.ROLES,
+    LaneTypes.ACCOUNTS,
+    LaneTypes.EFFECTIVE_ENTITLEMENTS,
+    LaneTypes.POLICIES,
+    LaneTypes.ASSIGNMENT_POLICIES,
+    LaneTypes.SYSTEMS,
+    LaneTypes.LOGICAL_APPLICATIONS,
+    LaneTypes.CONTEXTS,
+    LaneTypes.IDENTITIES,
+    LaneTypes.VIOLATIONS,
+    LaneTypes.RESOURCE_FOLDERS
+  ],
+  reasonTypes: [],
+  complianceStatuses: [],
+  entitlementType: 'all',
+  multiPathOnly: false,
+  highRiskOnly: false
+};
+
+// Initial state creator - takes lanesCollapsedOnLoad prop
+const createInitialState = (lanesCollapsedOnLoad) => ({
+  // Core Navigation
+  focusNode: null,
+  lanes: [],
+  history: [],
+  historyIndex: -1,
+  pendingNodeType: null,
+  currentAssignments: null,
+
+  // Loading
+  isLoading: false,
+  lanesLoading: true,
+  pivotLoadingStatus: '',
+  error: null,
+  explanationLoading: false,
+
+  // Animation
+  centralNodeRevealed: false,
+  revealedLanes: new Set(),
+  lanesForceCollapsed: lanesCollapsedOnLoad,
+  lanesForceExpanded: false,
+
+  // UI/Layout
+  focusCardMinimized: false,
+  lanePositions: {},
+  activeDragId: null,
+  inspectorCollapsed: false,
+  showObjectInspector: false,
+
+  // Selection
+  selectedItem: null,
+  selectedReasonId: null,
+  explanation: null,
+  laneSelections: {},
+
+  // Filters/View
+  viewMode: ViewModes.EXPLORE,
+  filters: defaultFilters,
+  searchQuery: '',
+  availableReasonTypes: [],
+  availableComplianceStatuses: []
+});
+
+// Reducer function - handles both direct values and functional updates
+function accessLensReducer(state, action) {
+  // Handle functional updates: if payload is a function, call it with current value
+  const resolvePayload = (key) => {
+    if (typeof action.payload === 'function') {
+      return action.payload(state[key]);
+    }
+    return action.payload;
+  };
+
+  switch (action.type) {
+    // === Simple Setters (support functional updates) ===
+    case 'SET_FOCUS_NODE':
+      return { ...state, focusNode: resolvePayload('focusNode') };
+    case 'SET_LANES':
+      return { ...state, lanes: resolvePayload('lanes') };
+    case 'SET_HISTORY':
+      return { ...state, history: resolvePayload('history') };
+    case 'SET_HISTORY_INDEX':
+      return { ...state, historyIndex: resolvePayload('historyIndex') };
+    case 'SET_PENDING_NODE_TYPE':
+      return { ...state, pendingNodeType: resolvePayload('pendingNodeType') };
+    case 'SET_CURRENT_ASSIGNMENTS':
+      return { ...state, currentAssignments: resolvePayload('currentAssignments') };
+    case 'SET_IS_LOADING':
+      return { ...state, isLoading: resolvePayload('isLoading') };
+    case 'SET_LANES_LOADING':
+      return { ...state, lanesLoading: resolvePayload('lanesLoading') };
+    case 'SET_PIVOT_LOADING_STATUS':
+      return { ...state, pivotLoadingStatus: resolvePayload('pivotLoadingStatus') };
+    case 'SET_ERROR':
+      return { ...state, error: resolvePayload('error') };
+    case 'SET_EXPLANATION_LOADING':
+      return { ...state, explanationLoading: resolvePayload('explanationLoading') };
+    case 'SET_CENTRAL_NODE_REVEALED':
+      return { ...state, centralNodeRevealed: resolvePayload('centralNodeRevealed') };
+    case 'SET_REVEALED_LANES':
+      return { ...state, revealedLanes: resolvePayload('revealedLanes') };
+    case 'SET_LANES_FORCE_COLLAPSED':
+      return { ...state, lanesForceCollapsed: resolvePayload('lanesForceCollapsed') };
+    case 'SET_LANES_FORCE_EXPANDED':
+      return { ...state, lanesForceExpanded: resolvePayload('lanesForceExpanded') };
+    case 'SET_FOCUS_CARD_MINIMIZED':
+      return { ...state, focusCardMinimized: resolvePayload('focusCardMinimized') };
+    case 'SET_LANE_POSITIONS':
+      return { ...state, lanePositions: resolvePayload('lanePositions') };
+    case 'SET_ACTIVE_DRAG_ID':
+      return { ...state, activeDragId: resolvePayload('activeDragId') };
+    case 'SET_INSPECTOR_COLLAPSED':
+      return { ...state, inspectorCollapsed: resolvePayload('inspectorCollapsed') };
+    case 'SET_SHOW_OBJECT_INSPECTOR':
+      return { ...state, showObjectInspector: resolvePayload('showObjectInspector') };
+    case 'SET_SELECTED_ITEM':
+      return { ...state, selectedItem: resolvePayload('selectedItem') };
+    case 'SET_SELECTED_REASON_ID':
+      return { ...state, selectedReasonId: resolvePayload('selectedReasonId') };
+    case 'SET_EXPLANATION':
+      return { ...state, explanation: resolvePayload('explanation') };
+    case 'SET_LANE_SELECTIONS':
+      return { ...state, laneSelections: resolvePayload('laneSelections') };
+    case 'SET_VIEW_MODE':
+      return { ...state, viewMode: resolvePayload('viewMode') };
+    case 'SET_FILTERS':
+      return { ...state, filters: resolvePayload('filters') };
+    case 'SET_SEARCH_QUERY':
+      return { ...state, searchQuery: resolvePayload('searchQuery') };
+    case 'SET_AVAILABLE_REASON_TYPES':
+      return { ...state, availableReasonTypes: resolvePayload('availableReasonTypes') };
+    case 'SET_AVAILABLE_COMPLIANCE_STATUSES':
+      return { ...state, availableComplianceStatuses: resolvePayload('availableComplianceStatuses') };
+
+    default:
+      console.warn('[AccessLens Reducer] Unknown action type:', action.type);
+      return state;
+  }
+}
 
 // Convert identity from IdentityDetail to AccessLens node format
 const identityToNode = (identity) => {
@@ -733,29 +883,76 @@ const AccessLens = ({
   const showObjectInspectorRef = useRef(false);
   const inspectorCollapsedRef = useRef(false);
 
-  // State
-  const [focusNode, setFocusNode] = useState(null);
-  const [lanes, setLanes] = useState([]);
-  const MAX_HISTORY = 15;
-  const [history, setHistory] = useState([]);
-  const [historyIndex, setHistoryIndex] = useState(-1);  // Current position in history (-1 means no history yet)
-  const [isLoading, setIsLoading] = useState(false);  // Data is pre-loaded by AccessLensPage
-  const [lanesLoading, setLanesLoading] = useState(true);  // Track when lanes are being built from data
-  const [pivotLoadingStatus, setPivotLoadingStatus] = useState('');  // Loading status message during pivot
-  const [error, setError] = useState(null);
+  // ============================================================================
+  // CONSOLIDATED STATE (useReducer)
+  // All 27 state variables consolidated into a single reducer for better performance
+  // ============================================================================
+  const [state, dispatch] = useReducer(accessLensReducer, lanesCollapsedOnLoad, createInitialState);
 
-  // Focus card minimize state
-  const [focusCardMinimized, setFocusCardMinimized] = useState(false);
+  // Destructure state for backwards compatibility with existing code
+  const {
+    focusNode,
+    lanes,
+    history,
+    historyIndex,
+    isLoading,
+    lanesLoading,
+    pivotLoadingStatus,
+    error,
+    focusCardMinimized,
+    centralNodeRevealed,
+    revealedLanes,
+    lanePositions,
+    activeDragId,
+    lanesForceCollapsed,
+    lanesForceExpanded,
+    selectedItem,
+    selectedReasonId,
+    explanation,
+    explanationLoading,
+    inspectorCollapsed,
+    showObjectInspector,
+    laneSelections,
+    pendingNodeType,
+    currentAssignments,
+    viewMode,
+    filters,
+    searchQuery,
+    availableReasonTypes,
+    availableComplianceStatuses
+  } = state;
 
-  // Animation state for staggered lane reveal
-  const [centralNodeRevealed, setCentralNodeRevealed] = useState(false);
-  const [revealedLanes, setRevealedLanes] = useState(new Set());
-
-  // Lane positions state (for drag and drop)
-  const [lanePositions, setLanePositions] = useState({});
-  const [activeDragId, setActiveDragId] = useState(null);
-  const [lanesForceCollapsed, setLanesForceCollapsed] = useState(lanesCollapsedOnLoad); // Starts collapsed based on user preference
-  const [lanesForceExpanded, setLanesForceExpanded] = useState(false); // Used to expand all lanes
+  // Setter wrapper functions - maintain same API as useState for backwards compatibility
+  // These support both direct values and functional updates: setFocusNode(value) or setFocusNode(prev => newValue)
+  const setFocusNode = useCallback((value) => dispatch({ type: 'SET_FOCUS_NODE', payload: value }), []);
+  const setLanes = useCallback((value) => dispatch({ type: 'SET_LANES', payload: value }), []);
+  const setHistory = useCallback((value) => dispatch({ type: 'SET_HISTORY', payload: value }), []);
+  const setHistoryIndex = useCallback((value) => dispatch({ type: 'SET_HISTORY_INDEX', payload: value }), []);
+  const setIsLoading = useCallback((value) => dispatch({ type: 'SET_IS_LOADING', payload: value }), []);
+  const setLanesLoading = useCallback((value) => dispatch({ type: 'SET_LANES_LOADING', payload: value }), []);
+  const setPivotLoadingStatus = useCallback((value) => dispatch({ type: 'SET_PIVOT_LOADING_STATUS', payload: value }), []);
+  const setError = useCallback((value) => dispatch({ type: 'SET_ERROR', payload: value }), []);
+  const setFocusCardMinimized = useCallback((value) => dispatch({ type: 'SET_FOCUS_CARD_MINIMIZED', payload: value }), []);
+  const setCentralNodeRevealed = useCallback((value) => dispatch({ type: 'SET_CENTRAL_NODE_REVEALED', payload: value }), []);
+  const setRevealedLanes = useCallback((value) => dispatch({ type: 'SET_REVEALED_LANES', payload: value }), []);
+  const setLanePositions = useCallback((value) => dispatch({ type: 'SET_LANE_POSITIONS', payload: value }), []);
+  const setActiveDragId = useCallback((value) => dispatch({ type: 'SET_ACTIVE_DRAG_ID', payload: value }), []);
+  const setLanesForceCollapsed = useCallback((value) => dispatch({ type: 'SET_LANES_FORCE_COLLAPSED', payload: value }), []);
+  const setLanesForceExpanded = useCallback((value) => dispatch({ type: 'SET_LANES_FORCE_EXPANDED', payload: value }), []);
+  const setSelectedItem = useCallback((value) => dispatch({ type: 'SET_SELECTED_ITEM', payload: value }), []);
+  const setSelectedReasonId = useCallback((value) => dispatch({ type: 'SET_SELECTED_REASON_ID', payload: value }), []);
+  const setExplanation = useCallback((value) => dispatch({ type: 'SET_EXPLANATION', payload: value }), []);
+  const setExplanationLoading = useCallback((value) => dispatch({ type: 'SET_EXPLANATION_LOADING', payload: value }), []);
+  const setInspectorCollapsed = useCallback((value) => dispatch({ type: 'SET_INSPECTOR_COLLAPSED', payload: value }), []);
+  const setShowObjectInspector = useCallback((value) => dispatch({ type: 'SET_SHOW_OBJECT_INSPECTOR', payload: value }), []);
+  const setLaneSelections = useCallback((value) => dispatch({ type: 'SET_LANE_SELECTIONS', payload: value }), []);
+  const setPendingNodeType = useCallback((value) => dispatch({ type: 'SET_PENDING_NODE_TYPE', payload: value }), []);
+  const setCurrentAssignments = useCallback((value) => dispatch({ type: 'SET_CURRENT_ASSIGNMENTS', payload: value }), []);
+  const setViewMode = useCallback((value) => dispatch({ type: 'SET_VIEW_MODE', payload: value }), []);
+  const setFilters = useCallback((value) => dispatch({ type: 'SET_FILTERS', payload: value }), []);
+  const setSearchQuery = useCallback((value) => dispatch({ type: 'SET_SEARCH_QUERY', payload: value }), []);
+  const setAvailableReasonTypes = useCallback((value) => dispatch({ type: 'SET_AVAILABLE_REASON_TYPES', payload: value }), []);
+  const setAvailableComplianceStatuses = useCallback((value) => dispatch({ type: 'SET_AVAILABLE_COMPLIANCE_STATUSES', payload: value }), []);
 
   // Configure drag sensors for smoother experience
   // PointerSensor with activation constraint prevents accidental drags
@@ -766,52 +963,9 @@ const AccessLens = ({
   });
   const sensors = useSensors(pointerSensor);
 
-  // Selection state
-  const [selectedItem, setSelectedItem] = useState(null);
-  const [selectedReasonId, setSelectedReasonId] = useState(null);
-  const [explanation, setExplanation] = useState(null);
-  const [explanationLoading, setExplanationLoading] = useState(false);
-
-  // Inspector panel state
-  const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
-  const [showObjectInspector, setShowObjectInspector] = useState(false); // Hidden by default on first load
-
   // Keep refs in sync for stable callback access (H-01 fix)
   showObjectInspectorRef.current = showObjectInspector;
   inspectorCollapsedRef.current = inspectorCollapsed;
-
-  // Cross-lane filtering state — schema-driven consolidated selections
-  // Keys are selectionStateKey values from LaneSchema (e.g., 'accountId', 'systemId')
-  // At most one key is active at a time (the lane driving the cross-lane filter)
-  const [laneSelections, setLaneSelections] = useState({});
-  const [pendingNodeType, setPendingNodeType] = useState(null);  // Track target node type during pivot for correct loading placeholders
-  const [currentAssignments, setCurrentAssignments] = useState(null);  // Track current assignments for violation count (updated on pivot)
-
-  // Filter state
-  const [viewMode, setViewMode] = useState(ViewModes.EXPLORE);
-  const [filters, setFilters] = useState({
-    visibleLanes: [
-      LaneTypes.ROLES,
-      LaneTypes.ACCOUNTS,
-      LaneTypes.EFFECTIVE_ENTITLEMENTS,
-      LaneTypes.POLICIES,
-      LaneTypes.ASSIGNMENT_POLICIES,  // Policies extracted from assignment reasons
-      LaneTypes.SYSTEMS,
-      LaneTypes.LOGICAL_APPLICATIONS,  // Logical applications lane (systems with resources but no direct accounts)
-      LaneTypes.CONTEXTS,
-      LaneTypes.IDENTITIES,  // For system-centric view
-      LaneTypes.VIOLATIONS,  // Violations lane (shows when identity has violations)
-      LaneTypes.RESOURCE_FOLDERS  // Resource folders lane (for entitlement-centric view)
-    ],
-    reasonTypes: [],
-    complianceStatuses: [],  // Selected compliance statuses for filtering
-    entitlementType: 'all',
-    multiPathOnly: false,  // Filter to show only entitlements with multiple assignment paths
-    highRiskOnly: false
-  });
-  const [searchQuery, setSearchQuery] = useState('');
-  const [availableReasonTypes, setAvailableReasonTypes] = useState([]);
-  const [availableComplianceStatuses, setAvailableComplianceStatuses] = useState([]);
 
   // Initialize lane positions when lanes change - only persist user-dragged positions
   // Dynamic positioning is calculated at render time for lanes without manual positions
@@ -1995,12 +2149,17 @@ const AccessLens = ({
                 if (isExternalOnly) return false; // Don't match External items with Direct filter
                 return uniqueReasonTypes.has('Direct') || uniqueReasonTypes.has('DirectAssignment');
               }
-              // Other filters
+              // Implicit filter: check reason descriptions OR complianceStatus containing "implicit"
               if (filterType === 'Implicit') {
-                return reasons.some(r => r?.description?.toLowerCase()?.includes('implicit'));
+                const complianceStatus = item.node?.metadata?.complianceStatus || item.rawData?.complianceStatus || '';
+                return reasons.some(r => r?.description?.toLowerCase()?.includes('implicit')) ||
+                       complianceStatus.toLowerCase().includes('implicit');
               }
+              // Explicit filter: check reason descriptions OR complianceStatus containing "explicit"
               if (filterType === 'Explicit') {
-                return reasons.some(r => r?.description?.toLowerCase()?.includes('explicit'));
+                const complianceStatus = item.node?.metadata?.complianceStatus || item.rawData?.complianceStatus || '';
+                return reasons.some(r => r?.description?.toLowerCase()?.includes('explicit')) ||
+                       complianceStatus.toLowerCase().includes('explicit');
               }
               // Direct match on reason type
               return uniqueReasonTypes.has(filterType);
@@ -2435,20 +2594,31 @@ const AccessLens = ({
   // Memoize the final position map to avoid recalculating on every render
   const visibleLanePositions = useMemo(() => {
     const positions = {};
+    // Calculate offset to shift lanes left when Object Inspector is open (not collapsed)
+    // Inspector is 552px wide, so shift lanes ~280px left to keep right-side lanes visible
+    const inspectorOffset = (showObjectInspector && !inspectorCollapsed) ? -280 : 0;
+
     visibleLanes.forEach(lane => {
+      let basePosition;
       // If user has manually positioned the lane, use that position
       // Otherwise use the dynamically calculated position
       if (lanePositions[lane.laneType]) {
-        positions[lane.laneType] = lanePositions[lane.laneType];
+        basePosition = lanePositions[lane.laneType];
       } else if (dynamicPositions[lane.laneType]) {
-        positions[lane.laneType] = dynamicPositions[lane.laneType];
+        basePosition = dynamicPositions[lane.laneType];
       } else {
         // Fallback to default position
-        positions[lane.laneType] = DEFAULT_LANE_POSITIONS[lane.laneType] || { x: 0, y: 0 };
+        basePosition = DEFAULT_LANE_POSITIONS[lane.laneType] || { x: 0, y: 0 };
       }
+
+      // Apply inspector offset to x position
+      positions[lane.laneType] = {
+        ...basePosition,
+        x: basePosition.x + inspectorOffset
+      };
     });
     return positions;
-  }, [visibleLanes, lanePositions, dynamicPositions]);
+  }, [visibleLanes, lanePositions, dynamicPositions, showObjectInspector, inspectorCollapsed]);
 
   // console.log('Final positions used:', visibleLanePositions);
 

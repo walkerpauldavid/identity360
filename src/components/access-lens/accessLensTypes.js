@@ -1110,7 +1110,7 @@ export const LaneConfigSchema = {
         position: { x: -380, y: 80 },
         crossLaneFilters: {
           // When an entitlement is selected, filter related lanes to show only relevant items
-          filtersLanes: [LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.SYSTEMS, LaneTypes.ACCOUNTS, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.CONTEXTS],
+          filtersLanes: [LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.SYSTEMS, LaneTypes.ACCOUNTS, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.CONTEXTS, LaneTypes.VIOLATIONS],
           filteredByLanes: [LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.VIOLATIONS, LaneTypes.CONTEXTS],
           filterMappings: {
             // When Entitlement is selected, filter Logical Applications to show only the one this entitlement belongs to
@@ -1148,6 +1148,12 @@ export const LaneConfigSchema = {
               fallbackIntermediateExtractField: 'metadata.contextNames',  // Fallback: extract context names
               targetField: 'id',                              // Match against context's id
               fallbackTargetField: 'displayName'              // Fallback: match against context's displayName
+            },
+            // When Entitlement is selected, filter Violations to show only those involving this entitlement
+            [LaneTypes.VIOLATIONS]: {
+              type: CrossLaneFilterType.ARRAY_CONTAINS,
+              sourceField: 'id',                    // Entitlement's ID
+              targetField: 'metadata.resourceIds'   // Violation's array of resource/entitlement IDs
             }
           }
         }
@@ -1628,7 +1634,7 @@ export const LaneConfigSchema = {
         apiSource: { type: 'GraphQL', query: 'getCalculatedAssignmentsDetailed', idParam: 'systemId' },
         position: { x: 0, y: 350 },
         crossLaneFilters: {
-          filtersLanes: [LaneTypes.IDENTITIES, LaneTypes.ACCOUNTS, LaneTypes.ASSIGNMENT_POLICIES],  // Entitlements can filter Identities, Accounts, and Policies
+          filtersLanes: [LaneTypes.IDENTITIES, LaneTypes.ACCOUNTS, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.VIOLATIONS],  // Entitlements can filter Identities, Accounts, Policies, and Violations
           filteredByLanes: [LaneTypes.IDENTITIES, LaneTypes.ACCOUNTS, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.VIOLATIONS],  // Can be filtered by Identities, Accounts, Policies, or Violations
           filterMappings: {
             // When Entitlement is selected, filter Identities to show only those with this entitlement
@@ -1650,6 +1656,12 @@ export const LaneConfigSchema = {
               type: CrossLaneFilterType.ARRAY_CONTAINS,
               sourceField: 'id',           // Entitlement's ID
               targetField: 'metadata.resourceIds'   // Policy's resourceIds array should contain the entitlement ID
+            },
+            // When Entitlement is selected, filter Violations to show only those involving this entitlement
+            [LaneTypes.VIOLATIONS]: {
+              type: CrossLaneFilterType.ARRAY_CONTAINS,
+              sourceField: 'id',                    // Entitlement's ID
+              targetField: 'metadata.resourceIds'   // Violation's array of resource/entitlement IDs
             }
           }
         }
