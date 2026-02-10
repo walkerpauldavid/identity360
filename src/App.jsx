@@ -20,6 +20,14 @@ const AccessLensPage = lazy(() => import('./components/access-lens/AccessLensPag
 const Admin = lazy(() => import('./components/admin/Admin'))
 const AgentChat = lazy(() => import('./components/dashboard/AgentChat'))
 
+// Reusable loading spinner for per-route Suspense fallbacks
+const RouteLoader = ({ message = 'Loading...' }) => (
+  <div className="loading-container">
+    <div className="spinner"></div>
+    <p>{message}</p>
+  </div>
+)
+
 // Layout wrapper for protected routes
 const ProtectedLayout = ({ children, title }) => {
   const { preferences } = usePreferences();
@@ -61,169 +69,187 @@ function App() {
 
   return (
     <>
-      <Suspense fallback={<div className="loading-container"><div className="spinner"></div><p>Loading...</p></div>}>
       <Routes>
-      {/* OAuth Callback Route */}
-      <Route path="/callback" element={<Callback />} />
+        {/* OAuth Callback Route - not lazy loaded */}
+        <Route path="/callback" element={<Callback />} />
 
-      {/* Protected Routes */}
-      <Route
-        path="/"
-        element={
-          isAuthenticated ? (
-            <ProtectedLayout title="Welcome">
-              <Dashboard />
-            </ProtectedLayout>
-          ) : (
-            <Navigate to="/login" replace />
-          )
-        }
-      />
-
-      {/* Identities List Route */}
-      <Route
-        path="/identities"
-        element={
-          isAuthenticated ? (
-            <ProtectedLayout title="All Identities">
-              <IdentitiesList />
-            </ProtectedLayout>
-          ) : (
-            <Navigate to="/login" replace />
-          )
-        }
-      />
-
-      {/* Log Viewer Route */}
-      <Route
-        path="/logs"
-        element={
-          isAuthenticated ? (
-            <ProtectedLayout title="API Log Viewer">
-              <LogViewer />
-            </ProtectedLayout>
-          ) : (
-            <Navigate to="/login" replace />
-          )
-        }
-      />
-
-      {/* Settings Route */}
-      <Route
-        path="/settings"
-        element={
-          isAuthenticated ? (
-            <ProtectedLayout title="Settings">
-              <Settings />
-            </ProtectedLayout>
-          ) : (
-            <Navigate to="/login" replace />
-          )
-        }
-      />
-
-      {/* My Access Route */}
-      <Route
-        path="/my-access"
-        element={
-          isAuthenticated ? (
-            <MyAccess />
-          ) : (
-            <Navigate to="/login" replace />
-          )
-        }
-      />
-
-      {/* My Team Route */}
-      <Route
-        path="/my-team"
-        element={
-          isAuthenticated ? (
-            <MyTeam />
-          ) : (
-            <Navigate to="/login" replace />
-          )
-        }
-      />
-
-      {/* Access Requests Route */}
-      <Route
-        path="/access-requests"
-        element={
-          isAuthenticated ? (
-            <ProtectedLayout title="Access Requests">
-              <AccessRequestsList />
-            </ProtectedLayout>
-          ) : (
-            <Navigate to="/login" replace />
-          )
-        }
-      />
-
-      {/* Identity360 Route */}
-      <Route
-        path="/identity360"
-        element={
-          isAuthenticated ? (
-            <AccessLensPage />
-          ) : (
-            <Navigate to="/login" replace />
-          )
-        }
-      />
-
-      {/* Legacy /access-lens route redirect to /identity360 */}
-      <Route
-        path="/access-lens"
-        element={<Navigate to="/identity360" replace />}
-      />
-
-      {/* Admin Route */}
-      <Route
-        path="/admin"
-        element={
-          isAuthenticated ? (
-            <ProtectedLayout title="Administration">
-              <Admin />
-            </ProtectedLayout>
-          ) : (
-            <Navigate to="/login" replace />
-          )
-        }
-      />
-
-      {/* Login Route */}
-      <Route
-        path="/login"
-        element={!isAuthenticated ? <Login /> : <Navigate to="/" replace />}
-      />
-
-      {/* Catch all - redirect to home */}
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
-      </Suspense>
-
-    {/* Global Agent Chat - Available on all pages when authenticated */}
-    {isAuthenticated && (
-      <>
-        {/* Floating Agent Button */}
-        <button
-          className={`agent-float-btn ${isChatOpen ? 'chat-open' : ''}`}
-          onClick={() => setIsChatOpen(true)}
-          title="Open IGAgent Assistant"
-        >
-          👾
-        </button>
-
-        {/* Agent Chat */}
-        <AgentChat
-          isOpen={isChatOpen}
-          onClose={() => setIsChatOpen(false)}
-          isDocked={isChatDocked}
-          onToggleDock={() => setIsChatDocked(!isChatDocked)}
+        {/* Protected Routes - each with individual Suspense boundary */}
+        <Route
+          path="/"
+          element={
+            isAuthenticated ? (
+              <ProtectedLayout title="Welcome">
+                <Suspense fallback={<RouteLoader message="Loading dashboard..." />}>
+                  <Dashboard />
+                </Suspense>
+              </ProtectedLayout>
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
         />
-      </>
-    )}
+
+        {/* Identities List Route */}
+        <Route
+          path="/identities"
+          element={
+            isAuthenticated ? (
+              <ProtectedLayout title="All Identities">
+                <Suspense fallback={<RouteLoader message="Loading identities..." />}>
+                  <IdentitiesList />
+                </Suspense>
+              </ProtectedLayout>
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+
+        {/* Log Viewer Route */}
+        <Route
+          path="/logs"
+          element={
+            isAuthenticated ? (
+              <ProtectedLayout title="API Log Viewer">
+                <Suspense fallback={<RouteLoader message="Loading logs..." />}>
+                  <LogViewer />
+                </Suspense>
+              </ProtectedLayout>
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+
+        {/* Settings Route */}
+        <Route
+          path="/settings"
+          element={
+            isAuthenticated ? (
+              <ProtectedLayout title="Settings">
+                <Suspense fallback={<RouteLoader message="Loading settings..." />}>
+                  <Settings />
+                </Suspense>
+              </ProtectedLayout>
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+
+        {/* My Access Route */}
+        <Route
+          path="/my-access"
+          element={
+            isAuthenticated ? (
+              <Suspense fallback={<RouteLoader message="Loading my access..." />}>
+                <MyAccess />
+              </Suspense>
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+
+        {/* My Team Route */}
+        <Route
+          path="/my-team"
+          element={
+            isAuthenticated ? (
+              <Suspense fallback={<RouteLoader message="Loading my team..." />}>
+                <MyTeam />
+              </Suspense>
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+
+        {/* Access Requests Route */}
+        <Route
+          path="/access-requests"
+          element={
+            isAuthenticated ? (
+              <ProtectedLayout title="Access Requests">
+                <Suspense fallback={<RouteLoader message="Loading access requests..." />}>
+                  <AccessRequestsList />
+                </Suspense>
+              </ProtectedLayout>
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+
+        {/* Identity360 Route */}
+        <Route
+          path="/identity360"
+          element={
+            isAuthenticated ? (
+              <Suspense fallback={<RouteLoader message="Loading Identity360..." />}>
+                <AccessLensPage />
+              </Suspense>
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+
+        {/* Legacy /access-lens route redirect to /identity360 */}
+        <Route
+          path="/access-lens"
+          element={<Navigate to="/identity360" replace />}
+        />
+
+        {/* Admin Route */}
+        <Route
+          path="/admin"
+          element={
+            isAuthenticated ? (
+              <ProtectedLayout title="Administration">
+                <Suspense fallback={<RouteLoader message="Loading admin..." />}>
+                  <Admin />
+                </Suspense>
+              </ProtectedLayout>
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+
+        {/* Login Route - not lazy loaded */}
+        <Route
+          path="/login"
+          element={!isAuthenticated ? <Login /> : <Navigate to="/" replace />}
+        />
+
+        {/* Catch all - redirect to home */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+
+      {/* Global Agent Chat - Available on all pages when authenticated */}
+      {isAuthenticated && (
+        <>
+          {/* Floating Agent Button */}
+          <button
+            className={`agent-float-btn ${isChatOpen ? 'chat-open' : ''}`}
+            onClick={() => setIsChatOpen(true)}
+            title="Open IGAgent Assistant"
+          >
+            👾
+          </button>
+
+          {/* Agent Chat */}
+          <Suspense fallback={null}>
+            <AgentChat
+              isOpen={isChatOpen}
+              onClose={() => setIsChatOpen(false)}
+              isDocked={isChatDocked}
+              onToggleDock={() => setIsChatDocked(!isChatDocked)}
+            />
+          </Suspense>
+        </>
+      )}
     </>
   )
 }
