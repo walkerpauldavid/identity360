@@ -54,6 +54,11 @@ import './AccessLensTheme.css';
 
 const MAX_HISTORY = 15;
 
+// Zoom constants
+const MIN_ZOOM = 0.3;
+const MAX_ZOOM = 2;
+const ZOOM_STEP = 0.1;
+
 // Default filter state
 const defaultFilters = {
   visibleLanes: [
@@ -117,7 +122,10 @@ const createInitialState = (lanesCollapsedOnLoad) => ({
   filters: defaultFilters,
   searchQuery: '',
   availableReasonTypes: [],
-  availableComplianceStatuses: []
+  availableComplianceStatuses: [],
+
+  // Zoom
+  zoomLevel: 1
 });
 
 // Reducer function - handles both direct values and functional updates
@@ -190,6 +198,8 @@ function accessLensReducer(state, action) {
       return { ...state, availableReasonTypes: resolvePayload('availableReasonTypes') };
     case 'SET_AVAILABLE_COMPLIANCE_STATUSES':
       return { ...state, availableComplianceStatuses: resolvePayload('availableComplianceStatuses') };
+    case 'SET_ZOOM_LEVEL':
+      return { ...state, zoomLevel: resolvePayload('zoomLevel') };
 
     default:
       console.warn('[AccessLens Reducer] Unknown action type:', action.type);
@@ -595,7 +605,7 @@ const DraggableLane = memo(({ id, position, children, onPositionChange, onRefCha
 
 // SVG Connector Lines Component - Curved flowing tentacle-like lines
 // C-02 fix: Accepts laneRefs Map to avoid querySelector, batches DOM reads, throttles during drag
-const ConnectorLines = ({ lanePositions, fulcrumRef, isDragging = false, laneRefs }) => {
+const ConnectorLines = ({ lanePositions, fulcrumRef, isDragging = false, laneRefs, zoomLevel = 1 }) => {
   const [lines, setLines] = useState([]);
   const frameSkipRef = useRef(0); // C-02 fix: Track frames for throttling
 
@@ -627,9 +637,12 @@ const ConnectorLines = ({ lanePositions, fulcrumRef, isDragging = false, laneRef
       }
       // END OF DOM READS - now safe to do calculations and state updates
 
+      // When the canvas is CSS-scaled, getBoundingClientRect() returns screen-space
+      // values. Divide by zoomLevel to convert back to canvas-space for the SVG.
+      const z = zoomLevel;
       const fulcrumCenter = {
-        x: fulcrumRect.left - containerRect.left + fulcrumRect.width / 2,
-        y: fulcrumRect.top - containerRect.top + fulcrumRect.height / 2
+        x: (fulcrumRect.left - containerRect.left + fulcrumRect.width / 2) / z,
+        y: (fulcrumRect.top - containerRect.top + fulcrumRect.height / 2) / z
       };
 
       const newLines = laneTypes.map((laneType) => {
@@ -640,12 +653,12 @@ const ConnectorLines = ({ lanePositions, fulcrumRef, isDragging = false, laneRef
 
         if (laneRect) {
           // Use actual lane position and dimensions from cached rect
-          laneX = laneRect.left - containerRect.left + laneRect.width / 2;
-          laneY = laneRect.top - containerRect.top + laneRect.height / 2;
+          laneX = (laneRect.left - containerRect.left + laneRect.width / 2) / z;
+          laneY = (laneRect.top - containerRect.top + laneRect.height / 2) / z;
         } else {
           // Fallback to calculated position with default dimensions
-          laneX = containerRect.width / 2 + pos.x + 140;
-          laneY = containerRect.height / 2 + pos.y + 80;
+          laneX = (containerRect.width / 2) / z + pos.x + 140;
+          laneY = (containerRect.height / 2) / z + pos.y + 80;
         }
 
         // Calculate control points for bezier curve (flowing tentacle effect)
@@ -722,7 +735,7 @@ const ConnectorLines = ({ lanePositions, fulcrumRef, isDragging = false, laneRef
       if (rafId) cancelAnimationFrame(rafId);
       if (intervalId) clearInterval(intervalId);
     };
-  }, [lanePositions, fulcrumRef, isDragging, laneRefs]);
+  }, [lanePositions, fulcrumRef, isDragging, laneRefs, zoomLevel]);
 
   return (
     <svg className="connector-lines-svg">
@@ -865,6 +878,7 @@ const AccessLens = ({
   }, [setPreference]);
 
   // Refs
+  const scrollContainerRef = useRef(null);
   const fulcrumRef = useRef(null);
   const previousFocusNodeId = useRef(null);  // Track focus node changes
   const previousVisibleLanesRef = useRef([]);  // Store previous visibleLanes to preserve filtered state when lane becomes filter source
@@ -919,7 +933,8 @@ const AccessLens = ({
     filters,
     searchQuery,
     availableReasonTypes,
-    availableComplianceStatuses
+    availableComplianceStatuses,
+    zoomLevel
   } = state;
 
   // Setter wrapper functions - maintain same API as useState for backwards compatibility
@@ -953,6 +968,7 @@ const AccessLens = ({
   const setSearchQuery = useCallback((value) => dispatch({ type: 'SET_SEARCH_QUERY', payload: value }), []);
   const setAvailableReasonTypes = useCallback((value) => dispatch({ type: 'SET_AVAILABLE_REASON_TYPES', payload: value }), []);
   const setAvailableComplianceStatuses = useCallback((value) => dispatch({ type: 'SET_AVAILABLE_COMPLIANCE_STATUSES', payload: value }), []);
+  const setZoomLevel = useCallback((value) => dispatch({ type: 'SET_ZOOM_LEVEL', payload: value }), []);
 
   // Configure drag sensors for smoother experience
   // PointerSensor with activation constraint prevents accidental drags
@@ -962,6 +978,26 @@ const AccessLens = ({
     },
   });
   const sensors = useSensors(pointerSensor);
+
+  // Ctrl+Wheel zoom handler — zooms the canvas without affecting toolbar/inspector
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const handleWheel = (e) => {
+      if (!e.ctrlKey && !e.metaKey) return; // Only zoom on Ctrl/Cmd+wheel
+      e.preventDefault();
+
+      setZoomLevel(prev => {
+        const direction = e.deltaY < 0 ? 1 : -1;
+        const next = Math.round((prev + direction * ZOOM_STEP) * 10) / 10;
+        return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, next));
+      });
+    };
+
+    container.addEventListener('wheel', handleWheel, { passive: false });
+    return () => container.removeEventListener('wheel', handleWheel);
+  }, [setZoomLevel]);
 
   // Keep refs in sync for stable callback access (H-01 fix)
   showObjectInspectorRef.current = showObjectInspector;
@@ -1593,8 +1629,8 @@ const AccessLens = ({
       }
 
       const newPosition = {
-        x: basePosition.x + delta.x,
-        y: basePosition.y + delta.y
+        x: basePosition.x + delta.x / zoomLevel,
+        y: basePosition.y + delta.y / zoomLevel
       };
 
       setLanePositions(prev => ({
@@ -1602,7 +1638,7 @@ const AccessLens = ({
         [laneType]: newPosition
       }));
     }
-  }, [lanes, filters.visibleLanes, lanePositions]);
+  }, [lanes, filters.visibleLanes, lanePositions, zoomLevel]);
 
   const handleDragStart = (event) => {
     setActiveDragId(event.active.id);
@@ -2789,7 +2825,7 @@ const AccessLens = ({
       {/* Main Content */}
       <div className="access-lens-content">
         {/* Scrollable canvas area — scrolls independently so Object Inspector stays pinned right */}
-        <div className="canvas-scroll-container">
+        <div className="canvas-scroll-container" ref={scrollContainerRef}>
           {/* Pivot Loading Overlay - shows when changing central node */}
           {isLoading && focusNode && (
             <div className="pivot-loading-overlay">
@@ -2799,8 +2835,17 @@ const AccessLens = ({
             </div>
           )}
 
+          {/* Scaled canvas wrapper — sets the scrollable footprint to match zoomed size */}
+          <div style={{ minWidth: `${2400 * zoomLevel}px`, minHeight: `${1600 * zoomLevel}px` }}>
           {/* Canvas with draggable lanes */}
-          <div className="access-lens-canvas" onContextMenu={handleCanvasContextMenu}>
+          <div
+            className="access-lens-canvas"
+            onContextMenu={handleCanvasContextMenu}
+            style={{
+              transform: `scale(${zoomLevel})`,
+              transformOrigin: '50% 40%'
+            }}
+          >
           {/* Context Menu */}
           {contextMenu.visible && (
             <div
@@ -2832,6 +2877,7 @@ const AccessLens = ({
             fulcrumRef={fulcrumRef}
             isDragging={activeDragId !== null}
             laneRefs={laneRefsMap.current}
+            zoomLevel={zoomLevel}
           />
 
           <DndContext
@@ -2904,6 +2950,28 @@ const AccessLens = ({
             ))}
           </DndContext>
         </div>
+        </div>{/* end scaled canvas wrapper */}
+
+          {/* Floating Zoom Controls — sticky to bottom-left of scroll container */}
+          <div className="zoom-controls">
+            <button
+              className="zoom-btn"
+              onClick={() => setZoomLevel(prev => Math.max(MIN_ZOOM, Math.round((prev - ZOOM_STEP) * 10) / 10))}
+              disabled={zoomLevel <= MIN_ZOOM}
+              title="Zoom out (Ctrl+Scroll down)"
+            >−</button>
+            <button
+              className="zoom-label"
+              onClick={() => setZoomLevel(1)}
+              title="Reset to 100%"
+            >{Math.round(zoomLevel * 100)}%</button>
+            <button
+              className="zoom-btn"
+              onClick={() => setZoomLevel(prev => Math.min(MAX_ZOOM, Math.round((prev + ZOOM_STEP) * 10) / 10))}
+              disabled={zoomLevel >= MAX_ZOOM}
+              title="Zoom in (Ctrl+Scroll up)"
+            >+</button>
+          </div>
         </div>{/* end canvas-scroll-container */}
 
         {/* Object Inspector Panel - only render when enabled */}
