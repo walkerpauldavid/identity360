@@ -31,7 +31,9 @@ const LaneCard = ({
   forceCollapsed = false,  // When true, forces all lanes to collapsed state (used by Reset Layout)
   isFilterSource = false,  // When true, this lane is the source of filtering (shows "Filtering")
   isFiltered = false,      // When true, this lane is being filtered by another lane (shows "Filtered")
-  forceExpanded = false    // When true, forces all lanes to expanded state (used by Expand All)
+  forceExpanded = false,   // When true, forces all lanes to expanded state (used by Expand All)
+  parentExpanded,          // Persisted expanded state from parent (survives filter remounts)
+  onExpandedChange         // Callback to notify parent of expanded state changes
 }) => {
   // ==========================================================================
   // HOOKS SECTION - All hooks MUST be called before any early returns
@@ -54,7 +56,19 @@ const LaneCard = ({
   const showFilters = schemaShowFilters && needsScrolling;
 
   // State hooks
-  const [isExpanded, setIsExpanded] = useState(!forceCollapsed);
+  // Use parentExpanded if available (persisted across filter remounts), otherwise default
+  const [isExpanded, setIsExpandedRaw] = useState(
+    parentExpanded !== undefined ? parentExpanded : !forceCollapsed
+  );
+
+  // Wrap setIsExpanded to notify parent of state changes
+  const setIsExpanded = useCallback((value) => {
+    setIsExpandedRaw(prev => {
+      const next = typeof value === 'function' ? value(prev) : value;
+      if (onExpandedChange) onExpandedChange(laneType, next);
+      return next;
+    });
+  }, [onExpandedChange, laneType]);
   const [isMaximized, setIsMaximized] = useState(false);
   const [allItems, setAllItems] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -73,10 +87,10 @@ const LaneCard = ({
     if (forceCollapsed) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsExpanded(false);
-       
+
       setIsMaximized(false);
     }
-  }, [forceCollapsed]);
+  }, [forceCollapsed, setIsExpanded]);
 
   // Effect: Respond to forceExpanded changes from parent
   useEffect(() => {
@@ -84,7 +98,7 @@ const LaneCard = ({
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsExpanded(true);
     }
-  }, [forceExpanded]);
+  }, [forceExpanded, setIsExpanded]);
 
   // Track previous filter state so we only auto-expand on transition (not on every render)
   const prevFilterActiveRef = useRef(isFilterSource || isFiltered);
@@ -104,7 +118,7 @@ const LaneCard = ({
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsExpanded(true);
     }
-  }, [isFilterSource, isFiltered, items, isExpanded]);
+  }, [isFilterSource, isFiltered, items, isExpanded, setIsExpanded]);
 
   // Compute available resource types from current items
   const availableResourceTypes = useMemo(() => {

@@ -125,7 +125,10 @@ const createInitialState = (lanesCollapsedOnLoad) => ({
   availableComplianceStatuses: [],
 
   // Zoom
-  zoomLevel: 1
+  zoomLevel: 1,
+
+  // Per-lane expanded/collapsed state (persists across filter changes)
+  laneExpandedStates: {}
 });
 
 // Reducer function - handles both direct values and functional updates
@@ -200,6 +203,8 @@ function accessLensReducer(state, action) {
       return { ...state, availableComplianceStatuses: resolvePayload('availableComplianceStatuses') };
     case 'SET_ZOOM_LEVEL':
       return { ...state, zoomLevel: resolvePayload('zoomLevel') };
+    case 'SET_LANE_EXPANDED_STATES':
+      return { ...state, laneExpandedStates: resolvePayload('laneExpandedStates') };
 
     default:
       console.warn('[AccessLens Reducer] Unknown action type:', action.type);
@@ -934,7 +939,8 @@ const AccessLens = ({
     searchQuery,
     availableReasonTypes,
     availableComplianceStatuses,
-    zoomLevel
+    zoomLevel,
+    laneExpandedStates
   } = state;
 
   // Setter wrapper functions - maintain same API as useState for backwards compatibility
@@ -969,6 +975,12 @@ const AccessLens = ({
   const setAvailableReasonTypes = useCallback((value) => dispatch({ type: 'SET_AVAILABLE_REASON_TYPES', payload: value }), []);
   const setAvailableComplianceStatuses = useCallback((value) => dispatch({ type: 'SET_AVAILABLE_COMPLIANCE_STATUSES', payload: value }), []);
   const setZoomLevel = useCallback((value) => dispatch({ type: 'SET_ZOOM_LEVEL', payload: value }), []);
+  const setLaneExpandedStates = useCallback((value) => dispatch({ type: 'SET_LANE_EXPANDED_STATES', payload: value }), []);
+
+  // Callback for LaneCard to report its expanded state back to parent
+  const handleLaneExpandedChange = useCallback((laneType, expanded) => {
+    setLaneExpandedStates(prev => ({ ...prev, [laneType]: expanded }));
+  }, [setLaneExpandedStates]);
 
   // Configure drag sensors for smoother experience
   // PointerSensor with activation constraint prevents accidental drags
@@ -2081,6 +2093,8 @@ const AccessLens = ({
     setLanePositions({});
     // Clear all selection/filter states
     setLaneSelections({});
+    // Clear persisted expanded states so all lanes collapse
+    setLaneExpandedStates({});
     // Collapse all lanes
     setLanesForceCollapsed(true);
     // Reset the forceCollapsed flag after a brief delay so lanes can be expanded again
@@ -2089,11 +2103,17 @@ const AccessLens = ({
 
   // Expand all lanes
   const handleExpandAll = useCallback(() => {
+    // Mark all lanes as expanded in persisted state
+    setLaneExpandedStates(prev => {
+      const next = { ...prev };
+      visibleLanes.forEach(lane => { next[lane.laneType] = true; });
+      return next;
+    });
     // Trigger expansion of all lanes
     setLanesForceExpanded(true);
     // Reset the forceExpanded flag after a brief delay
     setTimeout(() => setLanesForceExpanded(false), 100);
-  }, []);
+  }, [visibleLanes]);
 
   // ============================================================================
   // CANVAS CONTEXT MENU
@@ -2945,6 +2965,8 @@ const AccessLens = ({
                   forceExpanded={lanesForceExpanded}
                   isFilterSource={getSelectionForLane(lane.laneType, laneSelections) !== null}
                   isFiltered={lane.isFiltered && getSelectionForLane(lane.laneType, laneSelections) === null}
+                  parentExpanded={laneExpandedStates[lane.laneType]}
+                  onExpandedChange={handleLaneExpandedChange}
                 />
               </DraggableLane>
             ))}
