@@ -170,11 +170,14 @@ const FilterBar = ({
       </div>
 
       {/* Reason Type Filter */}
-      <div className="filter-group reason-filter">
-        <div className="filter-dropdown">
+      <div className={`filter-group reason-filter ${reasonTypes.length > 0 ? 'filter-active' : ''}`}>
+        <div className={`filter-dropdown ${reasonTypes.length > 0 ? 'filtering' : ''}`}>
           <button className="dropdown-trigger" title="Filter entitlements by how they were assigned">
             Reason Types {reasonTypes.length > 0 && `(${reasonTypes.length})`} ▾
           </button>
+          {reasonTypes.length > 0 && (
+            <span className="filtering-indicator">Filtering</span>
+          )}
           <div className="dropdown-menu reason-types-menu">
             {/* Help text header */}
             <div className="dropdown-help-header">
