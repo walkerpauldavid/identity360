@@ -2498,7 +2498,7 @@
 
 /* Explanation Panel (Object Inspector) */
 .access-lens-explanation {
-  width: 552px;  /* 20% wider than previous 460px */
+  width: 442px;
   flex-shrink: 0;
   background: #151515;
   border-left: 1px solid #2a2a2a;
@@ -3113,7 +3113,7 @@
 /* Responsive */
 @media (max-width: 1400px) {
   .access-lens-explanation {
-    width: 484px;  /* 20% wider than previous 403px */
+    width: 387px;
   }
 
   .access-lens-radial .lane-card {
@@ -3123,7 +3123,7 @@
 
 @media (max-width: 1200px) {
   .access-lens-explanation {
-    width: 449px;  /* 20% wider than previous 374px */
+    width: 359px;
   }
 
   .access-lens-radial {
