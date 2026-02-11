@@ -588,7 +588,7 @@ const DraggableLane = memo(({ id, position, children, onPositionChange, onRefCha
       {...attributes}
     >
       {/* Drag handle overlay - covers icon and title area for dragging */}
-      {/* Uses fixed width to leave search input and buttons uncovered */}
+      {/* Uses fixed width to leave grid controls and buttons uncovered */}
       <div
         className="drag-handle-overlay"
         {...listeners}
@@ -596,7 +596,7 @@ const DraggableLane = memo(({ id, position, children, onPositionChange, onRefCha
           position: 'absolute',
           top: 0,
           left: 0,
-          width: '160px', // Fixed width covering icon + title area only
+          width: '120px', // Covers icon + title only, avoids grid controls on short titles
           height: '40px', // Height of the lane header
           cursor: isDragging ? 'grabbing' : 'grab',
           zIndex: 10,

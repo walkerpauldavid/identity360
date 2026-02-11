@@ -200,7 +200,7 @@ export const LaneSchema = {
     supportsComplianceFiltering: true,     // Can be filtered by compliance status
     showFilters: true,                     // Show search field in lane header
     displayRule: 'SINGLE_COLUMN',
-    rows: 4,                               // Default visible rows for this lane
+    rows: 3,                               // Default visible rows for this lane
     icon: '💻',
     color: '#bf616a',
     label: 'Accounts',

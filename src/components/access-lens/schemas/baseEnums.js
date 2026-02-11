@@ -137,5 +137,6 @@ export const LaneGridConstraints = Object.freeze({
   maxColumns: 4,
   minRows: 2,
   maxRows: 10,
-  columnWidthPx: 350  // Width per column in pixels
+  columnWidthPx: 350,  // Width per column in pixels
+  rowHeightPx: 90      // Approximate height per item row (including gap and padding)
 });

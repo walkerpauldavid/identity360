@@ -194,7 +194,7 @@ const LaneCard = ({
 
   // Grid size: use custom values if set, otherwise use defaults from schema
   // Schema minColumns overrides global minimum (e.g., Entitlements requires min 2 columns)
-  const { minColumns: globalMinColumns, maxColumns, minRows, maxRows, columnWidthPx } = LaneGridConstraints;
+  const { minColumns: globalMinColumns, maxColumns, minRows, maxRows, columnWidthPx, rowHeightPx } = LaneGridConstraints;
   const schemaMinColumns = displayConfig.minColumns || globalMinColumns;
   const effectiveMinColumns = Math.max(globalMinColumns, schemaMinColumns);
 
@@ -443,7 +443,7 @@ const LaneCard = ({
             flexDirection: isMultiColumn ? undefined : 'column',
             gridTemplateColumns: isMultiColumn ? `repeat(${effectiveColumns}, 1fr)` : undefined,
             gap: '0.5rem',
-            maxHeight: isMaximized && calculatedMaxHeight ? `${calculatedMaxHeight}px` : '400px',
+            maxHeight: isMaximized && calculatedMaxHeight ? `${calculatedMaxHeight}px` : `${effectiveRows * rowHeightPx}px`,
             overflowY: 'scroll',
             overflowX: 'hidden',
             paddingBottom: '3rem',
