@@ -617,6 +617,248 @@ export const accessRequestApi = {
   },
 
   /**
+   * Get access requests filtered by resource name
+   * Used for Entitlement-centric view to show access requests for a resource
+   * @param {string} resourceName - Resource name to filter by
+   * @param {string} bearerToken - OAuth bearer token
+   * @param {string} impersonateUser - User email
+   * @param {Object} pagination - Pagination options
+   * @returns {Promise<Object>} Access requests for the resource
+   */
+  getAccessRequestsForResource: async (resourceName, bearerToken, impersonateUser, pagination = {}) => {
+    let requestId;
+    let endpoint;
+    try {
+      endpoint = `${API_CONFIG.baseUrl}${API_CONFIG.endpoints.graphql.v3_2}`;
+      const queryObject = GraphQLQueries.getAccessRequestsForResource(resourceName, pagination);
+      const requestHeaders = await getGraphQLHeaders(bearerToken, impersonateUser);
+
+      requestId = apiLogger.logRequest('GraphQL', endpoint, {
+        functionName: 'getAccessRequestsForResource',
+        resourceName,
+        pagination,
+        graphqlQuery: queryObject.query,
+        variables: queryObject.variables || {}
+      }, requestHeaders);
+
+      const result = await executeGraphQL(
+        endpoint,
+        queryObject,
+        requestHeaders
+      );
+
+      const graphqlData = result.data?.data || result.data;
+      const requests = graphqlData?.accessRequests?.data || [];
+      const total = graphqlData?.accessRequests?.total || 0;
+      const pages = graphqlData?.accessRequests?.pages || 0;
+
+      const response = {
+        status: 'success',
+        data: requests,
+        total,
+        pages
+      };
+
+      apiLogger.logResponse(requestId, 'GraphQL', endpoint, response, true, null, result.headers, result.status, result.rawResponse);
+
+      return response;
+    } catch (error) {
+      if (isAbortError(error)) {
+        return { status: 'aborted', data: [], total: 0, pages: 0 };
+      }
+      const responseHeaders = error.responseHeaders || {};
+      const statusCode = error.statusCode || null;
+      const rawResponse = error.rawResponse || null;
+
+      if (requestId) {
+        apiLogger.logResponse(requestId, 'GraphQL', endpoint, null, false, error, responseHeaders, statusCode, rawResponse);
+      }
+
+      return handleApiError(error, 'getAccessRequestsForResource');
+    }
+  },
+
+  /**
+   * Get access requests filtered by system name
+   * Used for System-centric view to show access requests for all resources in a system
+   * @param {string} systemName - System name to filter by
+   * @param {string} bearerToken - OAuth bearer token
+   * @param {string} impersonateUser - User email
+   * @param {Object} pagination - Pagination options
+   * @returns {Promise<Object>} Access requests for the system
+   */
+  getAccessRequestsForSystem: async (systemName, bearerToken, impersonateUser, pagination = {}) => {
+    let requestId;
+    let endpoint;
+    try {
+      endpoint = `${API_CONFIG.baseUrl}${API_CONFIG.endpoints.graphql.v3_2}`;
+      const queryObject = GraphQLQueries.getAccessRequestsForSystem(systemName, pagination);
+      const requestHeaders = await getGraphQLHeaders(bearerToken, impersonateUser);
+
+      requestId = apiLogger.logRequest('GraphQL', endpoint, {
+        functionName: 'getAccessRequestsForSystem',
+        systemName,
+        pagination,
+        graphqlQuery: queryObject.query,
+        variables: queryObject.variables || {}
+      }, requestHeaders);
+
+      const result = await executeGraphQL(
+        endpoint,
+        queryObject,
+        requestHeaders
+      );
+
+      const graphqlData = result.data?.data || result.data;
+      const requests = graphqlData?.accessRequests?.data || [];
+      const total = graphqlData?.accessRequests?.total || 0;
+      const pages = graphqlData?.accessRequests?.pages || 0;
+
+      const response = {
+        status: 'success',
+        data: requests,
+        total,
+        pages
+      };
+
+      apiLogger.logResponse(requestId, 'GraphQL', endpoint, response, true, null, result.headers, result.status, result.rawResponse);
+
+      return response;
+    } catch (error) {
+      if (isAbortError(error)) {
+        return { status: 'aborted', data: [], total: 0, pages: 0 };
+      }
+      const responseHeaders = error.responseHeaders || {};
+      const statusCode = error.statusCode || null;
+      const rawResponse = error.rawResponse || null;
+
+      if (requestId) {
+        apiLogger.logResponse(requestId, 'GraphQL', endpoint, null, false, error, responseHeaders, statusCode, rawResponse);
+      }
+
+      return handleApiError(error, 'getAccessRequestsForSystem');
+    }
+  },
+
+  /**
+   * Get pending approvals filtered by resource name
+   * Used for Entitlement-centric view to show pending approval questions for a resource
+   * @param {string} resourceName - Resource name to filter by
+   * @param {string} bearerToken - OAuth bearer token
+   * @param {string} impersonateUser - User email
+   * @param {Object} pagination - Pagination options
+   * @returns {Promise<Object>} Pending approvals for the resource
+   */
+  getApprovalsForResource: async (resourceName, bearerToken, impersonateUser, pagination = {}) => {
+    let requestId;
+    let endpoint;
+    try {
+      endpoint = `${API_CONFIG.baseUrl}${API_CONFIG.endpoints.graphql.v3_2}`;
+      const queryObject = GraphQLQueries.getApprovalsForResource(resourceName, pagination);
+      const requestHeaders = await getGraphQLHeaders(bearerToken, impersonateUser);
+
+      requestId = apiLogger.logRequest('GraphQL', endpoint, {
+        functionName: 'getApprovalsForResource',
+        resourceName,
+        pagination,
+        graphqlQuery: queryObject.query,
+        variables: queryObject.variables || {}
+      }, requestHeaders);
+
+      const result = await executeGraphQL(
+        endpoint,
+        queryObject,
+        requestHeaders
+      );
+
+      const graphqlData = result.data?.data || result.data;
+      const approvals = graphqlData?.accessRequestApprovalSurveyQuestions?.data || [];
+      const total = graphqlData?.accessRequestApprovalSurveyQuestions?.total || 0;
+      const pages = graphqlData?.accessRequestApprovalSurveyQuestions?.pages || 0;
+
+      const response = {
+        status: 'success',
+        data: approvals,
+        total,
+        pages
+      };
+
+      apiLogger.logResponse(requestId, 'GraphQL', endpoint, response, true, null, result.headers, result.status, result.rawResponse);
+
+      return response;
+    } catch (error) {
+      if (isAbortError(error)) {
+        return { status: 'aborted', data: [], total: 0, pages: 0 };
+      }
+      const responseHeaders = error.responseHeaders || {};
+      const statusCode = error.statusCode || null;
+      const rawResponse = error.rawResponse || null;
+
+      if (requestId) {
+        apiLogger.logResponse(requestId, 'GraphQL', endpoint, null, false, error, responseHeaders, statusCode, rawResponse);
+      }
+
+      return handleApiError(error, 'getApprovalsForResource');
+    }
+  },
+
+  /**
+   * Get approval workflow status for a specific survey object
+   * Returns assignee names and approval status
+   * @param {string} surveyObjectId - The surveyObjectKey from an approval item
+   * @param {string} bearerToken - OAuth bearer token
+   * @param {string} impersonateUser - User email
+   * @returns {Promise<Object>} Workflow status with assignees
+   */
+  getApprovalWorkflowStatus: async (surveyObjectId, bearerToken, impersonateUser) => {
+    let requestId;
+    let endpoint;
+    try {
+      endpoint = `${API_CONFIG.baseUrl}${API_CONFIG.endpoints.graphql.v3_2}`;
+      const queryObject = GraphQLQueries.getApprovalWorkflowStatus(surveyObjectId);
+      const requestHeaders = await getGraphQLHeaders(bearerToken, impersonateUser);
+
+      requestId = apiLogger.logRequest('GraphQL', endpoint, {
+        functionName: 'getApprovalWorkflowStatus',
+        surveyObjectId,
+        graphqlQuery: queryObject.query,
+        variables: queryObject.variables || {}
+      }, requestHeaders);
+
+      const result = await executeGraphQL(
+        endpoint,
+        queryObject,
+        requestHeaders
+      );
+
+      const graphqlData = result.data?.data || result.data;
+      const workflowStatuses = graphqlData?.accessApprovalWorkflowStatus || [];
+
+      const response = {
+        status: 'success',
+        data: workflowStatuses
+      };
+
+      apiLogger.logResponse(requestId, 'GraphQL', endpoint, response, true, null, result.headers, result.status, result.rawResponse);
+
+      return response;
+    } catch (error) {
+      if (isAbortError(error)) {
+        return { status: 'aborted', data: [] };
+      }
+      const responseHeaders = error.responseHeaders || {};
+      const statusCode = error.statusCode || null;
+      const rawResponse = error.rawResponse || null;
+
+      if (requestId) {
+        apiLogger.logResponse(requestId, 'GraphQL', endpoint, null, false, error, responseHeaders, statusCode, rawResponse);
+      }
+
+      return handleApiError(error, 'getApprovalWorkflowStatus');
+    }
+  },
+
+  /**
    * Get resources available for beneficiary
    * @param {string} identityUId - Identity UId (32-char GUID)
    * @param {string} bearerToken - OAuth bearer token
@@ -1808,6 +2050,22 @@ export const omadaApi = {
     getAccessRequests: withApiCache('accessRequest', 'getAccessRequests',
       accessRequestApi.getAccessRequests,
       (_token, impersonateUser) => [impersonateUser]
+    ),
+    getAccessRequestsForResource: withApiCache('accessRequest', 'getAccessRequestsForResource',
+      accessRequestApi.getAccessRequestsForResource,
+      (resourceName, _token, impersonateUser, pagination) => [impersonateUser, resourceName, pagination]
+    ),
+    getAccessRequestsForSystem: withApiCache('accessRequest', 'getAccessRequestsForSystem',
+      accessRequestApi.getAccessRequestsForSystem,
+      (systemName, _token, impersonateUser, pagination) => [impersonateUser, systemName, pagination]
+    ),
+    getApprovalsForResource: withApiCache('accessRequest', 'getApprovalsForResource',
+      accessRequestApi.getApprovalsForResource,
+      (resourceName, _token, impersonateUser, pagination) => [impersonateUser, resourceName, pagination]
+    ),
+    getApprovalWorkflowStatus: withApiCache('accessRequest', 'getApprovalWorkflowStatus',
+      accessRequestApi.getApprovalWorkflowStatus,
+      (surveyObjectId, _token, impersonateUser) => [impersonateUser, surveyObjectId]
     ),
     getResourcesForBeneficiary: withApiCache('accessRequest', 'getResourcesForBeneficiary',
       accessRequestApi.getResourcesForBeneficiary,

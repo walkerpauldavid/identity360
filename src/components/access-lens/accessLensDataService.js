@@ -287,7 +287,7 @@ export const transformIdentityToNode = (identity) => {
     ].filter(Boolean),
     metadata: {
       email: identity.EMAIL,
-      department: identity.OUREF?.DisplayName || identity.OUREF,
+      department: identity.OUREF?.DisplayName || identity.OUREF?.Value || (typeof identity.OUREF === 'string' ? identity.OUREF : null),
       employeeId: identity.EMPLOYEEID,
       title: identity.JOBTITLE,
       // Raw data for debugging/extension
@@ -2909,6 +2909,204 @@ export function buildLanesForEntitlement(assignments, filters = {}, entitlementN
 }
 
 /**
+ * Build Requests lane for entitlement-centric view
+ * Takes raw accessRequests API response data array and builds a lane
+ * @param {Array} requestsData - Array of access request objects from API
+ * @param {Object} filters - Current filters (unused for now)
+ * @returns {Object} Lane object with laneType, totalCount, items, allItemsData, canLoadMore
+ */
+export function buildRequestsLaneForEntitlement(requestsData, filters = {}) {
+  if (!requestsData || !Array.isArray(requestsData) || requestsData.length === 0) {
+    return {
+      laneType: LaneTypes.REQUESTS,
+      totalCount: 0,
+      items: [],
+      allItemsData: [],
+      canLoadMore: false,
+      apiSource: 'GraphQL:getAccessRequestsForResource'
+    };
+  }
+
+  const seenIds = new Set();
+  const items = requestsData.map((request, index) => {
+    // Ensure unique IDs — append index if duplicated
+    let uniqueId = request.id;
+    if (seenIds.has(uniqueId)) {
+      uniqueId = `${uniqueId}-${index}`;
+    }
+    seenIds.add(uniqueId);
+
+    return {
+      node: {
+        id: uniqueId,
+        type: NodeTypes.REQUEST,
+        displayName: `${request.beneficiary?.displayName || 'Unknown'} - ${request.resource?.name || ''}`,
+        status: request.status?.approvalStatus,
+        badges: [
+          request.status?.approvalStatus,
+          request.resource?.name,
+          request.beneficiary?.displayName,
+          request.requestedBy?.displayName && `By: ${request.requestedBy.displayName}`,
+          request.reason
+        ].filter(Boolean),
+        metadata: {
+          beneficiary: request.beneficiary,
+          requestedBy: request.requestedBy,
+          reason: request.reason,
+          resource: request.resource,
+          approvalStatus: request.status?.approvalStatus,
+          provisioningStatus: request.status?.provisioningStatus
+        },
+        rawData: request
+      }
+    };
+  });
+
+  return {
+    laneType: LaneTypes.REQUESTS,
+    totalCount: requestsData.length,
+    items,
+    allItemsData: requestsData,
+    canLoadMore: false,
+    apiSource: 'GraphQL:getAccessRequestsForResource'
+  };
+}
+
+/**
+ * Build Approvals lane for entitlement-centric view
+ * Takes raw accessRequestApprovalSurveyQuestions API response data array and builds a lane
+ * Each item shows: workflowStepTitle, reason, identity (identityId, firstName, lastName)
+ * @param {Array} approvalsData - Array of approval objects from API
+ * @param {Object} filters - Current filters (unused for now)
+ * @returns {Object} Lane object with laneType, totalCount, items, allItemsData, canLoadMore
+ */
+export function buildApprovalsLaneForEntitlement(approvalsData, filters = {}) {
+  if (!approvalsData || !Array.isArray(approvalsData) || approvalsData.length === 0) {
+    return {
+      laneType: LaneTypes.APPROVALS,
+      totalCount: 0,
+      items: [],
+      allItemsData: [],
+      canLoadMore: false,
+      apiSource: 'GraphQL:getApprovalsForResource'
+    };
+  }
+
+  const items = approvalsData.map(approval => {
+    const identity = approval.resourceAssignment?.identity;
+    const identityLabel = identity
+      ? `${identity.identityId || ''} ${identity.firstName || ''} ${identity.lastName || ''}`.trim()
+      : 'Unknown';
+
+    return {
+      node: {
+        id: approval.surveyObjectKey || approval.surveyId,
+        type: NodeTypes.APPROVAL,
+        displayName: `${approval.workflowStepTitle || approval.workflowStep || 'Approval'} - ${identityLabel}`,
+        status: approval.workflowStep,
+        badges: [
+          approval.workflowStepTitle,
+          identity?.identityId
+        ].filter(Boolean),
+        metadata: {
+          reason: approval.reason,
+          workflowStep: approval.workflowStep,
+          workflowStepTitle: approval.workflowStepTitle,
+          identity,
+          resource: approval.resourceAssignment?.resource,
+          surveyId: approval.surveyId,
+          surveyObjectKey: approval.surveyObjectKey
+        },
+        rawData: approval
+      }
+    };
+  });
+
+  return {
+    laneType: LaneTypes.APPROVALS,
+    totalCount: approvalsData.length,
+    items,
+    allItemsData: approvalsData,
+    canLoadMore: false,
+    apiSource: 'GraphQL:getApprovalsForResource'
+  };
+}
+
+/**
+ * Enrich Approvals lane items with workflow status (assignee/approver names)
+ * For each approval item, fetches accessApprovalWorkflowStatus using surveyObjectKey
+ * and adds the assignee display names to badges and metadata.
+ */
+export async function enrichApprovalsWithWorkflowStatus(approvalsLane, apiContext) {
+  if (!approvalsLane || !approvalsLane.items || approvalsLane.items.length === 0) {
+    return approvalsLane;
+  }
+
+  const { omadaApi, bearerToken, impersonateUser } = apiContext;
+
+  if (!omadaApi || !bearerToken) {
+    console.warn('[enrichApprovalsWithWorkflowStatus] Missing API context, skipping enrichment');
+    return approvalsLane;
+  }
+
+  console.log(`[enrichApprovalsWithWorkflowStatus] Enriching ${approvalsLane.items.length} approvals with workflow status`);
+
+  const enrichedItems = await Promise.all(
+    approvalsLane.items.map(async (item) => {
+      const surveyObjectKey = item.node?.metadata?.surveyObjectKey;
+
+      if (!surveyObjectKey) {
+        return item;
+      }
+
+      try {
+        const result = await omadaApi.accessRequest.getApprovalWorkflowStatus(
+          surveyObjectKey,
+          bearerToken,
+          impersonateUser
+        );
+
+        if (result.status === 'success' && result.data && result.data.length > 0) {
+          // Get the active workflow step (or first one)
+          const activeStep = result.data.find(step => step.active) || result.data[0];
+          const assignees = activeStep?.assignees || [];
+          const assigneeNames = assignees.map(a => a.displayName || `${a.firstName || ''} ${a.lastName || ''}`.trim()).filter(Boolean);
+
+          if (assigneeNames.length > 0) {
+            // Add assignee badge as plain string (badges must be strings for React rendering)
+            const assigneeBadge = `Approver: ${assigneeNames.join(', ')}`;
+
+            return {
+              ...item,
+              node: {
+                ...item.node,
+                badges: [...(item.node.badges || []), assigneeBadge],
+                metadata: {
+                  ...item.node.metadata,
+                  assignees,
+                  assigneeNames,
+                  workflowStatus: activeStep
+                }
+              }
+            };
+          }
+        }
+
+        return item;
+      } catch (error) {
+        console.warn(`[enrichApprovalsWithWorkflowStatus] Failed to fetch workflow status for ${surveyObjectKey}:`, error.message);
+        return item;
+      }
+    })
+  );
+
+  return {
+    ...approvalsLane,
+    items: enrichedItems
+  };
+}
+
+/**
  * Build Identities lane for entitlement-centric view
  * Extract unique identities from assignments
  */
@@ -4444,6 +4642,176 @@ export function extractViolationCount(assignments) {
 }
 
 /**
+ * Build the Resource (Entitlement) lane for a Request pivot
+ * Extracts the requested resource from rawData.resource and presents it as a single entitlement card
+ */
+export function buildResourceLaneForRequest(requestNode) {
+  const resource = requestNode?.rawData?.resource;
+  if (!resource) {
+    return {
+      laneType: LaneTypes.EFFECTIVE_ENTITLEMENTS,
+      totalCount: 0,
+      items: [],
+      allItemsData: [],
+      canLoadMore: false,
+      apiSource: 'derived:requestResource'
+    };
+  }
+
+  const item = {
+    node: {
+      id: resource.id || resource.UId || resource.uid,
+      type: NodeTypes.ENTITLEMENT,
+      displayName: resource.name || resource.displayName || resource.DISPLAYNAME || 'Unknown Resource',
+      status: null,
+      badges: [
+        resource.systemName || resource.system?.name
+      ].filter(Boolean),
+      metadata: {
+        systemId: resource.system?.id || resource.systemId,
+        systemName: resource.systemName || resource.system?.name,
+        resourceType: resource.resourceType || resource.type
+      },
+      rawData: resource
+    }
+  };
+
+  return {
+    laneType: LaneTypes.EFFECTIVE_ENTITLEMENTS,
+    totalCount: 1,
+    items: [item],
+    allItemsData: [resource],
+    canLoadMore: false,
+    apiSource: 'derived:requestResource'
+  };
+}
+
+/**
+ * Build the Requester Identity lane for a Request pivot
+ * Extracts requestedBy from rawData and enriches with OData details if available
+ */
+export function buildRequesterIdentityLaneForRequest(requestNode, odataDetails = null) {
+  const requestedBy = requestNode?.rawData?.requestedBy;
+  if (!requestedBy) {
+    return {
+      laneType: LaneTypes.REQUESTER_IDENTITY,
+      totalCount: 0,
+      items: [],
+      allItemsData: [],
+      canLoadMore: false,
+      apiSource: 'derived:requestedBy'
+    };
+  }
+
+  // Merge OData enrichment fields if available
+  const email = odataDetails?.EMAIL || requestedBy.email;
+  const jobTitle = odataDetails?.JOBTITLE || requestedBy.jobTitle;
+  const employeeId = odataDetails?.EMPLOYEEID || requestedBy.employeeId;
+  const department = odataDetails?.OUREF?.DisplayName || odataDetails?.OUREF?.Value || (typeof odataDetails?.OUREF === 'string' ? odataDetails.OUREF : null) || requestedBy.department;
+  const identityCategory = odataDetails?.IDENTITYCATEGORY || requestedBy.identityCategory;
+  const identityStatus = odataDetails?.IDENTITYSTATUS || requestedBy.identityStatus;
+  const displayName = odataDetails?.DISPLAYNAME ||
+    requestedBy.displayName ||
+    `${odataDetails?.FIRSTNAME || requestedBy.firstName || ''} ${odataDetails?.LASTNAME || requestedBy.lastName || ''}`.trim() ||
+    'Unknown';
+
+  const item = {
+    node: {
+      id: requestedBy.id || requestedBy.UId || odataDetails?.UId,
+      type: NodeTypes.IDENTITY,
+      displayName,
+      status: identityStatus || null,
+      badges: [
+        jobTitle,
+        requestedBy.userName || requestedBy.identityId || odataDetails?.IDENTITYID
+      ].filter(Boolean),
+      metadata: {
+        email,
+        department,
+        employeeId,
+        title: jobTitle,
+        identityCategory,
+        identityStatus,
+        userName: requestedBy.userName,
+        _raw: odataDetails || requestedBy
+      },
+      rawData: odataDetails || requestedBy
+    }
+  };
+
+  return {
+    laneType: LaneTypes.REQUESTER_IDENTITY,
+    totalCount: 1,
+    items: [item],
+    allItemsData: [odataDetails || requestedBy],
+    canLoadMore: false,
+    apiSource: 'derived:requestedBy'
+  };
+}
+
+/**
+ * Build the Beneficiary Identity lane for a Request pivot
+ * Extracts beneficiary from rawData and enriches with OData details if available
+ */
+export function buildBeneficiaryIdentityLaneForRequest(requestNode, odataDetails = null) {
+  const beneficiary = requestNode?.rawData?.beneficiary;
+  if (!beneficiary) {
+    return {
+      laneType: LaneTypes.BENEFICIARY_IDENTITY,
+      totalCount: 0,
+      items: [],
+      allItemsData: [],
+      canLoadMore: false,
+      apiSource: 'derived:beneficiary'
+    };
+  }
+
+  // Merge OData enrichment fields if available
+  const email = odataDetails?.EMAIL || beneficiary.email;
+  const jobTitle = odataDetails?.JOBTITLE || beneficiary.jobTitle;
+  const employeeId = odataDetails?.EMPLOYEEID || beneficiary.employeeId;
+  const department = odataDetails?.OUREF?.DisplayName || odataDetails?.OUREF?.Value || (typeof odataDetails?.OUREF === 'string' ? odataDetails.OUREF : null) || beneficiary.department;
+  const identityCategory = odataDetails?.IDENTITYCATEGORY || beneficiary.identityCategory;
+  const identityStatus = odataDetails?.IDENTITYSTATUS || beneficiary.identityStatus;
+  const displayName = odataDetails?.DISPLAYNAME ||
+    beneficiary.displayName ||
+    `${odataDetails?.FIRSTNAME || beneficiary.firstName || ''} ${odataDetails?.LASTNAME || beneficiary.lastName || ''}`.trim() ||
+    'Unknown';
+
+  const item = {
+    node: {
+      id: beneficiary.id || beneficiary.UId || odataDetails?.UId,
+      type: NodeTypes.IDENTITY,
+      displayName,
+      status: identityStatus || null,
+      badges: [
+        jobTitle,
+        beneficiary.identityId || odataDetails?.IDENTITYID
+      ].filter(Boolean),
+      metadata: {
+        email,
+        department,
+        employeeId,
+        title: jobTitle,
+        identityCategory,
+        identityStatus,
+        _raw: odataDetails || beneficiary
+      },
+      rawData: odataDetails || beneficiary
+    }
+  };
+
+  return {
+    laneType: LaneTypes.BENEFICIARY_IDENTITY,
+    totalCount: 1,
+    items: [item],
+    allItemsData: [odataDetails || beneficiary],
+    canLoadMore: false,
+    apiSource: 'derived:beneficiary'
+  };
+}
+
+/**
  * Export for use in AccessLens
  */
 export default {
@@ -4466,6 +4834,12 @@ export default {
   buildEntitlementsLaneFromAPResources,
   buildLanesFromAssignments,
   buildLanesForEntitlement,
+  buildRequestsLaneForEntitlement,
+  buildApprovalsLaneForEntitlement,
+  enrichApprovalsWithWorkflowStatus,
+  buildResourceLaneForRequest,
+  buildRequesterIdentityLaneForRequest,
+  buildBeneficiaryIdentityLaneForRequest,
   buildAssignmentPoliciesLane,
   enrichPoliciesWithOData,
   buildViolationsLane,

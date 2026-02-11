@@ -111,13 +111,21 @@ const FilterBar = ({
       <div className="filter-group lane-toggles">
         <span className="filter-label">Show:</span>
         {[
-          { type: LaneTypes.ROLES, label: 'Roles', icon: '👥' },
-          { type: LaneTypes.ACCOUNTS, label: 'Accounts', icon: '💻' },
-          { type: LaneTypes.EFFECTIVE_ENTITLEMENTS, label: 'Entitlements', icon: '🔑' },
-          { type: LaneTypes.POLICIES, label: 'Policies', icon: '📋' },
-          { type: LaneTypes.SYSTEMS, label: 'Systems', icon: '🖥️' },
-          { type: LaneTypes.IDENTITIES, label: 'Identities', icon: '👤' },
-          ...(focusNodeType === 'Identity' ? [{ type: LaneTypes.CONTEXTS, label: 'Contexts', icon: '📂' }] : [])
+          ...(focusNodeType === 'Request' ? [
+            { type: LaneTypes.EFFECTIVE_ENTITLEMENTS, label: 'Resource', icon: '🔑' },
+            { type: LaneTypes.REQUESTER_IDENTITY, label: 'Requester', icon: '📤' },
+            { type: LaneTypes.BENEFICIARY_IDENTITY, label: 'Beneficiary', icon: '📥' }
+          ] : [
+            { type: LaneTypes.ROLES, label: 'Roles', icon: '👥' },
+            { type: LaneTypes.ACCOUNTS, label: 'Accounts', icon: '💻' },
+            { type: LaneTypes.EFFECTIVE_ENTITLEMENTS, label: 'Entitlements', icon: '🔑' },
+            { type: LaneTypes.POLICIES, label: 'Policies', icon: '📋' },
+            { type: LaneTypes.SYSTEMS, label: 'Systems', icon: '🖥️' },
+            { type: LaneTypes.IDENTITIES, label: 'Identities', icon: '👤' },
+            ...(focusNodeType === 'Identity' ? [{ type: LaneTypes.CONTEXTS, label: 'Contexts', icon: '📂' }] : []),
+            ...(['Entitlement', 'System'].includes(focusNodeType) ? [{ type: LaneTypes.REQUESTS, label: 'Requests', icon: '\u{1F4DD}' }] : []),
+            ...(focusNodeType === 'Entitlement' ? [{ type: LaneTypes.APPROVALS, label: 'Approvals', icon: '\u2705' }] : [])
+          ])
         ].map(({ type, label, icon }) => (
           <button
             key={type}

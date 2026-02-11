@@ -523,6 +523,80 @@ export const LaneSchema = {
       ],
       hideAttributes: ['Id', 'UId', 'CurrentVersionId', 'Deleted', 'DeleteTime']
     }
+  },
+  [LaneTypes.REQUESTS]: {
+    dataType: NodeTypes.REQUEST,
+    selectionStateKey: 'requestId',
+    displayRule: 'SINGLE_COLUMN',
+    rows: 4,
+    icon: '\u{1F4DD}',
+    color: '#88c0d0',
+    label: 'Requests',
+    description: 'Access requests for this entitlement',
+    sortable: true,
+    collapsible: true,
+    exclusionList: [],
+    defaultPosition: {
+      compass: CompassOrientation.SSE,  // South-South-East (dedicated slot, avoids SE collision with Systems)
+      priority: 1
+    },
+    apiSource: { type: 'GraphQL', query: 'getAccessRequestsForResource', filterParam: 'resourceName' }
+  },
+  [LaneTypes.APPROVALS]: {
+    dataType: NodeTypes.APPROVAL,
+    selectionStateKey: 'approvalId',
+    displayRule: 'SINGLE_COLUMN',
+    rows: 4,
+    icon: '\u2705',
+    color: '#a3be8c',
+    label: 'Approvals',
+    description: 'Pending approvals for this entitlement',
+    sortable: true,
+    collapsible: true,
+    exclusionList: [],
+    defaultPosition: {
+      compass: CompassOrientation.SW,
+      priority: 2
+    },
+    apiSource: { type: 'GraphQL', query: 'getApprovalsForResource', filterParam: 'resourceName' }
+  },
+
+  [LaneTypes.REQUESTER_IDENTITY]: {
+    dataType: NodeTypes.IDENTITY,
+    selectionStateKey: 'requesterIdentityId',
+    displayRule: 'SINGLE_COLUMN',
+    rows: 1,
+    icon: '📤',
+    color: '#5e81ac',
+    label: 'Requester',
+    description: 'The identity who submitted this access request',
+    sortable: false,
+    collapsible: false,
+    exclusionList: [],
+    defaultPosition: {
+      compass: CompassOrientation.W,
+      priority: 1
+    },
+    apiSource: { type: 'derived', from: 'focusNode', extract: 'requestedBy' }
+  },
+
+  [LaneTypes.BENEFICIARY_IDENTITY]: {
+    dataType: NodeTypes.IDENTITY,
+    selectionStateKey: 'beneficiaryIdentityId',
+    displayRule: 'SINGLE_COLUMN',
+    rows: 1,
+    icon: '📥',
+    color: '#a3be8c',
+    label: 'Beneficiary',
+    description: 'The identity who benefits from this access request',
+    sortable: false,
+    collapsible: false,
+    exclusionList: [],
+    defaultPosition: {
+      compass: CompassOrientation.E,
+      priority: 1
+    },
+    apiSource: { type: 'derived', from: 'focusNode', extract: 'beneficiary' }
   }
 };
 
@@ -937,6 +1011,53 @@ export const FocusNodeSchema = {
       type: 'derived',  // Violations are derived from calculatedAssignments
       from: 'calculatedAssignments',
       extract: 'violations'
+    }
+  },
+
+  [NodeTypes.REQUEST]: {
+    title: 'Access Request',
+    icon: '\u{1F4DD}',
+    color: '#88c0d0',
+    primaryField: 'resource.name|reason',
+    attributes: [
+      { field: 'resource.name', label: 'Resource', type: 'text', required: true },
+      { field: 'reason', label: 'Reason', type: 'text', required: false },
+      { field: 'status.approvalStatus', label: 'Approval Status', type: 'badge', required: true },
+      { field: 'status.provisioningStatus', label: 'Provisioning', type: 'badge', required: false },
+      { field: 'beneficiary.displayName', label: 'Beneficiary', type: 'text', required: true },
+      { field: 'requestedBy.displayName', label: 'Requested By', type: 'text', required: false },
+      { field: 'requestedBy.userName', label: 'Requester Username', type: 'text', required: false },
+      { field: 'requestedTime', label: 'Requested', type: 'date', required: false },
+      { field: 'validFrom', label: 'Valid From', type: 'date', required: false },
+      { field: 'validTo', label: 'Valid To', type: 'date', required: false }
+    ],
+    fieldMappings: {
+      id: ['id'],
+      displayName: ['beneficiary.displayName', 'reason'],
+      status: ['status.approvalStatus']
+    }
+  },
+
+  [NodeTypes.APPROVAL]: {
+    title: 'Pending Approval',
+    icon: '\u2705',
+    color: '#a3be8c',
+    primaryField: 'workflowStepTitle|reason',
+    attributes: [
+      { field: 'workflowStepTitle', label: 'Step', type: 'text', required: true },
+      { field: 'workflowStep', label: 'Workflow Step', type: 'badge', required: false },
+      { field: 'reason', label: 'Reason', type: 'text', required: true },
+      { field: 'resourceAssignment.identity.displayName', label: 'Beneficiary', type: 'text', required: true },
+      { field: 'resourceAssignment.identity.identityId', label: 'Identity ID', type: 'text', required: false },
+      { field: 'resourceAssignment.resource.name', label: 'Resource', type: 'text', required: false },
+      { field: 'routeTime', label: 'Routed', type: 'date', required: false },
+      { field: 'validTo', label: 'Valid To', type: 'date', required: false },
+      { field: 'history', label: 'History', type: 'text', required: false }
+    ],
+    fieldMappings: {
+      id: ['surveyObjectKey', 'surveyId'],
+      displayName: ['resourceAssignment.identity.displayName', 'workflowStepTitle'],
+      status: ['workflowStep']
     }
   }
 };
@@ -1546,6 +1667,24 @@ export const LaneConfigSchema = {
         },
         position: { x: 380, y: -250 },
         crossLaneFilters: null  // Child resources are informational in entitlement view
+      },
+      {
+        laneType: LaneTypes.REQUESTS,
+        title: 'Requests',
+        description: 'Access requests for this entitlement',
+        required: false,
+        apiSource: { type: 'GraphQL', query: 'getAccessRequestsForResource', filterParam: 'resourceName' },
+        position: { x: 380, y: 250 },
+        crossLaneFilters: null
+      },
+      {
+        laneType: LaneTypes.APPROVALS,
+        title: 'Approvals',
+        description: 'Pending approvals for this entitlement',
+        required: false,
+        apiSource: { type: 'GraphQL', query: 'getApprovalsForResource', filterParam: 'resourceName' },
+        position: { x: 380, y: 250 },
+        crossLaneFilters: null
       }
     ]
   },
@@ -1774,6 +1913,15 @@ export const LaneConfigSchema = {
             }
           }
         }
+      },
+      {
+        laneType: LaneTypes.REQUESTS,
+        title: 'Requests',
+        description: 'Access requests for resources in this system',
+        required: false,
+        apiSource: { type: 'GraphQL', query: 'getAccessRequestsForSystem', filterParam: 'systemName' },
+        position: { x: 380, y: 250 },
+        crossLaneFilters: null
       }
     ]
   },
@@ -2246,6 +2394,42 @@ export const LaneConfigSchema = {
         }
       }
     ]
+  },
+  [NodeTypes.REQUEST]: {
+    excludedLanes: [LaneTypes.REQUESTS],
+    lanes: [
+      {
+        laneType: LaneTypes.EFFECTIVE_ENTITLEMENTS,
+        title: 'Requested Resource',
+        description: 'The entitlement/resource being requested',
+        required: true,
+        apiSource: { type: 'derived', from: 'focusNode', extract: 'requestResource' },
+        position: { x: 0, y: -300 },
+        crossLaneFilters: null
+      },
+      {
+        laneType: LaneTypes.REQUESTER_IDENTITY,
+        title: 'Requested By',
+        description: 'The identity who submitted this access request',
+        required: true,
+        apiSource: { type: 'derived', from: 'focusNode', extract: 'requestedBy' },
+        position: { x: -400, y: 100 },
+        crossLaneFilters: null
+      },
+      {
+        laneType: LaneTypes.BENEFICIARY_IDENTITY,
+        title: 'Beneficiary',
+        description: 'The identity who benefits from this access request',
+        required: true,
+        apiSource: { type: 'derived', from: 'focusNode', extract: 'beneficiary' },
+        position: { x: 400, y: 100 },
+        crossLaneFilters: null
+      }
+    ]
+  },
+  [NodeTypes.APPROVAL]: {
+    excludedLanes: [LaneTypes.APPROVALS],
+    lanes: []
   }
 };
 
@@ -2422,15 +2606,17 @@ export const getLanesForNodeType = (nodeType) => {
     case NodeTypes.ROLE:
       return [LaneTypes.IDENTITIES, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.POLICIES];
     case NodeTypes.ENTITLEMENT:
-      return [LaneTypes.IDENTITIES, LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS, LaneTypes.RESOURCE_FOLDERS, LaneTypes.EFFECTIVE_ENTITLEMENTS];
+      return [LaneTypes.IDENTITIES, LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS, LaneTypes.RESOURCE_FOLDERS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.REQUESTS, LaneTypes.APPROVALS];
     case NodeTypes.SYSTEM:
-      return [LaneTypes.IDENTITIES, LaneTypes.ACCOUNTS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.VIOLATIONS];
+      return [LaneTypes.IDENTITIES, LaneTypes.ACCOUNTS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.VIOLATIONS, LaneTypes.REQUESTS];
     case NodeTypes.LOGICAL_APPLICATION:
       return [LaneTypes.IDENTITIES, LaneTypes.SYSTEMS, LaneTypes.ACCOUNTS, LaneTypes.EFFECTIVE_ENTITLEMENTS];
     case NodeTypes.ACCOUNT:
       return [LaneTypes.IDENTITIES, LaneTypes.SYSTEMS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.LOGICAL_APPLICATIONS];
     case NodeTypes.ASSIGNMENT_POLICY:
       return [LaneTypes.IDENTITIES, LaneTypes.SYSTEMS, LaneTypes.CONTEXTS, LaneTypes.ACCOUNTS, LaneTypes.EFFECTIVE_ENTITLEMENTS];
+    case NodeTypes.REQUEST:
+      return [LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.REQUESTER_IDENTITY, LaneTypes.BENEFICIARY_IDENTITY];
     default:
       return [LaneTypes.IDENTITIES];
   }

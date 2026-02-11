@@ -15,7 +15,9 @@ export const NodeTypes = Object.freeze({
   LOGICAL_APPLICATION: 'LogicalApplication',  // System marked as logical (has resources but no direct accounts)
   CONTEXT: 'Context',
   VIOLATION: 'Violation',  // Represents an access violation (e.g., SoD conflict)
-  RESOURCE_FOLDER: 'ResourceFolder'
+  RESOURCE_FOLDER: 'ResourceFolder',
+  REQUEST: 'Request',
+  APPROVAL: 'Approval'
 });
 
 // Edge/relationship types
@@ -64,7 +66,11 @@ export const LaneTypes = Object.freeze({
   IDENTITIES: 'Identities',
   CONTEXTS: 'Contexts',
   VIOLATIONS: 'Violations',  // Access violations (SoD conflicts, policy breaches, etc.)
-  RESOURCE_FOLDERS: 'ResourceFolders'
+  RESOURCE_FOLDERS: 'ResourceFolders',
+  REQUESTS: 'Requests',
+  APPROVALS: 'Approvals',
+  REQUESTER_IDENTITY: 'RequesterIdentity',
+  BENEFICIARY_IDENTITY: 'BeneficiaryIdentity'
 });
 
 // View modes
@@ -92,6 +98,7 @@ export const CompassOrientation = Object.freeze({
   NE: 'NE',
   E: 'E',
   SE: 'SE',
+  SSE: 'SSE',
   S: 'S',
   SW: 'SW',
   W: 'W',

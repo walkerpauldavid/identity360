@@ -26,7 +26,7 @@ const getSelectionForLane = (laneType, selections) => {
   const key = LaneSchema[laneType]?.selectionStateKey;
   return key ? (selections[key] || null) : null;
 };
-import accessLensDataService, { buildContextsLane, buildLanesFromAssignments, extractUniqueReasonTypes, extractUniqueComplianceStatuses, extractViolationCount, enrichPoliciesWithOData, enrichResourceFoldersWithOData, fetchChildResourcesForEntitlement, fetchChildResourcesFromIds } from './accessLensDataService';
+import accessLensDataService, { buildContextsLane, buildLanesFromAssignments, extractUniqueReasonTypes, extractUniqueComplianceStatuses, extractViolationCount, enrichPoliciesWithOData, enrichResourceFoldersWithOData, fetchChildResourcesForEntitlement, fetchChildResourcesFromIds, buildRequestsLaneForEntitlement, buildApprovalsLaneForEntitlement, enrichApprovalsWithWorkflowStatus } from './accessLensDataService';
 import { usePreferences } from '../../contexts/PreferencesContext';
 import {
   applyCrossLaneFilters,
@@ -72,7 +72,11 @@ const defaultFilters = {
     LaneTypes.CONTEXTS,
     LaneTypes.IDENTITIES,
     LaneTypes.VIOLATIONS,
-    LaneTypes.RESOURCE_FOLDERS
+    LaneTypes.RESOURCE_FOLDERS,
+    LaneTypes.REQUESTS,
+    LaneTypes.APPROVALS,
+    LaneTypes.REQUESTER_IDENTITY,
+    LaneTypes.BENEFICIARY_IDENTITY
   ],
   reasonTypes: [],
   complianceStatuses: [],
@@ -259,10 +263,20 @@ const identityToNode = (identity) => {
 };
 
 // Lane and fulcrum dimensions for collision detection
-// Note: Multi-column lanes (like Entitlements) can be 700px+ wide
+// Note: Most lanes are SINGLE_COLUMN (350px). Only Entitlements are MULTI_COLUMN (700px).
+// The old 720px-for-all approach caused false overlaps that scrambled tight layouts.
 const LANE_DIMENSIONS = {
-  width: 720,   // Maximum lane width (700px for 2-column + margin)
+  width: 720,   // Maximum lane width - only used as fallback
   height: 350   // Approximate lane height (increased for expanded lanes with content)
+};
+
+/**
+ * Get actual dimensions for a lane type based on its LaneSchema displayRule
+ * SINGLE_COLUMN = 350px, MULTI_COLUMN = 700px, THREE_COLUMN = 1050px
+ */
+const getActualLaneDimensions = (laneType) => {
+  const config = getLaneDisplayConfig(laneType);
+  return { width: (config.width || 350) + 20, height: LANE_DIMENSIONS.height };
 };
 
 const FULCRUM_DIMENSIONS = {
@@ -280,14 +294,15 @@ const CANVAS_CENTER_Y = '40%';
  * Positions are designed to avoid overlap with fulcrum and other lanes
  */
 const COMPASS_POSITIONS = {
-  [CompassOrientation.N]:  { x: 0, y: -380 },      // North - top center (Violations)
-  [CompassOrientation.NE]: { x: 750, y: -380 },    // North-East - top right (Accounts) - pushed right to avoid N overlap
-  [CompassOrientation.E]:  { x: 780, y: 80 },      // East - right center (Logical Apps - pushed further right)
-  [CompassOrientation.SE]: { x: 520, y: 520 },     // South-East - bottom right (Systems - pushed down)
-  [CompassOrientation.S]:  { x: 0, y: 580 },       // South - bottom center
-  [CompassOrientation.SW]: { x: -520, y: 520 },    // South-West - bottom left
-  [CompassOrientation.W]:  { x: -680, y: 80 },     // West - left center
-  [CompassOrientation.NW]: { x: -750, y: -380 }    // North-West - top left (Entitlements) - pushed left to avoid N overlap
+  [CompassOrientation.N]:   { x: 0, y: -320 },     // North - top center
+  [CompassOrientation.NE]:  { x: 480, y: -320 },   // North-East - top right
+  [CompassOrientation.E]:   { x: 520, y: 60 },     // East - right center
+  [CompassOrientation.SE]:  { x: 480, y: 380 },    // South-East - bottom right
+  [CompassOrientation.SSE]: { x: 280, y: 480 },    // South-South-East
+  [CompassOrientation.S]:   { x: 0, y: 420 },      // South - bottom center
+  [CompassOrientation.SW]:  { x: -480, y: 380 },   // South-West - bottom left
+  [CompassOrientation.W]:   { x: -520, y: 60 },    // West - left center
+  [CompassOrientation.NW]:  { x: -480, y: -320 }   // North-West - top left
 };
 
 /**
@@ -300,6 +315,7 @@ const CLOCKWISE_ORDER = [
   CompassOrientation.NE,  // 3. North-East (top right)
   CompassOrientation.E,   // 4. East (right center)
   CompassOrientation.SE,  // 5. South-East (bottom right)
+  CompassOrientation.SSE, // 5.5. South-South-East (Requests)
   CompassOrientation.S,   // 6. South (bottom center)
   CompassOrientation.SW,  // 7. South-West (bottom left)
   CompassOrientation.W    // 8. West (left center)
@@ -374,10 +390,45 @@ const getLoadingPlaceholderLanes = (nodeType) => {
 };
 
 /**
+ * Per-focus-node-type position overrides
+ * When the focus node is a specific type, lanes can have custom positions
+ * that differ from the global COMPASS_POSITIONS defaults.
+ * This allows tighter or rearranged layouts per pivot context.
+ */
+const FOCUS_NODE_POSITION_OVERRIDES = {
+  [NodeTypes.IDENTITY]: {
+    [LaneTypes.VIOLATIONS]:            { x: 0, y: -368 },     // N  - Violations top-center (pushed 15% further north)
+    [LaneTypes.EFFECTIVE_ENTITLEMENTS]: { x: -530, y: -350 },  // NW - Entitlements top-left (700px wide, pushed out ~10%)
+    [LaneTypes.ACCOUNTS]:              { x: 480, y: -352 },   // NE - Accounts top-right (pushed 10% further north)
+    [LaneTypes.ROLES]:                 { x: -520, y: 60 },    // W  - Roles left
+    [LaneTypes.LOGICAL_APPLICATIONS]:  { x: 520, y: 60 },     // E  - Logical Apps right
+    [LaneTypes.SYSTEMS]:               { x: 480, y: 380 },    // SE - Systems bottom-right
+    [LaneTypes.ASSIGNMENT_POLICIES]:   { x: 0, y: 420 },      // S  - Assignment Policies bottom-center
+    [LaneTypes.CONTEXTS]:              { x: -480, y: 323 },   // SW - Contexts bottom-left (pushed 15% further north)
+  },
+  [NodeTypes.SYSTEM]: {
+    [LaneTypes.EFFECTIVE_ENTITLEMENTS]: { x: -380, y: -260 },  // NW - Entitlements top-left
+    [LaneTypes.VIOLATIONS]:            { x: 0, y: -280 },     // N  - Violations top-center
+    [LaneTypes.ACCOUNTS]:              { x: 380, y: -260 },   // NE - Accounts top-right
+    [LaneTypes.CONTEXTS]:              { x: -420, y: 50 },    // W  - Contexts left
+    [LaneTypes.IDENTITIES]:            { x: 420, y: 50 },     // E  - Identities right
+    [LaneTypes.ASSIGNMENT_POLICIES]:   { x: -380, y: 320 },   // SW - Assignment Policies bottom-left
+    [LaneTypes.REQUESTS]:              { x: 380, y: 320 },    // SE - Requests bottom-right
+    [LaneTypes.LOGICAL_APPLICATIONS]:  { x: 0, y: 400 },      // S  - Logical Apps bottom-center
+  }
+};
+
+/**
  * Get default position for a lane type based on its compass orientation from LaneSchema
  * Falls back to calculated position if no compass defined
+ * @param {string} laneType - The lane type to get position for
+ * @param {string} [focusNodeType] - Optional focus node type for per-type overrides
  */
-const getDefaultPositionForLane = (laneType) => {
+const getDefaultPositionForLane = (laneType, focusNodeType) => {
+  // Check focus-node-specific overrides first
+  if (focusNodeType && FOCUS_NODE_POSITION_OVERRIDES[focusNodeType]?.[laneType]) {
+    return FOCUS_NODE_POSITION_OVERRIDES[focusNodeType][laneType];
+  }
   const schema = LaneSchema[laneType];
   if (schema?.defaultPosition?.compass) {
     return COMPASS_POSITIONS[schema.defaultPosition.compass] || { x: 0, y: 0 };
@@ -395,6 +446,7 @@ const LANE_SLOTS = [
   COMPASS_POSITIONS[CompassOrientation.E],    // East
   COMPASS_POSITIONS[CompassOrientation.SW],   // South-West
   COMPASS_POSITIONS[CompassOrientation.SE],   // South-East
+  COMPASS_POSITIONS[CompassOrientation.SSE],  // South-South-East
   COMPASS_POSITIONS[CompassOrientation.N],    // North
   COMPASS_POSITIONS[CompassOrientation.S],    // South
 ];
@@ -432,28 +484,29 @@ const rectanglesOverlap = (rect1, rect2) => {
 };
 
 /**
- * Check if a lane position overlaps with the fulcrum
+ * Check if a lane position overlaps with the fulcrum (dimension-aware)
  * @param {Object} pos - { x, y } position relative to center
+ * @param {Object} dims - { width, height } actual lane dimensions
  * @returns {boolean} true if overlaps with fulcrum
  */
-const overlapsWithFulcrum = (pos) => {
-  const laneRect = { x: pos.x, y: pos.y, ...LANE_DIMENSIONS };
+const overlapsWithFulcrum = (pos, dims) => {
+  const laneRect = { x: pos.x, y: pos.y, width: dims.width, height: dims.height };
   const fulcrumRect = { x: 0, y: 0, ...FULCRUM_DIMENSIONS };
   return rectanglesOverlap(laneRect, fulcrumRect);
 };
 
 /**
- * Check if a lane position overlaps with any existing positions
+ * Check if a lane position overlaps with any already-placed lanes (dimension-aware)
  * @param {Object} pos - { x, y } position to check
- * @param {Array} existingPositions - Array of { x, y } positions already placed
- * @returns {boolean} true if overlaps with any existing position
+ * @param {Object} dims - { width, height } actual lane dimensions
+ * @param {Array} placedLanes - Array of { x, y, width, height } already placed
+ * @returns {boolean} true if overlaps with any existing lane
  */
-const overlapsWithExisting = (pos, existingPositions) => {
-  const laneRect = { x: pos.x, y: pos.y, ...LANE_DIMENSIONS };
+const overlapsWithExisting = (pos, dims, placedLanes) => {
+  const laneRect = { x: pos.x, y: pos.y, width: dims.width, height: dims.height };
 
-  for (const existing of existingPositions) {
-    const existingRect = { x: existing.x, y: existing.y, ...LANE_DIMENSIONS };
-    if (rectanglesOverlap(laneRect, existingRect)) {
+  for (const existing of placedLanes) {
+    if (rectanglesOverlap(laneRect, existing)) {
       return true;
     }
   }
@@ -476,7 +529,7 @@ const getLanePriority = (laneType) => {
  * @param {Array} lanesWithData - Array of lane objects that have items
  * @returns {Object} Position map { laneType: { x, y } }
  */
-const calculateDynamicLanePositions = (lanesWithData) => {
+const calculateDynamicLanePositions = (lanesWithData, focusNodeType) => {
   const positions = {};
   const laneCount = lanesWithData.length;
 
@@ -490,24 +543,25 @@ const calculateDynamicLanePositions = (lanesWithData) => {
     return priorityA - priorityB;
   });
 
-  // Use predefined slots to guarantee no overlap
-  const usedSlots = [];
+  // Track placed lanes with their actual dimensions for accurate overlap detection
+  const placedLanes = []; // [{ x, y, width, height }]
 
   sortedLanes.forEach((lane, index) => {
-    // First try to use the default position for this lane type
-    const defaultPos = DEFAULT_LANE_POSITIONS[lane.laneType];
+    // First try to use the focus-node-aware position for this lane type
+    const defaultPos = getDefaultPositionForLane(lane.laneType, focusNodeType);
+    const laneDims = getActualLaneDimensions(lane.laneType);
 
-    if (defaultPos && !overlapsWithFulcrum(defaultPos) && !overlapsWithExisting(defaultPos, usedSlots)) {
+    if (defaultPos && !overlapsWithFulcrum(defaultPos, laneDims) && !overlapsWithExisting(defaultPos, laneDims, placedLanes)) {
       positions[lane.laneType] = { ...defaultPos };
-      usedSlots.push(defaultPos);
+      placedLanes.push({ ...defaultPos, ...laneDims });
       return;
     }
 
     // Find the next available slot
     for (const slot of LANE_SLOTS) {
-      if (!overlapsWithFulcrum(slot) && !overlapsWithExisting(slot, usedSlots)) {
+      if (!overlapsWithFulcrum(slot, laneDims) && !overlapsWithExisting(slot, laneDims, placedLanes)) {
         positions[lane.laneType] = { ...slot };
-        usedSlots.push(slot);
+        placedLanes.push({ ...slot, ...laneDims });
         return;
       }
     }
@@ -522,9 +576,9 @@ const calculateDynamicLanePositions = (lanesWithData) => {
       const y = Math.round(Math.sin(angle) * radius);
       const pos = { x, y };
 
-      if (!overlapsWithFulcrum(pos) && !overlapsWithExisting(pos, usedSlots)) {
+      if (!overlapsWithFulcrum(pos, laneDims) && !overlapsWithExisting(pos, laneDims, placedLanes)) {
         positions[lane.laneType] = pos;
-        usedSlots.push(pos);
+        placedLanes.push({ ...pos, ...laneDims });
         return;
       }
 
@@ -536,7 +590,7 @@ const calculateDynamicLanePositions = (lanesWithData) => {
     const fallbackX = Math.round(Math.cos(angle) * 500);
     const fallbackY = Math.round(Math.sin(angle) * 500);
     positions[lane.laneType] = { x: fallbackX, y: fallbackY };
-    usedSlots.push({ x: fallbackX, y: fallbackY });
+    placedLanes.push({ x: fallbackX, y: fallbackY, ...laneDims });
   });
 
   return positions;
@@ -1320,12 +1374,18 @@ const AccessLens = ({
   const policiesEnrichedRef = useRef(false);
   const foldersEnrichedRef = useRef(false);
   const childResourcesEnrichedRef = useRef(false);
+  const requestsEnrichedRef = useRef(false);
+  const approvalsEnrichedRef = useRef(false);
+  const workflowStatusEnrichedRef = useRef(false);
 
   // Reset enrichment flags when focus node changes
   useEffect(() => {
     policiesEnrichedRef.current = false;
     foldersEnrichedRef.current = false;
     childResourcesEnrichedRef.current = false;
+    requestsEnrichedRef.current = false;
+    approvalsEnrichedRef.current = false;
+    workflowStatusEnrichedRef.current = false;
   }, [focusNode?.id]);
 
   // Enrich Assignment Policies lane with OData details (AP_CONTEXTS for cross-lane filtering)
@@ -1549,6 +1609,169 @@ const AccessLens = ({
     fetchChildResources();
   }, [lanes, apiContext, focusNode]);
 
+  // Fetch access requests for Entitlement or System focus node and build Requests lane
+  useEffect(() => {
+    const fetchRequests = async () => {
+      if (requestsEnrichedRef.current) return;
+
+      const isEntitlement = focusNode?.type === NodeTypes.ENTITLEMENT || focusNode?.type === 'Entitlement';
+      const isSystem = focusNode?.type === NodeTypes.SYSTEM || focusNode?.type === 'System';
+
+      if (!focusNode || (!isEntitlement && !isSystem)) return;
+      if (!apiContext || !lanes || lanes.length === 0) return;
+
+      // Check if we already have a Requests lane with API data
+      const existingRequestsLane = lanes.find(l => l.laneType === LaneTypes.REQUESTS);
+      if (existingRequestsLane?.apiSource?.startsWith('GraphQL:getAccessRequests')) {
+        requestsEnrichedRef.current = true;
+        return;
+      }
+
+      requestsEnrichedRef.current = true;
+
+      try {
+        let result;
+
+        if (isEntitlement) {
+          const resourceName = focusNode.displayName || focusNode.rawData?.name || focusNode.rawData?.Name;
+          if (!resourceName) {
+            requestsEnrichedRef.current = false;
+            return;
+          }
+          result = await apiContext.omadaApi.accessRequest.getAccessRequestsForResource(
+            resourceName,
+            apiContext.bearerToken,
+            apiContext.impersonateUser
+          );
+        } else {
+          // System focus node — filter by system name
+          const systemName = focusNode.displayName || focusNode.rawData?.Name || focusNode.rawData?.name || focusNode.rawData?.DisplayName;
+          if (!systemName) {
+            requestsEnrichedRef.current = false;
+            return;
+          }
+          result = await apiContext.omadaApi.accessRequest.getAccessRequestsForSystem(
+            systemName,
+            apiContext.bearerToken,
+            apiContext.impersonateUser
+          );
+        }
+
+        if (result.status === 'success' && result.data && result.data.length > 0) {
+          const requestsLane = buildRequestsLaneForEntitlement(result.data);
+
+          setLanes(prevLanes => {
+            const hasRequestsLane = prevLanes.some(l => l.laneType === LaneTypes.REQUESTS);
+            if (hasRequestsLane) {
+              return prevLanes.map(lane =>
+                lane.laneType === LaneTypes.REQUESTS ? requestsLane : lane
+              );
+            }
+            return [...prevLanes, requestsLane];
+          });
+          console.log(`[AccessLens] Fetched ${result.data.length} access requests for ${focusNode.type} focus node`);
+        }
+      } catch (error) {
+        console.warn('[AccessLens] Failed to fetch access requests:', error.message);
+        requestsEnrichedRef.current = false;
+      }
+    };
+
+    fetchRequests();
+  }, [lanes, apiContext, focusNode]);
+
+  // Fetch pending approvals for Entitlement focus node and build Approvals lane
+  useEffect(() => {
+    const fetchApprovals = async () => {
+      if (approvalsEnrichedRef.current) return;
+
+      const isEntitlement = focusNode?.type === NodeTypes.ENTITLEMENT || focusNode?.type === 'Entitlement';
+      if (!focusNode || !isEntitlement) return;
+      if (!apiContext || !lanes || lanes.length === 0) return;
+
+      // Check if we already have an Approvals lane with API data
+      const existingApprovalsLane = lanes.find(l => l.laneType === LaneTypes.APPROVALS);
+      if (existingApprovalsLane?.apiSource === 'GraphQL:getApprovalsForResource') {
+        approvalsEnrichedRef.current = true;
+        return;
+      }
+
+      approvalsEnrichedRef.current = true;
+
+      try {
+        const resourceName = focusNode.displayName || focusNode.rawData?.name || focusNode.rawData?.Name;
+        if (!resourceName) {
+          approvalsEnrichedRef.current = false;
+          return;
+        }
+
+        const result = await apiContext.omadaApi.accessRequest.getApprovalsForResource(
+          resourceName,
+          apiContext.bearerToken,
+          apiContext.impersonateUser
+        );
+
+        if (result.status === 'success' && result.data && result.data.length > 0) {
+          const approvalsLane = buildApprovalsLaneForEntitlement(result.data);
+
+          setLanes(prevLanes => {
+            const hasApprovalsLane = prevLanes.some(l => l.laneType === LaneTypes.APPROVALS);
+            if (hasApprovalsLane) {
+              return prevLanes.map(lane =>
+                lane.laneType === LaneTypes.APPROVALS ? approvalsLane : lane
+              );
+            }
+            return [...prevLanes, approvalsLane];
+          });
+          console.log(`[AccessLens] Fetched ${result.data.length} pending approvals for Entitlement focus node`);
+        }
+      } catch (error) {
+        console.warn('[AccessLens] Failed to fetch approvals:', error.message);
+        approvalsEnrichedRef.current = false;
+      }
+    };
+
+    fetchApprovals();
+  }, [lanes, apiContext, focusNode]);
+
+  // Enrich Approvals lane items with workflow status (approver/assignee names)
+  useEffect(() => {
+    const enrichApprovals = async () => {
+      if (workflowStatusEnrichedRef.current) return;
+      if (!apiContext || !lanes || lanes.length === 0) return;
+
+      const approvalsLane = lanes.find(l => l.laneType === LaneTypes.APPROVALS);
+      if (!approvalsLane || !approvalsLane.items || approvalsLane.items.length === 0) return;
+
+      // Only enrich if the lane has been fetched from API but not yet enriched with workflow status
+      if (approvalsLane.apiSource !== 'GraphQL:getApprovalsForResource') return;
+      // Check if any item already has assignees (already enriched)
+      const alreadyEnriched = approvalsLane.items.some(item => item.node?.metadata?.assignees);
+      if (alreadyEnriched) {
+        workflowStatusEnrichedRef.current = true;
+        return;
+      }
+
+      workflowStatusEnrichedRef.current = true;
+
+      try {
+        const enrichedLane = await enrichApprovalsWithWorkflowStatus(approvalsLane, apiContext);
+
+        setLanes(prevLanes =>
+          prevLanes.map(lane =>
+            lane.laneType === LaneTypes.APPROVALS ? enrichedLane : lane
+          )
+        );
+        console.log(`[AccessLens] Enriched approvals with workflow status (assignee names)`);
+      } catch (error) {
+        console.warn('[AccessLens] Failed to enrich approvals with workflow status:', error.message);
+        workflowStatusEnrichedRef.current = false;
+      }
+    };
+
+    enrichApprovals();
+  }, [lanes, apiContext]);
+
   // Sync currentAssignments with prop when prop changes (initial load or external update)
   useEffect(() => {
     if (calculatedAssignments && Array.isArray(calculatedAssignments)) {
@@ -1627,15 +1850,20 @@ const AccessLens = ({
       const currentLanes = lanes.filter(lane =>
         filters.visibleLanes.includes(lane.laneType) && lane.items && lane.items.length > 0
       );
-      const dynamicPositions = calculateDynamicLanePositions(currentLanes);
+      const dynamicPositions = calculateDynamicLanePositions(currentLanes, focusNode?.type);
+
+      const currentFocusType = focusNode?.type;
+      const hasExplicitOverrides = currentFocusType && FOCUS_NODE_POSITION_OVERRIDES[currentFocusType];
 
       let basePosition;
       if (lanePositions[laneType]) {
         basePosition = lanePositions[laneType];
+      } else if (hasExplicitOverrides && FOCUS_NODE_POSITION_OVERRIDES[currentFocusType][laneType]) {
+        basePosition = FOCUS_NODE_POSITION_OVERRIDES[currentFocusType][laneType];
       } else if (dynamicPositions[laneType]) {
         basePosition = dynamicPositions[laneType];
       } else {
-        basePosition = DEFAULT_LANE_POSITIONS[laneType] || { x: 0, y: 0 };
+        basePosition = getDefaultPositionForLane(laneType, currentFocusType);
       }
 
       const newPosition = {
@@ -2680,8 +2908,8 @@ const AccessLens = ({
   // This ensures lanes don't overlap when only some lanes have data
   // Memoized based on which lane types are visible (not the items themselves)
   const dynamicPositions = useMemo(() => {
-    return calculateDynamicLanePositions(visibleLanes);
-  }, [visibleLanes.map(l => l.laneType).join(',')]);
+    return calculateDynamicLanePositions(visibleLanes, focusNode?.type);
+  }, [visibleLanes.map(l => l.laneType).join(','), focusNode?.type]);
 
   // Debug: Log lane positioning (disabled to reduce console noise)
   // console.log('=== Lane Positioning Debug ===');
@@ -2694,18 +2922,26 @@ const AccessLens = ({
     // Calculate offset to shift lanes left when Object Inspector is open (not collapsed)
     // Inspector is 552px wide, so shift lanes ~280px left to keep right-side lanes visible
     const inspectorOffset = (showObjectInspector && !inspectorCollapsed) ? -280 : 0;
+    const currentFocusType = focusNode?.type;
+
+    // Check if we have explicit per-focus-node overrides (these are intentionally designed layouts
+    // that should bypass dynamic overlap detection, which uses 720px width for all lanes)
+    const hasExplicitOverrides = currentFocusType && FOCUS_NODE_POSITION_OVERRIDES[currentFocusType];
 
     visibleLanes.forEach(lane => {
       let basePosition;
       // If user has manually positioned the lane, use that position
-      // Otherwise use the dynamically calculated position
       if (lanePositions[lane.laneType]) {
         basePosition = lanePositions[lane.laneType];
+      } else if (hasExplicitOverrides && FOCUS_NODE_POSITION_OVERRIDES[currentFocusType][lane.laneType]) {
+        // Priority 2: Use explicit per-focus-node positions directly (skip dynamic positioning
+        // which would reject these due to 720px-wide overlap detection on 350px-wide lanes)
+        basePosition = FOCUS_NODE_POSITION_OVERRIDES[currentFocusType][lane.laneType];
       } else if (dynamicPositions[lane.laneType]) {
         basePosition = dynamicPositions[lane.laneType];
       } else {
-        // Fallback to default position
-        basePosition = DEFAULT_LANE_POSITIONS[lane.laneType] || { x: 0, y: 0 };
+        // Fallback to focus-node-aware default position
+        basePosition = getDefaultPositionForLane(lane.laneType, currentFocusType);
       }
 
       // Apply inspector offset to x position

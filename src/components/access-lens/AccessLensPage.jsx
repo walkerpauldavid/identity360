@@ -717,7 +717,10 @@ const AccessLensPage = () => {
         buildLanesForEntitlement,
         buildContextsLaneFromAPData,
         buildSystemsLane,
-        buildEntitlementsLaneFromAPResources
+        buildEntitlementsLaneFromAPResources,
+        buildResourceLaneForRequest,
+        buildRequesterIdentityLaneForRequest,
+        buildBeneficiaryIdentityLaneForRequest
       } = await import('./accessLensDataService');
 
       // Different handling based on node type
@@ -1704,6 +1707,58 @@ const AccessLensPage = () => {
             lanes,
             reasonTypes,
             complianceStatuses
+          };
+        }
+
+        case 'Request': {
+          // ============================================================
+          // Request Pivot — 3 access cards: Resource, Requester, Beneficiary
+          // Enriches identity cards with OData details via fetchIdentityDetails
+          // ============================================================
+          const requesterId = node.rawData?.requestedBy?.id;
+          const beneficiaryId = node.rawData?.beneficiary?.id;
+
+          // Fetch OData enrichment for requester and beneficiary identities
+          let requesterOData = null;
+          let beneficiaryOData = null;
+
+          if (requesterId && beneficiaryId && requesterId === beneficiaryId) {
+            // Same person — fetch once and reuse
+            requesterOData = await fetchIdentityDetails(requesterId, bearerToken, impersonateUser);
+            beneficiaryOData = requesterOData;
+          } else {
+            const odataPromises = [];
+            if (requesterId) odataPromises.push(fetchIdentityDetails(requesterId, bearerToken, impersonateUser));
+            else odataPromises.push(Promise.resolve(null));
+            if (beneficiaryId) odataPromises.push(fetchIdentityDetails(beneficiaryId, bearerToken, impersonateUser));
+            else odataPromises.push(Promise.resolve(null));
+            [requesterOData, beneficiaryOData] = await Promise.all(odataPromises);
+          }
+
+          // Build 3 lanes
+          const resourceLane = buildResourceLaneForRequest(node);
+          const requesterLane = buildRequesterIdentityLaneForRequest(node, requesterOData);
+          const beneficiaryLane = buildBeneficiaryIdentityLaneForRequest(node, beneficiaryOData);
+
+          const lanes = [resourceLane, requesterLane, beneficiaryLane].filter(l => l.items.length > 0);
+
+          // Build enriched focus node with badges
+          const enrichedFocusNode = {
+            ...node,
+            badges: [
+              node.rawData?.status?.approvalStatus,
+              node.rawData?.resource?.name,
+              node.rawData?.reason
+            ].filter(Boolean)
+          };
+
+          if (shouldLog('PIVOT')) console.log(`[Request Pivot] Built ${lanes.length} lanes: Resource, Requester, Beneficiary`);
+
+          return {
+            focusNode: enrichedFocusNode,
+            lanes,
+            reasonTypes: [],
+            complianceStatuses: []
           };
         }
 
