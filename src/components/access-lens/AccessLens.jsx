@@ -2103,17 +2103,12 @@ const AccessLens = ({
 
   // Expand all lanes
   const handleExpandAll = useCallback(() => {
-    // Mark all lanes as expanded in persisted state
-    setLaneExpandedStates(prev => {
-      const next = { ...prev };
-      visibleLanes.forEach(lane => { next[lane.laneType] = true; });
-      return next;
-    });
-    // Trigger expansion of all lanes
+    // Trigger expansion of all lanes — each LaneCard will sync its state
+    // back to laneExpandedStates via onExpandedChange
     setLanesForceExpanded(true);
     // Reset the forceExpanded flag after a brief delay
     setTimeout(() => setLanesForceExpanded(false), 100);
-  }, [visibleLanes]);
+  }, []);
 
   // ============================================================================
   // CANVAS CONTEXT MENU
