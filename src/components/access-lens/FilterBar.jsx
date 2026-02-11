@@ -9,6 +9,37 @@ import { usePreferences } from '../../contexts/PreferencesContext';
 // Reason types are now dynamically populated from the API
 // The old BaseReasonTypes (Direct, External, Implicit, Explicit) have been removed
 
+// Human-readable descriptions for reason type codes (sourced from Omada RoPE documentation)
+const reasonTypeDescriptions = {
+  'ActualDirect': 'Exists directly in the target system without a corresponding desired state from Omada',
+  'Direct': 'Assigned via a resource assignment object in Omada',
+  'DirectAssignment': 'Assigned via a resource assignment object in Omada',
+  'Policy': 'Assigned automatically by an assignment policy rule',
+  'UnconfirmedActual': 'Provisioning claim awaiting confirmation',
+  'ChildResource': 'Inherited from a parent role or application',
+  'AutoAccount': 'Account auto-created when an identity has calculated permissions but no account',
+  'RoleMembership': 'Assigned through membership in a role',
+  'Birthright': 'Default access granted based on identity attributes',
+  'AccountLink': 'Linked via an account association',
+  'SoDException': 'Granted despite a segregation of duties conflict',
+  'Implicit': 'Automatically assigned when all child resources of a compound resource are held',
+  'Explicit': 'Explicitly granted assignment',
+};
+
+// Human-readable descriptions for compliance status codes (sourced from Omada RoPE documentation)
+const complianceStatusDescriptions = {
+  'Explicitly Approved': 'Assignment approved via direct assignment, verdict survey, or inherited approval',
+  'Implicitly Approved': 'Assignment approved via an assignment policy or as a child of an assigned role',
+  'Approved': 'Assignment is approved and compliant',
+  'Not Approved': 'Assignment exists only in the target system with no desired state in Omada',
+  'Orphan Assignment': 'Assignment belongs to an unresolved identity or has uncertain ownership',
+  'Pending Deprovisioning': 'Assignment is awaiting deprovisioning',
+  'Pending': 'Assignment is awaiting approval or provisioning confirmation',
+  'In Violation': 'Assignment violates a constraint but has a pending evaluation procedure',
+  'Implicitly Assigned': 'Role implicitly assigned without violating defined policies',
+  'None': 'No meaningful compliance status can be determined for this assignment',
+};
+
 const FilterBar = ({
   filters,
   onFilterChange,
@@ -158,8 +189,9 @@ const FilterBar = ({
                 .sort((a, b) => a.localeCompare(b))
                 .map((type) => {
                   const sanitizedId = `reason-type-${type.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-]/g, '')}`;
+                  const description = reasonTypeDescriptions[type];
                   return (
-                    <label key={type} className="dropdown-item" htmlFor={sanitizedId}>
+                    <label key={type} className={`dropdown-item${description ? ' with-help' : ''}`} htmlFor={sanitizedId}>
                       <input
                         type="checkbox"
                         id={sanitizedId}
@@ -167,7 +199,14 @@ const FilterBar = ({
                         checked={reasonTypes.includes(type)}
                         onChange={() => toggleReasonType(type)}
                       />
-                      {type.replace(/([A-Z])/g, ' $1').trim()}
+                      {description ? (
+                        <span className="reason-type-label">
+                          <span>{type.replace(/([A-Z])/g, ' $1').trim()}</span>
+                          <span className="reason-type-hint">{description}</span>
+                        </span>
+                      ) : (
+                        type.replace(/([A-Z])/g, ' $1').trim()
+                      )}
                     </label>
                   );
                 })
@@ -190,17 +229,24 @@ const FilterBar = ({
       {availableComplianceStatuses.length > 0 && (
         <div className={`filter-group compliance-filter ${complianceStatuses.length > 0 ? 'filter-active' : ''}`}>
           <div className={`filter-dropdown ${complianceStatuses.length > 0 ? 'filtering' : ''}`}>
-            <button className="dropdown-trigger">
+            <button className="dropdown-trigger" title="Filter entitlements by compliance status">
               Compliance {complianceStatuses.length > 0 && `(${complianceStatuses.length})`} ▾
             </button>
             {complianceStatuses.length > 0 && (
               <span className="filtering-indicator">Filtering</span>
             )}
-            <div className="dropdown-menu">
+            <div className="dropdown-menu reason-types-menu">
+              {/* Help text header */}
+              <div className="dropdown-help-header">
+                <span className="help-icon">ℹ️</span>
+                <span className="help-text">Filter by compliance status</span>
+              </div>
+              <div className="dropdown-divider"></div>
               {availableComplianceStatuses.map((status) => {
                 const sanitizedId = `compliance-status-${status.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-]/g, '')}`;
+                const description = complianceStatusDescriptions[status];
                 return (
-                  <label key={status} className="dropdown-item" htmlFor={sanitizedId}>
+                  <label key={status} className={`dropdown-item${description ? ' with-help' : ''}`} htmlFor={sanitizedId}>
                     <input
                       type="checkbox"
                       id={sanitizedId}
@@ -208,7 +254,14 @@ const FilterBar = ({
                       checked={complianceStatuses.includes(status)}
                       onChange={() => toggleComplianceStatus(status)}
                     />
-                    {status}
+                    {description ? (
+                      <span className="reason-type-label">
+                        <span>{status}</span>
+                        <span className="reason-type-hint">{description}</span>
+                      </span>
+                    ) : (
+                      status
+                    )}
                   </label>
                 );
               })}
