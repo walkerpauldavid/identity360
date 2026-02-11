@@ -245,8 +245,11 @@ const FilterBar = ({
               {availableComplianceStatuses.map((status) => {
                 const sanitizedId = `compliance-status-${status.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-]/g, '')}`;
                 const description = complianceStatusDescriptions[status];
+                const sentiment = ['Explicitly Approved', 'Implicitly Approved', 'Approved'].includes(status) ? 'approved'
+                  : ['Not Approved', 'Orphan Assignment', 'Pending Deprovisioning', 'In Violation'].includes(status) ? 'not-approved'
+                  : '';
                 return (
-                  <label key={status} className={`dropdown-item${description ? ' with-help' : ''}`} htmlFor={sanitizedId}>
+                  <label key={status} className={`dropdown-item${description ? ' with-help' : ''}${sentiment ? ` compliance-${sentiment}` : ''}`} htmlFor={sanitizedId}>
                     <input
                       type="checkbox"
                       id={sanitizedId}

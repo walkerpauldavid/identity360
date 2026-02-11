@@ -297,6 +297,25 @@
   margin: 0;
 }
 
+/* Compliance status sentiment colours */
+.dropdown-item.compliance-approved {
+  background: rgba(163, 190, 140, 0.12);
+  border-left: 3px solid rgba(163, 190, 140, 0.6);
+}
+
+.dropdown-item.compliance-approved:hover {
+  background: rgba(163, 190, 140, 0.22);
+}
+
+.dropdown-item.compliance-not-approved {
+  background: rgba(191, 97, 106, 0.10);
+  border-left: 3px solid rgba(191, 97, 106, 0.5);
+}
+
+.dropdown-item.compliance-not-approved:hover {
+  background: rgba(191, 97, 106, 0.20);
+}
+
 .dropdown-divider {
   height: 1px;
   margin: 0.5rem 0;
@@ -3939,4 +3958,23 @@
 
 .theme-light .context-menu-divider {
   background: #E5E7EB;
+}
+
+/* Compliance sentiment colours — light theme */
+.theme-light .dropdown-item.compliance-approved {
+  background: rgba(22, 163, 74, 0.08);
+  border-left-color: rgba(22, 163, 74, 0.5);
+}
+
+.theme-light .dropdown-item.compliance-approved:hover {
+  background: rgba(22, 163, 74, 0.15);
+}
+
+.theme-light .dropdown-item.compliance-not-approved {
+  background: rgba(220, 38, 38, 0.06);
+  border-left-color: rgba(220, 38, 38, 0.4);
+}
+
+.theme-light .dropdown-item.compliance-not-approved:hover {
+  background: rgba(220, 38, 38, 0.12);
 }
