@@ -99,6 +99,13 @@ const AccessLensPage = () => {
     };
   }, []);
 
+  // Listen for toolbar Identity360 button clicks to reopen search dialog
+  useEffect(() => {
+    const handleOpenSearch = () => setShowSearchDialog(true);
+    window.addEventListener('identity360-open-search', handleOpenSearch);
+    return () => window.removeEventListener('identity360-open-search', handleOpenSearch);
+  }, []);
+
   // On mount: Check URL for identity or system parameter
   useEffect(() => {
     if (initialLoadDone) return;

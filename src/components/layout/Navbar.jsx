@@ -101,7 +101,13 @@ const Navbar = ({ title }) => {
 
           {/* Identity360 (Magnifying Glass/Lens) Icon */}
           <button
-            onClick={() => navigate('/identity360')}
+            onClick={() => {
+              if (location.pathname === '/identity360') {
+                window.dispatchEvent(new CustomEvent('identity360-open-search'));
+              } else {
+                navigate('/identity360');
+              }
+            }}
             className={`navbar-icon-btn ${location.pathname === '/identity360' ? 'active' : ''}`}
             title="Identity360"
           >
