@@ -81,16 +81,25 @@ const LaneCard = ({
   // Ref hooks
   const cardRef = useRef(null);
 
+  // Track whether this is the initial mount (skip forceCollapsed if we have persisted state)
+  const isInitialMount = useRef(true);
+
   // Effect: Respond to forceCollapsed changes from parent
   // This is a valid use case - syncing component state with parent-controlled prop
+  // On initial mount, skip if parentExpanded provides a persisted state (filter remount)
   useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      // On mount, don't collapse if we restored from persisted state
+      if (parentExpanded !== undefined) return;
+    }
     if (forceCollapsed) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsExpanded(false);
 
       setIsMaximized(false);
     }
-  }, [forceCollapsed, setIsExpanded]);
+  }, [forceCollapsed, setIsExpanded, parentExpanded]);
 
   // Effect: Respond to forceExpanded changes from parent
   useEffect(() => {
