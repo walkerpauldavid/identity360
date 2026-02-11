@@ -57,6 +57,7 @@ const FilterBar = ({
   onExportCSV, // Callback to export current view to CSV
   currentTheme = 'dark', // Current theme
   onThemeChange, // Callback to change theme
+  focusNodeType = null, // Current focus node type (e.g., 'Identity', 'System')
 }) => {
   const {
     visibleLanes = Object.values(LaneTypes),
@@ -115,7 +116,8 @@ const FilterBar = ({
           { type: LaneTypes.EFFECTIVE_ENTITLEMENTS, label: 'Entitlements', icon: '🔑' },
           { type: LaneTypes.POLICIES, label: 'Policies', icon: '📋' },
           { type: LaneTypes.SYSTEMS, label: 'Systems', icon: '🖥️' },
-          { type: LaneTypes.IDENTITIES, label: 'Identities', icon: '👤' }
+          { type: LaneTypes.IDENTITIES, label: 'Identities', icon: '👤' },
+          ...(focusNodeType === 'Identity' ? [{ type: LaneTypes.CONTEXTS, label: 'Contexts', icon: '📂' }] : [])
         ].map(({ type, label, icon }) => (
           <button
             key={type}

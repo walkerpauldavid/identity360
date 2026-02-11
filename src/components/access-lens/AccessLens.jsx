@@ -1083,16 +1083,14 @@ const AccessLens = ({
     if (previousFocusNodeId.current !== null && previousFocusNodeId.current !== focusNode.id) {
       // Focus node changed - collapse lanes if preference is enabled
       if (collapseLanesOnFocusChange) {
-        setLanesForceCollapsed(true);
-        // Reset the flag on next frame so lanes can be expanded again by user
-        // Uses requestAnimationFrame instead of setTimeout(100) to avoid redundant 100ms delay
-        requestAnimationFrame(() => setLanesForceCollapsed(false));
+        // Clear expanded states — all lanes fall back to collapsed default
+        setLaneExpandedStates({});
       }
     }
 
     // Update the ref to track the current focus node
     previousFocusNodeId.current = focusNode.id;
-  }, [focusNode?.id, collapseLanesOnFocusChange]);
+  }, [focusNode?.id, collapseLanesOnFocusChange, setLaneExpandedStates]);
 
   // Track previous focus node type for detecting type changes
   const previousFocusNodeTypeRef = useRef(null);
@@ -2093,22 +2091,23 @@ const AccessLens = ({
     setLanePositions({});
     // Clear all selection/filter states
     setLaneSelections({});
-    // Clear persisted expanded states so all lanes collapse
+    // Clear persisted expanded states — all lanes fall back to collapsed default
     setLaneExpandedStates({});
-    // Collapse all lanes
-    setLanesForceCollapsed(true);
-    // Reset the forceCollapsed flag after a brief delay so lanes can be expanded again
-    setTimeout(() => setLanesForceCollapsed(false), 100);
   }, []);
 
-  // Expand all lanes
+  // Expand all lanes by setting all known lane types to expanded
   const handleExpandAll = useCallback(() => {
-    // Trigger expansion of all lanes — each LaneCard will sync its state
-    // back to laneExpandedStates via onExpandedChange
-    setLanesForceExpanded(true);
-    // Reset the forceExpanded flag after a brief delay
-    setTimeout(() => setLanesForceExpanded(false), 100);
-  }, []);
+    setLaneExpandedStates(prev => {
+      const next = { ...prev };
+      // Expand all lane types that have data
+      lanes.forEach(l => {
+        if (filters.visibleLanes.includes(l.laneType)) {
+          next[l.laneType] = true;
+        }
+      });
+      return next;
+    });
+  }, [lanes, filters.visibleLanes, setLaneExpandedStates]);
 
   // ============================================================================
   // CANVAS CONTEXT MENU
@@ -2823,6 +2822,7 @@ const AccessLens = ({
         onExportCSV={handleExportCSV}
         currentTheme={currentTheme}
         onThemeChange={handleThemeChange}
+        focusNodeType={focusNode?.type}
       />
 
       {/* Breadcrumb Bar — dedicated row beneath filters, left-aligned */}
@@ -2956,11 +2956,9 @@ const AccessLens = ({
                   viewMode={viewMode}
                   isFilterActive={getSelectionForLane(lane.laneType, laneSelections) !== null || lane.isFiltered}
                   activeFilterId={getSelectionForLane(lane.laneType, laneSelections)}
-                  forceCollapsed={lanesForceCollapsed}
-                  forceExpanded={lanesForceExpanded}
                   isFilterSource={getSelectionForLane(lane.laneType, laneSelections) !== null}
                   isFiltered={lane.isFiltered && getSelectionForLane(lane.laneType, laneSelections) === null}
-                  parentExpanded={laneExpandedStates[lane.laneType]}
+                  parentExpanded={laneExpandedStates[lane.laneType] ?? !lanesForceCollapsed}
                   onExpandedChange={handleLaneExpandedChange}
                 />
               </DraggableLane>

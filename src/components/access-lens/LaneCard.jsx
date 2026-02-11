@@ -28,12 +28,10 @@ const LaneCard = ({
   viewMode = 'explore',
   isVisible = true,
   activeFilterId = null,
-  forceCollapsed = false,  // When true, forces all lanes to collapsed state (used by Reset Layout)
   isFilterSource = false,  // When true, this lane is the source of filtering (shows "Filtering")
   isFiltered = false,      // When true, this lane is being filtered by another lane (shows "Filtered")
-  forceExpanded = false,   // When true, forces all lanes to expanded state (used by Expand All)
-  parentExpanded,          // Persisted expanded state from parent (survives filter remounts)
-  onExpandedChange         // Callback to notify parent of expanded state changes
+  parentExpanded = false,  // Expanded state controlled by parent (single source of truth)
+  onExpandedChange         // Callback to update expanded state in parent
 }) => {
   // ==========================================================================
   // HOOKS SECTION - All hooks MUST be called before any early returns
@@ -55,20 +53,11 @@ const LaneCard = ({
   const needsScrolling = isMultiColumnLane ? true : itemCount > 4;  // Single-column fits ~4 items
   const showFilters = schemaShowFilters && needsScrolling;
 
-  // State hooks
-  // Use parentExpanded if available (persisted across filter remounts), otherwise default
-  const [isExpanded, setIsExpandedRaw] = useState(
-    parentExpanded !== undefined ? parentExpanded : !forceCollapsed
-  );
+  // Expanded state is fully controlled by parent via parentExpanded prop
+  // This eliminates all local state syncing issues and survives mount/unmount cycles
+  const isExpanded = parentExpanded;
 
-  // Wrap setIsExpanded to notify parent of state changes
-  const setIsExpanded = useCallback((value) => {
-    setIsExpandedRaw(prev => {
-      const next = typeof value === 'function' ? value(prev) : value;
-      if (onExpandedChange) onExpandedChange(laneType, next);
-      return next;
-    });
-  }, [onExpandedChange, laneType]);
+  // State hooks (non-expanded state remains local)
   const [isMaximized, setIsMaximized] = useState(false);
   const [allItems, setAllItems] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -80,34 +69,6 @@ const LaneCard = ({
 
   // Ref hooks
   const cardRef = useRef(null);
-
-  // Track whether this is the initial mount (skip forceCollapsed if we have persisted state)
-  const isInitialMount = useRef(true);
-
-  // Effect: Respond to forceCollapsed changes from parent
-  // This is a valid use case - syncing component state with parent-controlled prop
-  // On initial mount, skip if parentExpanded provides a persisted state (filter remount)
-  useEffect(() => {
-    if (isInitialMount.current) {
-      isInitialMount.current = false;
-      // On mount, don't collapse if we restored from persisted state
-      if (parentExpanded !== undefined) return;
-    }
-    if (forceCollapsed) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setIsExpanded(false);
-
-      setIsMaximized(false);
-    }
-  }, [forceCollapsed, setIsExpanded, parentExpanded]);
-
-  // Effect: Respond to forceExpanded changes from parent
-  useEffect(() => {
-    if (forceExpanded) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setIsExpanded(true);
-    }
-  }, [forceExpanded, setIsExpanded]);
 
   // Track previous filter state so we only auto-expand on transition (not on every render)
   const prevFilterActiveRef = useRef(isFilterSource || isFiltered);
@@ -124,10 +85,9 @@ const LaneCard = ({
 
     // Only auto-expand when filter state transitions from inactive to active
     if (hasActiveFilter && !wasFilterActive && hasItems && !isExpanded) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setIsExpanded(true);
+      if (onExpandedChange) onExpandedChange(laneType, true);
     }
-  }, [isFilterSource, isFiltered, items, isExpanded, setIsExpanded]);
+  }, [isFilterSource, isFiltered, items, isExpanded, onExpandedChange, laneType]);
 
   // Compute available resource types from current items
   const availableResourceTypes = useMemo(() => {
@@ -388,8 +348,8 @@ const LaneCard = ({
           onClick={(e) => {
             e.stopPropagation();
             e.preventDefault();
-            setIsExpanded(!isExpanded);
-            if (!isExpanded) {
+            if (onExpandedChange) onExpandedChange(laneType, !isExpanded);
+            if (isExpanded) {
               setIsMaximized(false); // Restore when collapsing
             }
           }}
