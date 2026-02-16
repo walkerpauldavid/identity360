@@ -166,6 +166,187 @@ export default defineConfig({
 })
 ```
 
+## IIS Site Setup (PowerShell)
+
+### Prerequisites
+
+The IIS PowerShell module (`WebAdministration`) is available on any Windows Server with the IIS role installed. Run all commands in an **elevated PowerShell** session.
+
+```powershell
+# Verify IIS management module is available
+Import-Module WebAdministration
+```
+
+### Step 1: Create the Application Pool
+
+Identity360 is a static SPA — it doesn't need .NET CLR. Use an unmanaged (No Managed Code) application pool for best performance.
+
+```powershell
+# Create a dedicated application pool
+New-WebAppPool -Name "Identity360AppPool"
+
+# Configure: No Managed Code (static site), Integrated pipeline
+Set-ItemProperty "IIS:\AppPools\Identity360AppPool" -Name "managedRuntimeVersion" -Value ""
+Set-ItemProperty "IIS:\AppPools\Identity360AppPool" -Name "managedPipelineMode" -Value "Integrated"
+
+# Set identity to NetworkService (or use a specific service account)
+Set-ItemProperty "IIS:\AppPools\Identity360AppPool" -Name "processModel.identityType" -Value "NetworkService"
+
+# Optional: Configure recycling (default is every 29 hours)
+Set-ItemProperty "IIS:\AppPools\Identity360AppPool" -Name "recycling.periodicRestart.time" -Value "00:00:00"  # Disable time-based recycling
+```
+
+### Step 2: Create the Physical Directory
+
+```powershell
+# Create the site root directory
+New-Item -Path "C:\inetpub\wwwroot\Identity360" -ItemType Directory -Force
+
+# Set permissions — the app pool identity needs read access
+$acl = Get-Acl "C:\inetpub\wwwroot\Identity360"
+$rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
+    "NETWORK SERVICE", "ReadAndExecute", "ContainerInherit,ObjectInherit", "None", "Allow"
+)
+$acl.SetAccessRule($rule)
+Set-Acl "C:\inetpub\wwwroot\Identity360" $acl
+```
+
+### Step 3: Create the IIS Website
+
+**Option A: Standalone Website** (separate port or hostname binding)
+
+```powershell
+# Create as a standalone website on port 443 with a specific hostname
+New-Website -Name "Identity360" `
+    -PhysicalPath "C:\inetpub\wwwroot\Identity360" `
+    -ApplicationPool "Identity360AppPool" `
+    -Port 443 `
+    -HostHeader "identity360.yourdomain.com" `
+    -Ssl
+
+# Or create on a custom port without hostname binding (for testing)
+New-Website -Name "Identity360" `
+    -PhysicalPath "C:\inetpub\wwwroot\Identity360" `
+    -ApplicationPool "Identity360AppPool" `
+    -Port 8443
+```
+
+**Option B: Application under Default Web Site** (shared port 443)
+
+```powershell
+# Create as an application under the Default Web Site
+New-WebApplication -Site "Default Web Site" `
+    -Name "Identity360" `
+    -PhysicalPath "C:\inetpub\wwwroot\Identity360" `
+    -ApplicationPool "Identity360AppPool"
+
+# Note: This serves the app at https://server/Identity360/
+# You may need to adjust the Vite base path in vite.config.js:
+#   base: '/Identity360/'
+```
+
+### Step 4: Bind an SSL Certificate
+
+```powershell
+# List available certificates in the local machine store
+Get-ChildItem Cert:\LocalMachine\My | Format-Table Subject, Thumbprint, NotAfter
+
+# Bind a certificate to the site (replace thumbprint)
+$thumbprint = "YOUR_CERTIFICATE_THUMBPRINT"
+New-WebBinding -Name "Identity360" -Protocol "https" -Port 443 -HostHeader "identity360.yourdomain.com"
+
+# Assign the certificate to the binding
+$binding = Get-WebBinding -Name "Identity360" -Protocol "https"
+$binding.AddSslCertificate($thumbprint, "My")
+```
+
+### Step 5: Install Required IIS Modules
+
+```powershell
+# Install URL Rewrite and ARR via WebPI (Web Platform Installer) if available
+# Otherwise download and install manually from:
+#   URL Rewrite: https://www.iis.net/downloads/microsoft/url-rewrite
+#   ARR:         https://www.iis.net/downloads/microsoft/application-request-routing
+
+# After installing ARR, enable the proxy at server level
+Set-WebConfigurationProperty -PSPath "MACHINE/WEBROOT/APPHOST" `
+    -Filter "system.webServer/proxy" `
+    -Name "enabled" `
+    -Value "True"
+```
+
+### Step 6: Verify the Site Configuration
+
+```powershell
+# Check the site exists and is running
+Get-Website -Name "Identity360" | Format-Table Name, State, PhysicalPath, Bindings
+
+# Check the app pool is running
+Get-WebAppPoolState -Name "Identity360AppPool"
+
+# Start the site if it's stopped
+Start-Website -Name "Identity360"
+
+# Verify ARR proxy is enabled
+Get-WebConfigurationProperty -PSPath "MACHINE/WEBROOT/APPHOST" `
+    -Filter "system.webServer/proxy" `
+    -Name "enabled"
+```
+
+### Complete Setup Script
+
+Copy and run as a single script for a fresh server:
+
+```powershell
+#Requires -RunAsAdministrator
+Import-Module WebAdministration
+
+$siteName       = "Identity360"
+$appPoolName    = "Identity360AppPool"
+$physicalPath   = "C:\inetpub\wwwroot\Identity360"
+$port           = 443
+$hostHeader     = "identity360.yourdomain.com"  # Change to your hostname
+
+# 1. Create directory
+New-Item -Path $physicalPath -ItemType Directory -Force
+
+# 2. Create app pool (No Managed Code — static SPA)
+New-WebAppPool -Name $appPoolName
+Set-ItemProperty "IIS:\AppPools\$appPoolName" -Name "managedRuntimeVersion" -Value ""
+Set-ItemProperty "IIS:\AppPools\$appPoolName" -Name "managedPipelineMode" -Value "Integrated"
+Set-ItemProperty "IIS:\AppPools\$appPoolName" -Name "processModel.identityType" -Value "NetworkService"
+
+# 3. Set directory permissions
+$acl = Get-Acl $physicalPath
+$rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
+    "NETWORK SERVICE", "ReadAndExecute", "ContainerInherit,ObjectInherit", "None", "Allow"
+)
+$acl.SetAccessRule($rule)
+Set-Acl $physicalPath $acl
+
+# 4. Create website
+New-Website -Name $siteName `
+    -PhysicalPath $physicalPath `
+    -ApplicationPool $appPoolName `
+    -Port $port `
+    -HostHeader $hostHeader
+
+# 5. Enable ARR proxy (server-level)
+Set-WebConfigurationProperty -PSPath "MACHINE/WEBROOT/APPHOST" `
+    -Filter "system.webServer/proxy" `
+    -Name "enabled" `
+    -Value "True"
+
+# 6. Verify
+Write-Host "`n=== Site Created ===" -ForegroundColor Green
+Get-Website -Name $siteName | Format-Table Name, State, PhysicalPath
+Get-WebAppPoolState -Name $appPoolName
+Write-Host "ARR Proxy Enabled:" (Get-WebConfigurationProperty -PSPath "MACHINE/WEBROOT/APPHOST" -Filter "system.webServer/proxy" -Name "enabled").Value
+Write-Host "`nNext: Build the app (npm run build) and deploy to $physicalPath"
+```
+
+---
+
 ## Deployment Process
 
 ### Build
@@ -174,25 +355,33 @@ npm run build
 ```
 
 This creates a `dist/` folder containing:
-- `index.html` - Main HTML file
-- `assets/` - JavaScript, CSS, and images
+- `index.html` - Main HTML file (references hashed asset filenames)
+- `assets/` - JavaScript, CSS, and images (hashed filenames per build)
 - `web.config` - Copied from `public/web.config`
 
 ### Deploy to IIS
 
+**Important**: Always copy both `index.html` AND `assets/`. Vite produces hashed filenames on each build, so `index.html` must be updated to reference the new bundles. Copying only `assets/` leaves the old `index.html` pointing at stale JS files.
+
 ```powershell
-# Copy all files from dist to IIS site folder
+# Deploy: copy everything from dist to the IIS site
 Copy-Item -Path "dist\*" -Destination "C:\inetpub\wwwroot\Identity360\" -Recurse -Force
+
+# Verify the deployment
+Get-ChildItem "C:\inetpub\wwwroot\Identity360\" | Format-Table Name, LastWriteTime
 ```
 
 ### Verify Deployment
 
-After deployment, verify the web.config has the proxy rules:
 ```powershell
-Get-Content "C:\inetpub\wwwroot\Identity360\web.config"
+# Check web.config has the proxy rules
+Select-String -Path "C:\inetpub\wwwroot\Identity360\web.config" -Pattern "Omada API Proxy|Omada OData Proxy|React Routes"
+
+# Check index.html references current asset hashes
+Get-Content "C:\inetpub\wwwroot\Identity360\index.html"
 ```
 
-Ensure it contains:
+Ensure web.config contains:
 - `Omada API Proxy` rule
 - `Omada OData Proxy` rule
 - `React Routes` rule

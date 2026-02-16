@@ -46,6 +46,7 @@ Access Lens is an interactive identity access visualization component that provi
 | US-014 | As a user, I want an "Expand All" button to expand all lanes simultaneously. | Implemented |
 | US-015 | As a user, I want a right-click context menu on the canvas background with options for Expand All, Reset Layout, and Toggle Object Inspector. | Implemented |
 | US-016 | As a user, when the Object Inspector opens, I want the lanes to shift left automatically so cards are not hidden behind the inspector. | Implemented |
+| US-017 | As a user, I want the right-click context menu to appear at my mouse pointer location, not offset by the canvas zoom/transform. | Implemented |
 
 ### Cross-Lane Filtering
 
@@ -57,6 +58,7 @@ Access Lens is an interactive identity access visualization component that provi
 | US-023 | As a user, I want the filter source lane to be visually prominent (blue glow effect). | Implemented |
 | US-024 | As a user, I want filtered lanes to display a "Filtered" badge. | Implemented |
 | US-025 | As a user, when I select an entitlement that is part of a violation, I want the Violations lane to filter to show only related violations. | Implemented |
+| US-026 | As a user viewing an Identity, when I click a request in the Requests lane, I want the Systems, Accounts, and Entitlements lanes to filter to show only items related to that request's resource and system. | Implemented |
 
 ### Entitlements Lane Features
 
@@ -76,6 +78,7 @@ Access Lens is an interactive identity access visualization component that provi
 | US-041 | As a user, when I click on the central identity node, I want to see full identity details. | Implemented |
 | US-042 | As a user, I want to collapse and expand the Object Inspector panel. | Implemented |
 | US-143 | As a user, when I pivot from one focus node type to another, I want the Object Inspector to be cleared automatically. | Implemented |
+| US-144 | As a user, I want to toggle the Object Inspector visibility from the toolbar and the right-click context menu. | Implemented |
 
 ### Navigation & Pivot
 
@@ -86,6 +89,8 @@ Access Lens is an interactive identity access visualization component that provi
 | US-052 | As a user, I want breadcrumbs showing my navigation history when I pivot to different nodes. | Implemented |
 | US-070 | As a user, I want to pivot to a System to make it the central node and see all identities/accounts with access. | Implemented |
 | US-071 | As a user, I want to pivot to an Entitlement to see all identities who have that entitlement. | Implemented |
+| US-072 | As a user, I want to pivot to a Request to see the requested resource, requester identity, beneficiary identity, and target system. | Implemented |
+| US-073 | As a user, I want breadcrumb navigation renamed to "Navigation History" so the purpose is clearer. | Implemented |
 
 ### Multi-View Support
 
@@ -143,6 +148,55 @@ Access Lens is an interactive identity access visualization component that provi
 | US-161 | As a user, I want to see a Violations lane when the identity has SoD conflicts or compliance issues. | Implemented |
 | US-162 | As a user, I want violation indicators consistently displayed across all views. | Implemented |
 
+### Request Pivot View
+
+| ID | Story | Status |
+|----|-------|--------|
+| US-200 | As a user, when I click a Request item in the Requests lane, I want to pivot to a Request-centric view showing the requested resource, requester, beneficiary, and system as access cards. | Implemented |
+| US-201 | As a user, when viewing a Request as the central node, I want to see a Resource (Entitlement) access card showing the requested entitlement and its child assignments. | Implemented |
+| US-202 | As a user, when viewing a Request as the central node, I want to see a Requester Identity access card with OData-enriched details (username, name). | Implemented |
+| US-203 | As a user, when viewing a Request as the central node, I want to see a Beneficiary Identity access card with OData-enriched details (username, name). | Implemented |
+| US-204 | As a user, when viewing a Request as the central node, I want to see a System access card derived from the resource's system and child assignment systems (deduplicated). | Implemented |
+| US-205 | As a user, I want to click the Resource card in a Request view to pivot to an Entitlement-centric view. | Implemented |
+| US-206 | As a user, I want to click either identity card in a Request view to pivot to an Identity-centric view. | Implemented |
+| US-207 | As a user, when viewing a Request, I want child assignments displayed as additional entitlement lane items with a "Child Entitlement" badge. | Implemented |
+| US-208 | As a user, when viewing a Request, I want the FilterBar to show only Resource, System, Requester, and Beneficiary toggle buttons. | Implemented |
+| US-209 | As a user, I want the request date (requestedTime) formatted as dd/MM/YYYY with 24-hour clock in Request lane items. | Implemented |
+| US-210 | As a user, I want the requestedBy identity displayed as a pill (displayName + userName) in Request lane items. | Implemented |
+
+### Identity Requests Lane
+
+| ID | Story | Status |
+|----|-------|--------|
+| US-220 | As a user, when viewing an Identity as the central node, I want to see an Access Requests lane showing requests where this identity is the beneficiary. | Implemented |
+| US-221 | As a user, I want the Requests lane fetched via GraphQL `getAccessRequestsForBeneficiary` query filtered by the focus identity's display name. | Implemented |
+| US-222 | As a user, I want the Requests lane to show approval status, request date, and requester identity for each request. | Implemented |
+| US-223 | As a user, I want a toolbar toggle button to show/hide the Requests access card when Identity, Entitlement, or System is the focus node. | Implemented |
+
+### Per-Focus-Node-Type Positioning
+
+| ID | Story | Status |
+|----|-------|--------|
+| US-230 | As a user, I want access card positions optimized per focus node type so cards never render off-screen. | Implemented |
+| US-231 | As a user, I want tighter compass positions across all views to keep cards within the visible viewport area. | Implemented |
+| US-232 | As a user, when viewing an Identity, I want the Contexts access card positioned north (above center) for better visibility. | Implemented |
+| US-233 | As a user, when viewing an Identity, I want the Requests access card positioned in the West (left) area. | Implemented |
+
+### Loading & API Activity
+
+| ID | Story | Status |
+|----|-------|--------|
+| US-240 | As a user, I want the loading spinner to display the number of OData and GraphQL API calls made during a pivot. | Implemented |
+| US-241 | As a user, I want the loading spinner animation speed to accelerate when API calls are in-flight and decelerate when idle. | Implemented |
+| US-242 | As a user, I want an amber "in-flight" indicator when API requests are pending during a pivot. | Implemented |
+
+### Authentication & Session Management
+
+| ID | Story | Status |
+|----|-------|--------|
+| US-250 | As a user, I want the application to proactively check my token expiry every 30 seconds while I'm authenticated. | Implemented |
+| US-251 | As a user, when my token expires and silent refresh fails, I want to be automatically redirected to the login screen with a session-expired message. | Implemented |
+
 ### Performance & Stability
 
 | ID | Story | Status |
@@ -176,6 +230,22 @@ Access Lens is an interactive identity access visualization component that provi
 - **BR-040**: Display logic handles all combinations of start/end dates appropriately.
 - **BR-041**: Assignments expiring within 90 days show amber indicator with pulse animation.
 
+### Request Pivot
+- **BR-070**: Request pivot shows 4 access cards: Resource (top), System (bottom), Requester (left), Beneficiary (right).
+- **BR-071**: If requester and beneficiary are the same identity, OData enrichment is fetched once and reused.
+- **BR-072**: Child assignments from the request are included as additional entitlement lane items with "Child Entitlement" badge.
+- **BR-073**: Systems from child assignments are deduplicated by system ID before display.
+- **BR-074**: Request date (requestedTime) is formatted as dd/MM/YYYY HH:mm (24-hour clock).
+- **BR-075**: OData identity enrichment safely handles fields that return objects (`{Id, UId, Value}`) via `safeStr()` helper.
+
+### Identity Requests
+- **BR-080**: The Requests lane for Identity focus is fetched via GraphQL `getAccessRequestsForBeneficiary` filtered by the identity's display name.
+- **BR-081**: Request lane items show approval status as a grey status pill (not duplicated as a blue badge).
+
+### Session Management
+- **BR-090**: Token expiry is proactively checked every 30 seconds while the user is authenticated.
+- **BR-091**: If `ensureValidToken()` returns null or throws, the user is logged out and shown a session-expired message.
+
 ### Performance
 - **BR-058a**: Child resource enrichment limited to 50 items to prevent excessive API calls.
 - **BR-059**: Enrichment loops prevented via refs tracking enrichment status per focus node.
@@ -203,6 +273,14 @@ For complete technical specifications, business rules, and implementation detail
 | 1.22 | 2026-02-10 | Performance: useReducer refactor, useCallback optimizations, per-route Suspense boundaries |
 | 1.23 | 2026-02-10 | Filter fixes: Reason Types array handling, compliance status preservation, dynamic filter types |
 | 1.24 | 2026-02-10 | UX: Right-click context menu, lane auto-shift on inspector open, Entitlement→Violations cross-filter |
+| 1.25 | 2026-02-11 | Request pivot: 4 access cards (Resource, System, Requester, Beneficiary) with OData enrichment |
+| 1.26 | 2026-02-11 | Identity Requests lane via GraphQL getAccessRequestsForBeneficiary |
+| 1.27 | 2026-02-11 | Child assignments in Resource card, deduplicated systems in System card |
+| 1.28 | 2026-02-11 | API activity spinner (OData/GraphQL counters, dynamic animation speed, in-flight indicator) |
+| 1.29 | 2026-02-11 | Per-focus-node-type compass positions, tighter viewport layout, context menu positioning fix |
+| 1.30 | 2026-02-11 | Proactive token expiry check (30s timer) with automatic redirect to login on session expiry |
+| 1.31 | 2026-02-11 | UX: Navigation History rename, OUREF safe rendering, duplicate pill fixes |
+| 1.32 | 2026-02-12 | Cross-lane filtering from Requests lane (Identity focus): filters Systems, Accounts, Entitlements |
 
 ---
 
@@ -210,5 +288,7 @@ For complete technical specifications, business rules, and implementation detail
 
 - **TBD**: Integration with existing Omada forms - can Identity360 supplement or replace existing detail forms?
 - **TBD**: Visual indicator on identity reference links to open graph view directly
+- **TBD**: Object Inspector should not shift the canvas/page to the left when opened
+- **TBD**: Show formatted requestedTime in the Request focus node card itself
 - Path tracing validation against Assignment Explorer logic
 - Enhanced SoD conflict visualization
