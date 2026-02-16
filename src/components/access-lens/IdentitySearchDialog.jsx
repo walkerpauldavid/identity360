@@ -29,21 +29,20 @@ const IDENTITY_SELECT_FIELDS = 'UId,Id,FIRSTNAME,LASTNAME,DISPLAYNAME,EMAIL,EMPL
 // Module-level cache — persists across dialog opens within the same session
 let cachedIdentities = null;
 let cachedOrgUnits = null;
+let cachedStatuses = null;
 
 /**
- * Check if an identity is active (client-side filter).
+ * Extract the identity status display string.
  * IDENTITYSTATUS comes back as an object { DisplayName, Id } or a string.
- * Omada OData does not support server-side filtering on this field.
  */
-const isActiveIdentity = (identity) => {
-  const status = identity.IDENTITYSTATUS;
-  if (!status) return true;
-  if (typeof status === 'string') return status.toLowerCase() === 'active';
+const getStatusString = (identity) => {
+  const status = identity?.IDENTITYSTATUS;
+  if (!status) return 'Unknown';
+  if (typeof status === 'string') return status;
   if (typeof status === 'object') {
-    const s = status.DisplayName || status.Value || status.Name || status.KeyValue || '';
-    return s.toLowerCase() === 'active';
+    return status.DisplayName || status.Value || status.Name || status.KeyValue || 'Unknown';
   }
-  return true;
+  return 'Unknown';
 };
 
 /** Extract the OrgUnit display string from an identity's OUREF field */
@@ -67,6 +66,10 @@ const IdentitySearchDialog = ({ isOpen, onClose, onSelectIdentity }) => {
   // All identities (from cache or freshly loaded)
   const [allIdentities, setAllIdentities] = useState(cachedIdentities || []);
   const [orgUnits, setOrgUnits] = useState(cachedOrgUnits || []);
+  const [statuses, setStatuses] = useState(cachedStatuses || []);
+
+  // Status filter (defaults to Active selected)
+  const [selectedStatuses, setSelectedStatuses] = useState(new Set(['Active']));
 
   // OrgUnit multi-select
   const [selectedOrgUnits, setSelectedOrgUnits] = useState(new Set());
@@ -146,23 +149,33 @@ const IdentitySearchDialog = ({ isOpen, onClose, onSelectIdentity }) => {
       );
 
       if (result.status === 'success' && result.data) {
-        // Filter to active identities only
-        const activeIdentities = result.data.filter(isActiveIdentity);
+        const allData = result.data;
 
-        // Extract unique OrgUnits
+        // Extract unique OrgUnits and Statuses
         const ouSet = new Set();
-        activeIdentities.forEach(row => {
+        const statusSet = new Set();
+        allData.forEach(row => {
           const ou = getOrgUnitString(row);
           if (ou) ouSet.add(ou);
+          const st = getStatusString(row);
+          if (st && st !== 'Unknown') statusSet.add(st);
         });
         const sortedOrgUnits = Array.from(ouSet).sort();
+        // Sort statuses with Active first, then alphabetical
+        const sortedStatuses = Array.from(statusSet).sort((a, b) => {
+          if (a === 'Active') return -1;
+          if (b === 'Active') return 1;
+          return a.localeCompare(b);
+        });
 
         // Cache for session
-        cachedIdentities = activeIdentities;
+        cachedIdentities = allData;
         cachedOrgUnits = sortedOrgUnits;
+        cachedStatuses = sortedStatuses;
 
-        setAllIdentities(activeIdentities);
+        setAllIdentities(allData);
         setOrgUnits(sortedOrgUnits);
+        setStatuses(sortedStatuses);
       } else {
         setError('Failed to load identities');
       }
@@ -179,6 +192,14 @@ const IdentitySearchDialog = ({ isOpen, onClose, onSelectIdentity }) => {
     if (selectedIdentity) return [];
 
     let filtered = allIdentities;
+
+    // Status filter
+    if (selectedStatuses.size > 0) {
+      filtered = filtered.filter(identity => {
+        const st = getStatusString(identity);
+        return selectedStatuses.has(st);
+      });
+    }
 
     // OrgUnit filter
     if (selectedOrgUnits.size > 0) {
@@ -206,7 +227,7 @@ const IdentitySearchDialog = ({ isOpen, onClose, onSelectIdentity }) => {
     }
 
     return filtered.slice(0, MAX_DISPLAY_RESULTS);
-  }, [allIdentities, searchQuery, selectedOrgUnits, selectedIdentity]);
+  }, [allIdentities, searchQuery, selectedOrgUnits, selectedStatuses, selectedIdentity]);
 
   // ── OrgUnit multi-select handlers ──────────────────────────────────
   const toggleOrgUnit = (ou) => {
@@ -269,6 +290,7 @@ const IdentitySearchDialog = ({ isOpen, onClose, onSelectIdentity }) => {
   const resetState = () => {
     setSearchQuery('');
     setSelectedIdentity(null);
+    setSelectedStatuses(new Set(['Active']));
     setSelectedOrgUnits(new Set());
     setOuFilterText('');
     setIsOuDropdownOpen(false);
@@ -307,9 +329,25 @@ const IdentitySearchDialog = ({ isOpen, onClose, onSelectIdentity }) => {
     if (e.target === e.currentTarget && canCloseRef.current) handleClose();
   };
 
+  // ── Status toggle handler ─────────────────────────────────────────
+  const toggleStatus = (status) => {
+    setSelectedIdentity(null);
+    setSelectedStatuses(prev => {
+      const next = new Set(prev);
+      if (next.has(status)) {
+        next.delete(status);
+      } else {
+        next.add(status);
+      }
+      return next;
+    });
+    setIsDropdownOpen(true);
+  };
+
   // ── Derived state ──────────────────────────────────────────────────
   const hasSearchCriteria = searchQuery.trim().length >= MIN_SEARCH_CHARS || selectedOrgUnits.size > 0;
   const showPrompt = !hasSearchCriteria && filteredIdentities.length === 0 && !isLoading && !error;
+  const showingMultipleStatuses = selectedStatuses.size !== 1 || !selectedStatuses.has('Active');
 
   // Filtered list for the OU dropdown search
   const filteredOrgUnits = ouFilterText
@@ -335,7 +373,25 @@ const IdentitySearchDialog = ({ isOpen, onClose, onSelectIdentity }) => {
 
         {/* Dropdown Container */}
         <div className="dropdown-container">
-          <label className="dropdown-label">Search for an active identity by name, email, or employee ID:</label>
+          <label className="dropdown-label">Search for an identity by name, email, or employee ID:</label>
+
+          {/* Status Filter Toggle Pills */}
+          {statuses.length > 0 && (
+            <div className="status-filter-row">
+              <label className="status-filter-label">Status:</label>
+              <div className="status-pills">
+                {statuses.map(status => (
+                  <button
+                    key={status}
+                    className={`status-pill ${selectedStatuses.has(status) ? 'selected' : ''} ${status.toLowerCase()}`}
+                    onClick={() => toggleStatus(status)}
+                  >
+                    {status}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* OrgUnit Multi-Select Dropdown */}
           <div className="ou-select-wrapper" ref={ouDropdownRef}>
@@ -430,6 +486,7 @@ const IdentitySearchDialog = ({ isOpen, onClose, onSelectIdentity }) => {
                 onClick={() => {
                   setSearchQuery('');
                   setSelectedOrgUnits(new Set());
+                  setSelectedStatuses(new Set(['Active']));
                   setSelectedIdentity(null);
                   inputRef.current?.focus();
                 }}
@@ -466,8 +523,9 @@ const IdentitySearchDialog = ({ isOpen, onClose, onSelectIdentity }) => {
               ) : filteredIdentities.length === 0 && hasSearchCriteria ? (
                 <div className="dropdown-empty">
                   <span>
-                    No active identities found
+                    No identities found
                     {searchQuery ? ` matching "${searchQuery}"` : ''}
+                    {selectedStatuses.size > 0 ? ` with status ${Array.from(selectedStatuses).join(', ')}` : ''}
                     {selectedOrgUnits.size > 0 ? ` in ${selectedOrgUnits.size === 1 ? Array.from(selectedOrgUnits)[0] : `${selectedOrgUnits.size} departments`}` : ''}
                   </span>
                 </div>
@@ -505,6 +563,11 @@ const IdentitySearchDialog = ({ isOpen, onClose, onSelectIdentity }) => {
                           {identity.EMPLOYEEID && <span>ID: {identity.EMPLOYEEID}</span>}
                           {getOrgUnitString(identity) && (
                             <span className="orgunit-tag">{getOrgUnitString(identity)}</span>
+                          )}
+                          {showingMultipleStatuses && (
+                            <span className={`status-badge ${getStatusString(identity).toLowerCase()}`}>
+                              {getStatusString(identity)}
+                            </span>
                           )}
                         </div>
                       </div>
