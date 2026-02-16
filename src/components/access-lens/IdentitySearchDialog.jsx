@@ -6,12 +6,10 @@
  * The UId is required for getIdentityContexts and getCalculatedAssignmentsDetailed APIs
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { omadaApi } from '../../services/omadaApi';
 import './IdentitySearchDialog.css';
-
-const PAGE_SIZE = 50;
 
 const IdentitySearchDialog = ({ isOpen, onClose, onSelectIdentity }) => {
   const { getBearerToken, user } = useAuth();
@@ -19,15 +17,9 @@ const IdentitySearchDialog = ({ isOpen, onClose, onSelectIdentity }) => {
   const [identities, setIdentities] = useState([]);
   const [filteredIdentities, setFilteredIdentities] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState(null);
   const [selectedIdentity, setSelectedIdentity] = useState(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(true);
-
-  // Pagination state
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
-  const [hasMore, setHasMore] = useState(false);
 
   const dropdownRef = useRef(null);
   const inputRef = useRef(null);
@@ -42,7 +34,7 @@ const IdentitySearchDialog = ({ isOpen, onClose, onSelectIdentity }) => {
         canCloseRef.current = true;
       }, 500);
 
-      loadIdentities(1, true);
+      loadIdentities();
       setIsDropdownOpen(true);
       // Focus input after a short delay
       setTimeout(() => inputRef.current?.focus(), 100);
@@ -54,9 +46,6 @@ const IdentitySearchDialog = ({ isOpen, onClose, onSelectIdentity }) => {
       setIdentities([]);
       setFilteredIdentities([]);
       setSelectedIdentity(null);
-      setCurrentPage(1);
-      setTotalCount(0);
-      setHasMore(false);
       setError(null);
       canCloseRef.current = false;
     }
@@ -100,32 +89,23 @@ const IdentitySearchDialog = ({ isOpen, onClose, onSelectIdentity }) => {
   }, [searchQuery, identities]);
 
   /**
-   * Load identities via OData
-   * @param {number} page - Page number (1-based)
-   * @param {boolean} resetResults - Whether to replace or append results
+   * Load all identities via OData in a single request
    */
-  const loadIdentities = async (page = 1, resetResults = true) => {
-    if (resetResults) {
-      setIsLoading(true);
-    } else {
-      setIsLoadingMore(true);
-    }
+  const loadIdentities = async () => {
+    setIsLoading(true);
     setError(null);
 
     try {
       const bearerToken = getBearerToken();
       const impersonateUser = user?.email;
 
-      const skip = (page - 1) * PAGE_SIZE;
-
-      // Load identities sorted alphabetically
+      // Load all identities sorted alphabetically
       const result = await omadaApi.identity.searchIdentities(
         null, // No filter - load all
         bearerToken,
         impersonateUser,
         {
-          top: PAGE_SIZE,
-          skip: skip,
+          top: 10000,
           // Select fields including UId (32-char GUID) - this is critical!
           select: 'UId,Id,FIRSTNAME,LASTNAME,DISPLAYNAME,EMAIL,EMPLOYEEID,JOBTITLE,OUREF,IDENTITYCATEGORY,IDENTITYSTATUS,RISKLEVEL',
           // Order alphabetically by last name, then first name
@@ -134,50 +114,21 @@ const IdentitySearchDialog = ({ isOpen, onClose, onSelectIdentity }) => {
       );
 
       if (result.status === 'success') {
-        const newResults = result.data || [];
-        const total = result.total || 0;
-
-        if (resetResults) {
-          setIdentities(newResults);
-          setFilteredIdentities(newResults);
-        } else {
-          // Append new results, avoiding duplicates by UId
-          setIdentities(prev => {
-            const existingUIds = new Set(prev.map(i => i.UId));
-            const uniqueNew = newResults.filter(i => !existingUIds.has(i.UId));
-            return [...prev, ...uniqueNew];
-          });
-        }
-
-        setTotalCount(total);
-        setCurrentPage(page);
-        setHasMore(skip + newResults.length < total);
+        const allResults = result.data || [];
+        setIdentities(allResults);
+        setFilteredIdentities(allResults);
       } else {
         setError('Failed to load identities');
-        if (resetResults) {
-          setIdentities([]);
-          setFilteredIdentities([]);
-        }
+        setIdentities([]);
+        setFilteredIdentities([]);
       }
     } catch (err) {
       console.error('Error loading identities:', err);
       setError(err.message || 'Failed to load identities');
-      if (resetResults) {
-        setIdentities([]);
-        setFilteredIdentities([]);
-      }
+      setIdentities([]);
+      setFilteredIdentities([]);
     } finally {
       setIsLoading(false);
-      setIsLoadingMore(false);
-    }
-  };
-
-  // Handle scroll to load more
-  const handleScroll = (e) => {
-    const { scrollTop, scrollHeight, clientHeight } = e.target;
-    // Load more when scrolled near bottom (within 100px)
-    if (scrollHeight - scrollTop - clientHeight < 100 && hasMore && !isLoadingMore) {
-      loadIdentities(currentPage + 1, false);
     }
   };
 
@@ -220,9 +171,6 @@ const IdentitySearchDialog = ({ isOpen, onClose, onSelectIdentity }) => {
     setFilteredIdentities([]);
     setSelectedIdentity(null);
     setError(null);
-    setCurrentPage(1);
-    setTotalCount(0);
-    setHasMore(false);
     setIsDropdownOpen(false);
     onClose();
   };
@@ -320,7 +268,6 @@ const IdentitySearchDialog = ({ isOpen, onClose, onSelectIdentity }) => {
             <div
               className="dropdown-list"
               ref={dropdownRef}
-              onScroll={handleScroll}
             >
               {isLoading ? (
                 <div className="dropdown-loading">
@@ -346,7 +293,7 @@ const IdentitySearchDialog = ({ isOpen, onClose, onSelectIdentity }) => {
                     {searchQuery ? (
                       `${filteredIdentities.length} matches`
                     ) : (
-                      `${identities.length} of ${totalCount} identities loaded (A-Z)`
+                      `${identities.length} identities (A-Z)`
                     )}
                   </div>
                   {filteredIdentities.map((identity) => (
@@ -381,19 +328,6 @@ const IdentitySearchDialog = ({ isOpen, onClose, onSelectIdentity }) => {
                       )}
                     </div>
                   ))}
-                  {/* Loading more indicator */}
-                  {isLoadingMore && (
-                    <div className="dropdown-loading-more">
-                      <div className="dropdown-spinner-small"></div>
-                      <span>Loading more...</span>
-                    </div>
-                  )}
-                  {/* Load more prompt */}
-                  {hasMore && !isLoadingMore && !searchQuery && (
-                    <div className="dropdown-load-more">
-                      Scroll down to load more ({totalCount - identities.length} remaining)
-                    </div>
-                  )}
                 </>
               )}
             </div>
