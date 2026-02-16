@@ -191,6 +191,9 @@ class AuthService {
 
     // Buffer time for token expiry checks (5 minutes)
     this.TOKEN_EXPIRY_BUFFER_MS = 5 * 60 * 1000;
+
+    // Refresh mutex — when a refresh is in flight, concurrent callers await the same promise
+    this._refreshPromise = null;
   }
 
   /**
@@ -453,31 +456,46 @@ class AuthService {
 
     // Check if refresh is needed
     if (this.needsRefresh()) {
-      const tokenData = this.getStoredToken();
+      // Refresh mutex: if a refresh is already in flight, await it instead of starting another
+      if (this._refreshPromise) {
+        return this._refreshPromise;
+      }
 
-      // If we have a refresh token, try to refresh
-      if (tokenData?.refresh_token) {
-        try {
-          console.log('Token expired or expiring soon, refreshing...');
-          const newTokenData = await this.refreshToken(tokenData.refresh_token);
-          this.storeToken(newTokenData);
-          return newTokenData.access_token;
-        } catch (error) {
-          console.error('Token refresh failed:', error);
-          // If refresh fails, clear auth and return null
-          this.clearAuth();
-          return null;
-        }
-      } else {
-        // No refresh token available
-        console.warn('Token expired but no refresh token available - please log in again');
-        this.clearAuth();
-        return null;
+      this._refreshPromise = this._performRefresh();
+      try {
+        return await this._refreshPromise;
+      } finally {
+        this._refreshPromise = null;
       }
     }
 
     // Token is still valid
     return this.getAccessToken();
+  }
+
+  /**
+   * Internal: perform the actual token refresh (called once via mutex)
+   * @returns {Promise<string|null>} New access token or null
+   */
+  async _performRefresh() {
+    const tokenData = this.getStoredToken();
+
+    if (tokenData?.refresh_token) {
+      try {
+        console.log('Token expired or expiring soon, refreshing...');
+        const newTokenData = await this.refreshToken(tokenData.refresh_token);
+        this.storeToken(newTokenData);
+        return newTokenData.access_token;
+      } catch (error) {
+        console.error('Token refresh failed:', error);
+        this.clearAuth();
+        return null;
+      }
+    } else {
+      console.warn('Token expired but no refresh token available - please log in again');
+      this.clearAuth();
+      return null;
+    }
   }
 
   /**

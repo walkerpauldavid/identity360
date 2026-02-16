@@ -71,9 +71,15 @@ export const ensureValidBearerToken = async () => {
  * @returns {Promise<Object>} Headers object
  */
 export const getHeaders = async (bearerToken = null, impersonateUser = null) => {
-  // If no token provided, ensure we have a valid one
-  if (!bearerToken) {
-    bearerToken = await ensureValidBearerToken();
+  // Always validate/refresh the token proactively, even if one was passed in.
+  // ensureValidToken() returns quickly when the token is still valid, and silently
+  // refreshes via the refresh_token grant when it's expiring. A mutex inside
+  // authService prevents concurrent refresh requests from racing.
+  const validToken = await authService.ensureValidToken();
+  if (validToken) {
+    bearerToken = validToken.startsWith('Bearer ') ? validToken : `Bearer ${validToken}`;
+  } else if (!bearerToken) {
+    throw new Error('Authentication required: Unable to obtain valid access token');
   }
 
   // Check if token already has "Bearer " prefix
@@ -130,9 +136,12 @@ export const getHeadersSync = (bearerToken, impersonateUser = null) => {
  * @returns {Promise<Object>} Headers object
  */
 export const getGraphQLHeaders = async (bearerToken = null, impersonateUser = null) => {
-  // If no token provided, ensure we have a valid one
-  if (!bearerToken) {
-    bearerToken = await ensureValidBearerToken();
+  // Always validate/refresh the token proactively (see getHeaders comment)
+  const validToken = await authService.ensureValidToken();
+  if (validToken) {
+    bearerToken = validToken.startsWith('Bearer ') ? validToken : `Bearer ${validToken}`;
+  } else if (!bearerToken) {
+    throw new Error('Authentication required: Unable to obtain valid access token');
   }
 
   // Check if token already has "Bearer " prefix

@@ -1,138 +1,243 @@
 /**
  * IdentitySearchDialog Component
- * Modal dialog with an editable dropdown for selecting an identity to view in Identity360
+ * Modal dialog with instant client-side type-ahead search and OrgUnit multi-select
+ * dropdown for selecting an identity to view in Identity360.
  *
  * IMPORTANT: Uses UId (32-character GUID) for identity selection, NOT Id or IdentityID
  * The UId is required for getIdentityContexts and getCalculatedAssignmentsDetailed APIs
+ *
+ * Search strategy:
+ *  - On first open: loads ALL identities via OData (with select fields), cached for session
+ *  - Type-ahead: instant client-side filtering across name/email/employeeId fields
+ *  - Active identities only (client-side — Omada OData doesn't support function filters)
+ *  - OrgUnit dropdown extracted from cached data
+ *  - Subsequent dialog opens reuse the cache (instant)
+ *
+ * NOTE: Omada OData does NOT support contains(), tolower(), or navigation property
+ * filters (e.g. IDENTITYSTATUS/DisplayName). All filtering must be client-side.
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { omadaApi } from '../../services/omadaApi';
 import './IdentitySearchDialog.css';
 
+const MIN_SEARCH_CHARS = 2;
+const MAX_DISPLAY_RESULTS = 50;
+const IDENTITY_SELECT_FIELDS = 'UId,Id,FIRSTNAME,LASTNAME,DISPLAYNAME,EMAIL,EMPLOYEEID,JOBTITLE,OUREF,IDENTITYCATEGORY,IDENTITYSTATUS,RISKLEVEL';
+
+// Module-level cache — persists across dialog opens within the same session
+let cachedIdentities = null;
+let cachedOrgUnits = null;
+
+/**
+ * Check if an identity is active (client-side filter).
+ * IDENTITYSTATUS comes back as an object { DisplayName, Id } or a string.
+ * Omada OData does not support server-side filtering on this field.
+ */
+const isActiveIdentity = (identity) => {
+  const status = identity.IDENTITYSTATUS;
+  if (!status) return true;
+  if (typeof status === 'string') return status.toLowerCase() === 'active';
+  if (typeof status === 'object') {
+    const s = status.DisplayName || status.Value || status.Name || status.KeyValue || '';
+    return s.toLowerCase() === 'active';
+  }
+  return true;
+};
+
+/** Extract the OrgUnit display string from an identity's OUREF field */
+const getOrgUnitString = (identity) => {
+  const ou = identity?.OUREF;
+  if (!ou) return null;
+  if (typeof ou === 'string') return ou;
+  return ou.DisplayName || ou.Value || null;
+};
+
 const IdentitySearchDialog = ({ isOpen, onClose, onSelectIdentity }) => {
   const { getBearerToken, user } = useAuth();
+
+  // Search & results
   const [searchQuery, setSearchQuery] = useState('');
-  const [identities, setIdentities] = useState([]);
-  const [filteredIdentities, setFilteredIdentities] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [selectedIdentity, setSelectedIdentity] = useState(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(true);
 
+  // All identities (from cache or freshly loaded)
+  const [allIdentities, setAllIdentities] = useState(cachedIdentities || []);
+  const [orgUnits, setOrgUnits] = useState(cachedOrgUnits || []);
+
+  // OrgUnit multi-select
+  const [selectedOrgUnits, setSelectedOrgUnits] = useState(new Set());
+  const [isOuDropdownOpen, setIsOuDropdownOpen] = useState(false);
+  const [ouFilterText, setOuFilterText] = useState('');
+
+  // Refs
   const dropdownRef = useRef(null);
   const inputRef = useRef(null);
-  const canCloseRef = useRef(false); // Prevent immediate close on mount
+  const ouDropdownRef = useRef(null);
+  const canCloseRef = useRef(false);
 
-  // Load initial identities when dialog opens
+  // ── On open: load identities (from cache or server) ────────────────
   useEffect(() => {
     if (isOpen) {
-      // Prevent closing for the first 500ms to avoid accidental closes
       canCloseRef.current = false;
-      const timer = setTimeout(() => {
-        canCloseRef.current = true;
-      }, 500);
+      const timer = setTimeout(() => { canCloseRef.current = true; }, 500);
 
-      loadIdentities();
+      if (!cachedIdentities) {
+        loadAllIdentities();
+      }
       setIsDropdownOpen(true);
-      // Focus input after a short delay
       setTimeout(() => inputRef.current?.focus(), 100);
 
       return () => clearTimeout(timer);
     } else {
-      // Reset state when closed
-      setSearchQuery('');
-      setIdentities([]);
-      setFilteredIdentities([]);
-      setSelectedIdentity(null);
-      setError(null);
-      canCloseRef.current = false;
+      resetState();
     }
   }, [isOpen]);
 
-  // Handle Escape key to close dialog
+  // ── Close OU dropdown on outside click ─────────────────────────────
+  useEffect(() => {
+    if (!isOuDropdownOpen) return;
+    const handleClick = (e) => {
+      if (ouDropdownRef.current && !ouDropdownRef.current.contains(e.target)) {
+        setIsOuDropdownOpen(false);
+        setOuFilterText('');
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [isOuDropdownOpen]);
+
+  // ── Escape key ─────────────────────────────────────────────────────
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape' && isOpen && canCloseRef.current) {
-        handleClose();
+        if (isOuDropdownOpen) {
+          setIsOuDropdownOpen(false);
+          setOuFilterText('');
+        } else {
+          handleClose();
+        }
       }
     };
-
     if (isOpen) {
       document.addEventListener('keydown', handleKeyDown);
       return () => document.removeEventListener('keydown', handleKeyDown);
     }
-  }, [isOpen]);
+  }, [isOpen, isOuDropdownOpen]);
 
-  // Filter identities based on search query
-  useEffect(() => {
-    if (!searchQuery.trim()) {
-      setFilteredIdentities(identities);
-    } else {
-      const query = searchQuery.toLowerCase();
-      const filtered = identities.filter(identity => {
-        const displayName = (identity.DISPLAYNAME || '').toLowerCase();
-        const firstName = (identity.FIRSTNAME || '').toLowerCase();
-        const lastName = (identity.LASTNAME || '').toLowerCase();
-        const email = (identity.EMAIL || '').toLowerCase();
-        const employeeId = (identity.EMPLOYEEID || '').toLowerCase();
-
-        return displayName.includes(query) ||
-               firstName.includes(query) ||
-               lastName.includes(query) ||
-               email.includes(query) ||
-               employeeId.includes(query);
-      });
-      setFilteredIdentities(filtered);
-    }
-  }, [searchQuery, identities]);
-
-  /**
-   * Load all identities via OData in a single request
-   */
-  const loadIdentities = async () => {
+  // ── Load all identities (one-time, cached for session) ─────────────
+  const loadAllIdentities = async () => {
     setIsLoading(true);
     setError(null);
-
     try {
       const bearerToken = getBearerToken();
       const impersonateUser = user?.email;
 
-      // Load all identities sorted alphabetically
       const result = await omadaApi.identity.searchIdentities(
-        null, // No filter - load all
-        bearerToken,
-        impersonateUser,
+        null, bearerToken, impersonateUser,
         {
           top: 10000,
-          // Select fields including UId (32-char GUID) - this is critical!
-          select: 'UId,Id,FIRSTNAME,LASTNAME,DISPLAYNAME,EMAIL,EMPLOYEEID,JOBTITLE,OUREF,IDENTITYCATEGORY,IDENTITYSTATUS,RISKLEVEL',
-          // Order alphabetically by last name, then first name
+          select: IDENTITY_SELECT_FIELDS,
           orderBy: 'LASTNAME,FIRSTNAME'
         }
       );
 
-      if (result.status === 'success') {
-        const allResults = result.data || [];
-        setIdentities(allResults);
-        setFilteredIdentities(allResults);
+      if (result.status === 'success' && result.data) {
+        // Filter to active identities only
+        const activeIdentities = result.data.filter(isActiveIdentity);
+
+        // Extract unique OrgUnits
+        const ouSet = new Set();
+        activeIdentities.forEach(row => {
+          const ou = getOrgUnitString(row);
+          if (ou) ouSet.add(ou);
+        });
+        const sortedOrgUnits = Array.from(ouSet).sort();
+
+        // Cache for session
+        cachedIdentities = activeIdentities;
+        cachedOrgUnits = sortedOrgUnits;
+
+        setAllIdentities(activeIdentities);
+        setOrgUnits(sortedOrgUnits);
       } else {
         setError('Failed to load identities');
-        setIdentities([]);
-        setFilteredIdentities([]);
       }
     } catch (err) {
       console.error('Error loading identities:', err);
       setError(err.message || 'Failed to load identities');
-      setIdentities([]);
-      setFilteredIdentities([]);
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Handle identity selection
+  // ── Client-side filtering (instant) ────────────────────────────────
+  const filteredIdentities = useMemo(() => {
+    if (selectedIdentity) return [];
+
+    let filtered = allIdentities;
+
+    // OrgUnit filter
+    if (selectedOrgUnits.size > 0) {
+      filtered = filtered.filter(identity => {
+        const ou = getOrgUnitString(identity);
+        return ou && selectedOrgUnits.has(ou);
+      });
+    }
+
+    // Text search filter
+    const query = searchQuery.trim().toLowerCase();
+    if (query.length >= MIN_SEARCH_CHARS) {
+      filtered = filtered.filter(identity => {
+        const displayName = (identity.DISPLAYNAME || '').toLowerCase();
+        const firstName = (identity.FIRSTNAME || '').toLowerCase();
+        const lastName = (identity.LASTNAME || '').toLowerCase();
+        const email = (identity.EMAIL || '').toLowerCase();
+        const empId = (identity.EMPLOYEEID || '').toLowerCase();
+        return displayName.includes(query) ||
+               firstName.includes(query) ||
+               lastName.includes(query) ||
+               email.includes(query) ||
+               empId.includes(query);
+      });
+    }
+
+    return filtered.slice(0, MAX_DISPLAY_RESULTS);
+  }, [allIdentities, searchQuery, selectedOrgUnits, selectedIdentity]);
+
+  // ── OrgUnit multi-select handlers ──────────────────────────────────
+  const toggleOrgUnit = (ou) => {
+    setSelectedIdentity(null);
+    setSelectedOrgUnits(prev => {
+      const next = new Set(prev);
+      if (next.has(ou)) {
+        next.delete(ou);
+      } else {
+        next.add(ou);
+      }
+      return next;
+    });
+    setIsDropdownOpen(true);
+  };
+
+  const removeOrgUnit = (ou) => {
+    setSelectedIdentity(null);
+    setSelectedOrgUnits(prev => {
+      const next = new Set(prev);
+      next.delete(ou);
+      return next;
+    });
+  };
+
+  const clearOrgUnits = () => {
+    setSelectedIdentity(null);
+    setSelectedOrgUnits(new Set());
+  };
+
+  // ── Identity selection ─────────────────────────────────────────────
   const handleSelect = (identity) => {
     if (!identity.UId) {
       console.error('Identity missing UId (32-char GUID):', identity);
@@ -144,38 +249,40 @@ const IdentitySearchDialog = ({ isOpen, onClose, onSelectIdentity }) => {
     setIsDropdownOpen(false);
   };
 
-  // Handle input change
   const handleInputChange = (e) => {
     setSearchQuery(e.target.value);
     setSelectedIdentity(null);
     setIsDropdownOpen(true);
   };
 
-  // Handle input focus
   const handleInputFocus = () => {
     setIsDropdownOpen(true);
   };
 
-  // Handle confirm selection
   const handleConfirm = () => {
-    if (selectedIdentity && selectedIdentity.UId) {
+    if (selectedIdentity?.UId) {
       onSelectIdentity(selectedIdentity);
       handleClose();
     }
   };
 
-  // Handle close
-  const handleClose = () => {
+  const resetState = () => {
     setSearchQuery('');
-    setIdentities([]);
-    setFilteredIdentities([]);
     setSelectedIdentity(null);
+    setSelectedOrgUnits(new Set());
+    setOuFilterText('');
+    setIsOuDropdownOpen(false);
     setError(null);
+    canCloseRef.current = false;
+  };
+
+  const handleClose = () => {
+    resetState();
     setIsDropdownOpen(false);
     onClose();
   };
 
-  // Format display name
+  // ── Helpers ────────────────────────────────────────────────────────
   const formatDisplayName = (identity) => {
     if (identity.DISPLAYNAME) return identity.DISPLAYNAME;
     const firstName = identity.FIRSTNAME || '';
@@ -184,41 +291,36 @@ const IdentitySearchDialog = ({ isOpen, onClose, onSelectIdentity }) => {
     return lastName || firstName || 'Unknown';
   };
 
-  // Get initials for avatar
   const getInitials = (identity) => {
     if (identity.FIRSTNAME && identity.LASTNAME) {
       return `${identity.FIRSTNAME[0]}${identity.LASTNAME[0]}`.toUpperCase();
     }
     if (identity.DISPLAYNAME) {
       const parts = identity.DISPLAYNAME.split(' ');
-      if (parts.length >= 2) {
-        return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
-      }
+      if (parts.length >= 2) return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
       return identity.DISPLAYNAME[0].toUpperCase();
     }
     return '?';
   };
 
-  // Safely get status string from IDENTITYSTATUS (handles both string and object formats)
-  const getStatusString = (status) => {
-    if (!status) return 'Active';
-    if (typeof status === 'string') return status;
-    if (typeof status === 'object') {
-      // Handle object format like { DisplayName: "Active", Id: 1 }
-      return status.DisplayName || status.Name || status.Value || 'Active';
-    }
-    return String(status);
+  const handleOverlayClick = (e) => {
+    if (e.target === e.currentTarget && canCloseRef.current) handleClose();
   };
 
-  // Handle overlay click - only close if clicking directly on the overlay, not children
-  const handleOverlayClick = (e) => {
-    // Only close if:
-    // 1. The click target is the overlay itself (not a child)
-    // 2. We've passed the initial delay (canCloseRef is true)
-    if (e.target === e.currentTarget && canCloseRef.current) {
-      handleClose();
-    }
-  };
+  // ── Derived state ──────────────────────────────────────────────────
+  const hasSearchCriteria = searchQuery.trim().length >= MIN_SEARCH_CHARS || selectedOrgUnits.size > 0;
+  const showPrompt = !hasSearchCriteria && filteredIdentities.length === 0 && !isLoading && !error;
+
+  // Filtered list for the OU dropdown search
+  const filteredOrgUnits = ouFilterText
+    ? orgUnits.filter(ou => ou.toLowerCase().includes(ouFilterText.toLowerCase()))
+    : orgUnits;
+
+  const ouSummary = selectedOrgUnits.size === 0
+    ? 'All departments'
+    : selectedOrgUnits.size === 1
+      ? Array.from(selectedOrgUnits)[0]
+      : `${selectedOrgUnits.size} departments selected`;
 
   if (!isOpen) return null;
 
@@ -228,16 +330,83 @@ const IdentitySearchDialog = ({ isOpen, onClose, onSelectIdentity }) => {
         {/* Header */}
         <div className="dialog-header">
           <h2>Select Identity</h2>
-          <button className="dialog-close-btn" onClick={handleClose}>
-            &times;
-          </button>
+          <button className="dialog-close-btn" onClick={handleClose}>&times;</button>
         </div>
 
         {/* Dropdown Container */}
         <div className="dropdown-container">
-          <label className="dropdown-label">Choose an identity to view in Identity360:</label>
+          <label className="dropdown-label">Search for an active identity by name, email, or employee ID:</label>
 
-          {/* Editable Dropdown Input */}
+          {/* OrgUnit Multi-Select Dropdown */}
+          <div className="ou-select-wrapper" ref={ouDropdownRef}>
+            <label className="ou-select-label">Department filter:</label>
+            <button
+              className={`ou-select-trigger ${isOuDropdownOpen ? 'open' : ''} ${selectedOrgUnits.size > 0 ? 'has-selection' : ''}`}
+              onClick={() => { setIsOuDropdownOpen(!isOuDropdownOpen); setOuFilterText(''); }}
+            >
+              <span className="ou-select-text">{ouSummary}</span>
+              <span className="ou-select-arrow">{isOuDropdownOpen ? '\u25B2' : '\u25BC'}</span>
+            </button>
+
+            {isOuDropdownOpen && (
+              <div className="ou-select-dropdown">
+                {/* Search within departments */}
+                <div className="ou-select-search">
+                  <input
+                    type="text"
+                    className="ou-select-search-input"
+                    placeholder="Filter departments..."
+                    value={ouFilterText}
+                    onChange={(e) => setOuFilterText(e.target.value)}
+                    autoFocus
+                  />
+                </div>
+
+                {/* Select all / Clear all */}
+                {selectedOrgUnits.size > 0 && (
+                  <button className="ou-select-clear" onClick={clearOrgUnits}>
+                    Clear all ({selectedOrgUnits.size})
+                  </button>
+                )}
+
+                {/* Options list */}
+                <div className="ou-select-options">
+                  {isLoading ? (
+                    <div className="ou-select-loading">Loading departments...</div>
+                  ) : filteredOrgUnits.length === 0 ? (
+                    <div className="ou-select-empty">
+                      {ouFilterText ? 'No departments match' : 'No departments available'}
+                    </div>
+                  ) : (
+                    filteredOrgUnits.map(ou => (
+                      <label key={ou} className="ou-select-option">
+                        <input
+                          type="checkbox"
+                          checked={selectedOrgUnits.has(ou)}
+                          onChange={() => toggleOrgUnit(ou)}
+                        />
+                        <span className="ou-select-option-text">{ou}</span>
+                      </label>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Selected OrgUnit Tags */}
+          {selectedOrgUnits.size > 0 && (
+            <div className="ou-selected-tags">
+              {Array.from(selectedOrgUnits).map(ou => (
+                <span key={ou} className="ou-tag">
+                  {ou}
+                  <button className="ou-tag-remove" onClick={() => removeOrgUnit(ou)}>&times;</button>
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Identity Search Input */}
           <div className="dropdown-input-wrapper">
             <svg className="dropdown-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="11" cy="11" r="8"></circle>
@@ -249,51 +418,70 @@ const IdentitySearchDialog = ({ isOpen, onClose, onSelectIdentity }) => {
               id="identity-search-input"
               name="identity-search-input"
               className="dropdown-input"
-              placeholder="Type to filter or scroll to browse..."
+              placeholder={`Type at least ${MIN_SEARCH_CHARS} characters to search${selectedOrgUnits.size > 0 ? ' (filtered by dept)' : ''}...`}
               autoComplete="off"
               value={searchQuery}
               onChange={handleInputChange}
               onFocus={handleInputFocus}
             />
+            {(searchQuery || selectedOrgUnits.size > 0) && (
+              <button
+                className="dropdown-clear-btn"
+                onClick={() => {
+                  setSearchQuery('');
+                  setSelectedOrgUnits(new Set());
+                  setSelectedIdentity(null);
+                  inputRef.current?.focus();
+                }}
+                title="Clear all filters"
+              >
+                &times;
+              </button>
+            )}
             <button
               className="dropdown-toggle-btn"
               onClick={() => setIsDropdownOpen(!isDropdownOpen)}
             >
-              {isDropdownOpen ? '▲' : '▼'}
+              {isDropdownOpen ? '\u25B2' : '\u25BC'}
             </button>
           </div>
 
-          {/* Dropdown List */}
+          {/* Results Dropdown */}
           {isDropdownOpen && (
-            <div
-              className="dropdown-list"
-              ref={dropdownRef}
-            >
+            <div className="dropdown-list" ref={dropdownRef}>
               {isLoading ? (
                 <div className="dropdown-loading">
                   <div className="dropdown-spinner"></div>
-                  <span>Loading identities...</span>
+                  <span>Loading identities ({allIdentities.length > 0 ? `${allIdentities.length} loaded...` : '...'})</span>
                 </div>
               ) : error ? (
                 <div className="dropdown-error">
-                  <span className="error-icon">⚠️</span>
+                  <span className="error-icon">{'\u26A0\uFE0F'}</span>
                   {error}
                 </div>
-              ) : filteredIdentities.length === 0 ? (
+              ) : showPrompt ? (
                 <div className="dropdown-empty">
-                  {searchQuery ? (
-                    <span>No identities match "{searchQuery}"</span>
-                  ) : (
-                    <span>No identities available</span>
-                  )}
+                  <span>Type a name, email, or ID to search{orgUnits.length > 0 ? ' \u2014 or select departments above to filter' : ''}</span>
+                </div>
+              ) : filteredIdentities.length === 0 && hasSearchCriteria ? (
+                <div className="dropdown-empty">
+                  <span>
+                    No active identities found
+                    {searchQuery ? ` matching "${searchQuery}"` : ''}
+                    {selectedOrgUnits.size > 0 ? ` in ${selectedOrgUnits.size === 1 ? Array.from(selectedOrgUnits)[0] : `${selectedOrgUnits.size} departments`}` : ''}
+                  </span>
                 </div>
               ) : (
                 <>
                   <div className="dropdown-count">
-                    {searchQuery ? (
-                      `${filteredIdentities.length} matches`
-                    ) : (
-                      `${identities.length} identities (A-Z)`
+                    {filteredIdentities.length >= MAX_DISPLAY_RESULTS
+                      ? `Showing first ${MAX_DISPLAY_RESULTS} results \u2014 refine your search to narrow down`
+                      : `${filteredIdentities.length} result${filteredIdentities.length !== 1 ? 's' : ''}`
+                    }
+                    {selectedOrgUnits.size > 0 && (
+                      <span className="count-filter">
+                        {' '}in {selectedOrgUnits.size === 1 ? Array.from(selectedOrgUnits)[0] : `${selectedOrgUnits.size} depts`}
+                      </span>
                     )}
                   </div>
                   {filteredIdentities.map((identity) => (
@@ -315,16 +503,13 @@ const IdentitySearchDialog = ({ isOpen, onClose, onSelectIdentity }) => {
                         </div>
                         <div className="dropdown-item-meta">
                           {identity.EMPLOYEEID && <span>ID: {identity.EMPLOYEEID}</span>}
-                          <span className={`status-badge ${getStatusString(identity.IDENTITYSTATUS).toLowerCase()}`}>
-                            {getStatusString(identity.IDENTITYSTATUS)}
-                          </span>
-                        </div>
-                        <div className="dropdown-item-uid">
-                          UId: {identity.UId || 'N/A'}
+                          {getOrgUnitString(identity) && (
+                            <span className="orgunit-tag">{getOrgUnitString(identity)}</span>
+                          )}
                         </div>
                       </div>
                       {selectedIdentity?.UId === identity.UId && (
-                        <div className="dropdown-item-check">✓</div>
+                        <div className="dropdown-item-check">{'\u2713'}</div>
                       )}
                     </div>
                   ))}
@@ -353,13 +538,11 @@ const IdentitySearchDialog = ({ isOpen, onClose, onSelectIdentity }) => {
 
         {/* Footer */}
         <div className="dialog-footer">
-          <button className="btn-cancel" onClick={handleClose}>
-            Cancel
-          </button>
+          <button className="btn-cancel" onClick={handleClose}>Cancel</button>
           <button
             className="btn-confirm"
             onClick={handleConfirm}
-            disabled={!selectedIdentity || !selectedIdentity.UId}
+            disabled={!selectedIdentity?.UId}
           >
             View in Identity360
           </button>
