@@ -2973,6 +2973,96 @@ export function buildRequestsLaneForEntitlement(requestsData, filters = {}) {
 }
 
 /**
+ * Build Requests lane for Identity-centric view (beneficiary requests)
+ * Takes raw accessRequests API response data and builds a lane showing:
+ * requestedBy, reason, resource name, system name, approvalStatus, requestedTime, childAssignments
+ * @param {Array} requestsData - Array of access request objects from getAccessRequestsForBeneficiary
+ * @returns {Object} Lane object with laneType, totalCount, items, allItemsData, canLoadMore
+ */
+export function buildRequestsLaneForIdentity(requestsData) {
+  if (!requestsData || !Array.isArray(requestsData) || requestsData.length === 0) {
+    return {
+      laneType: LaneTypes.REQUESTS,
+      totalCount: 0,
+      items: [],
+      allItemsData: [],
+      canLoadMore: false,
+      apiSource: 'GraphQL:getAccessRequestsForBeneficiary'
+    };
+  }
+
+  const seenIds = new Set();
+  const items = requestsData.map((request, index) => {
+    let uniqueId = request.id;
+    if (seenIds.has(uniqueId)) {
+      uniqueId = `${uniqueId}-${index}`;
+    }
+    seenIds.add(uniqueId);
+
+    const resourceName = request.resource?.name || 'Unknown Resource';
+    const systemName = request.resource?.system?.name || '';
+    const requestedByDisplay = request.requestedBy?.displayName || '';
+    const requestedByUser = request.requestedBy?.userName || '';
+    const requestedByLabel = requestedByDisplay && requestedByUser
+      ? `${requestedByDisplay} (${requestedByUser})`
+      : requestedByDisplay || requestedByUser || '';
+    const approvalStatus = request.status?.approvalStatus || '';
+    const requestedTime = request.requestedTime ? (() => {
+      const d = new Date(request.requestedTime);
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      const hours = String(d.getHours()).padStart(2, '0');
+      const mins = String(d.getMinutes()).padStart(2, '0');
+      return `${day}/${month}/${year} ${hours}:${mins}`;
+    })() : '';
+    const resourceType = request.resource?.resourceType?.name || '';
+    const childCount = request.childAssignments?.length || 0;
+
+    return {
+      node: {
+        id: uniqueId,
+        type: NodeTypes.REQUEST,
+        displayName: `${resourceName}${systemName ? ` (${systemName})` : ''}`,
+        status: approvalStatus,
+        badges: [
+          requestedByLabel && `By: ${requestedByLabel}`,
+          requestedTime && `${requestedTime}`,
+          systemName,
+          childCount > 0 && `${childCount} child assignment${childCount > 1 ? 's' : ''}`
+        ].filter(Boolean),
+        metadata: {
+          // Top-level fields for cross-lane filtering (match field names used by Account/Entitlement lane items)
+          systemId: request.resource?.system?.id || null,
+          system: request.resource?.system?.name || null,
+          resourceName: request.resource?.name || null,
+          beneficiary: request.beneficiary,
+          requestedBy: request.requestedBy,
+          reason: request.reason,
+          resource: request.resource,
+          approvalStatus,
+          provisioningStatus: request.status?.provisioningStatus,
+          requestedTime: request.requestedTime,
+          resourceType: request.resource?.resourceType,
+          accountTypes: request.resource?.accountTypes,
+          childAssignments: request.childAssignments
+        },
+        rawData: request
+      }
+    };
+  });
+
+  return {
+    laneType: LaneTypes.REQUESTS,
+    totalCount: requestsData.length,
+    items,
+    allItemsData: requestsData,
+    canLoadMore: false,
+    apiSource: 'GraphQL:getAccessRequestsForBeneficiary'
+  };
+}
+
+/**
  * Build Approvals lane for entitlement-centric view
  * Takes raw accessRequestApprovalSurveyQuestions API response data array and builds a lane
  * Each item shows: workflowStepTitle, reason, identity (identityId, firstName, lastName)
@@ -4658,14 +4748,16 @@ export function buildResourceLaneForRequest(requestNode) {
     };
   }
 
-  const item = {
+  // Primary requested resource
+  const items = [{
     node: {
       id: resource.id || resource.UId || resource.uid,
       type: NodeTypes.ENTITLEMENT,
       displayName: resource.name || resource.displayName || resource.DISPLAYNAME || 'Unknown Resource',
       status: null,
       badges: [
-        resource.systemName || resource.system?.name
+        resource.systemName || resource.system?.name,
+        resource.resourceType?.name && `Type: ${resource.resourceType.name}`
       ].filter(Boolean),
       metadata: {
         systemId: resource.system?.id || resource.systemId,
@@ -4674,15 +4766,130 @@ export function buildResourceLaneForRequest(requestNode) {
       },
       rawData: resource
     }
-  };
+  }];
+  const allData = [resource];
+
+  // Add child assignments as additional entitlement lane items
+  const childAssignments = requestNode?.rawData?.childAssignments;
+  if (Array.isArray(childAssignments) && childAssignments.length > 0) {
+    childAssignments.forEach(child => {
+      if (!child.resource) return;
+      items.push({
+        node: {
+          id: child.resource.id || child.id,
+          type: NodeTypes.ENTITLEMENT,
+          displayName: child.resource.name || 'Unknown Child Resource',
+          status: null,
+          badges: [
+            'Child Entitlement',
+            child.resource.system?.name,
+            child.resource.resourceType?.name && `Type: ${child.resource.resourceType.name}`
+          ].filter(Boolean),
+          metadata: {
+            systemId: child.resource.system?.id,
+            systemName: child.resource.system?.name,
+            resourceType: child.resource.resourceType,
+            isChildAssignment: true,
+            parentResourceId: resource.id
+          },
+          rawData: child.resource
+        }
+      });
+      allData.push(child.resource);
+    });
+  }
 
   return {
     laneType: LaneTypes.EFFECTIVE_ENTITLEMENTS,
-    totalCount: 1,
-    items: [item],
-    allItemsData: [resource],
+    totalCount: items.length,
+    items,
+    allItemsData: allData,
     canLoadMore: false,
     apiSource: 'derived:requestResource'
+  };
+}
+
+/**
+ * Build the System lane for a Request pivot
+ * Extracts system from rawData.resource.system
+ */
+export function buildSystemLaneForRequest(requestNode, systemODataMap = {}) {
+  const systems = new Map(); // Deduplicate by system id
+
+  // Helper: safely extract string from OData field that may be {Id, UId, Value} object
+  const safeStr = (val) => {
+    if (val == null) return null;
+    if (typeof val === 'string') return val;
+    if (typeof val === 'object') return val.DisplayName || val.Value || val.Name || null;
+    return String(val);
+  };
+
+  // Primary resource system
+  const primarySystem = requestNode?.rawData?.resource?.system;
+  if (primarySystem?.id) {
+    systems.set(primarySystem.id, primarySystem);
+  }
+
+  // Systems from child assignments
+  const childAssignments = requestNode?.rawData?.childAssignments;
+  if (Array.isArray(childAssignments)) {
+    childAssignments.forEach(child => {
+      const childSystem = child.resource?.system;
+      if (childSystem?.id && !systems.has(childSystem.id)) {
+        systems.set(childSystem.id, childSystem);
+      }
+    });
+  }
+
+  if (systems.size === 0) {
+    return {
+      laneType: LaneTypes.SYSTEMS,
+      totalCount: 0,
+      items: [],
+      allItemsData: [],
+      canLoadMore: false,
+      apiSource: 'derived:requestSystem'
+    };
+  }
+
+  const items = [];
+  const allData = [];
+  systems.forEach(system => {
+    const odata = systemODataMap[system.id] || null;
+    const displayName = safeStr(odata?.DISPLAYNAME) || system.name || system.displayName || 'Unknown System';
+    const systemType = safeStr(odata?.SYSTEMTYPE);
+    const owner = safeStr(odata?.OWNERREF);
+    const description = safeStr(odata?.DESCRIPTION);
+
+    const badges = [systemType].filter(Boolean);
+    const metadata = {
+      systemId: system.id
+    };
+    if (systemType) metadata.systemType = systemType;
+    if (owner) metadata.owner = owner;
+    if (description) metadata.description = description;
+
+    items.push({
+      node: {
+        id: system.id || system.UId,
+        type: NodeTypes.SYSTEM,
+        displayName,
+        status: null,
+        badges,
+        metadata,
+        rawData: odata || system
+      }
+    });
+    allData.push(odata || system);
+  });
+
+  return {
+    laneType: LaneTypes.SYSTEMS,
+    totalCount: items.length,
+    items,
+    allItemsData: allData,
+    canLoadMore: false,
+    apiSource: 'derived:requestSystem'
   };
 }
 
@@ -4703,16 +4910,27 @@ export function buildRequesterIdentityLaneForRequest(requestNode, odataDetails =
     };
   }
 
+  // Helper: safely extract string from OData field that may be {Id, UId, Value} object
+  const safeStr = (val) => {
+    if (val == null) return null;
+    if (typeof val === 'string') return val;
+    if (typeof val === 'object') return val.DisplayName || val.Value || val.Name || null;
+    return String(val);
+  };
+
   // Merge OData enrichment fields if available
-  const email = odataDetails?.EMAIL || requestedBy.email;
-  const jobTitle = odataDetails?.JOBTITLE || requestedBy.jobTitle;
-  const employeeId = odataDetails?.EMPLOYEEID || requestedBy.employeeId;
-  const department = odataDetails?.OUREF?.DisplayName || odataDetails?.OUREF?.Value || (typeof odataDetails?.OUREF === 'string' ? odataDetails.OUREF : null) || requestedBy.department;
-  const identityCategory = odataDetails?.IDENTITYCATEGORY || requestedBy.identityCategory;
-  const identityStatus = odataDetails?.IDENTITYSTATUS || requestedBy.identityStatus;
-  const displayName = odataDetails?.DISPLAYNAME ||
+  const email = safeStr(odataDetails?.EMAIL) || requestedBy.email;
+  const jobTitle = safeStr(odataDetails?.JOBTITLE) || requestedBy.jobTitle;
+  const employeeId = safeStr(odataDetails?.EMPLOYEEID) || requestedBy.employeeId;
+  const department = safeStr(odataDetails?.OUREF) || requestedBy.department;
+  const identityCategory = safeStr(odataDetails?.IDENTITYCATEGORY) || requestedBy.identityCategory;
+  const identityStatus = safeStr(odataDetails?.IDENTITYSTATUS) || requestedBy.identityStatus;
+  const firstName = safeStr(odataDetails?.FIRSTNAME) || requestedBy.firstName || '';
+  const lastName = safeStr(odataDetails?.LASTNAME) || requestedBy.lastName || '';
+  const userName = safeStr(odataDetails?.C_OBJECTID) || requestedBy.userName || safeStr(odataDetails?.IDENTITYID) || requestedBy.identityId || '';
+  const displayName = safeStr(odataDetails?.DISPLAYNAME) ||
     requestedBy.displayName ||
-    `${odataDetails?.FIRSTNAME || requestedBy.firstName || ''} ${odataDetails?.LASTNAME || requestedBy.lastName || ''}`.trim() ||
+    `${firstName} ${lastName}`.trim() ||
     'Unknown';
 
   const item = {
@@ -4722,8 +4940,8 @@ export function buildRequesterIdentityLaneForRequest(requestNode, odataDetails =
       displayName,
       status: identityStatus || null,
       badges: [
-        jobTitle,
-        requestedBy.userName || requestedBy.identityId || odataDetails?.IDENTITYID
+        userName,
+        `${firstName} ${lastName}`.trim() || null
       ].filter(Boolean),
       metadata: {
         email,
@@ -4732,7 +4950,9 @@ export function buildRequesterIdentityLaneForRequest(requestNode, odataDetails =
         title: jobTitle,
         identityCategory,
         identityStatus,
-        userName: requestedBy.userName,
+        userName,
+        firstName,
+        lastName,
         _raw: odataDetails || requestedBy
       },
       rawData: odataDetails || requestedBy
@@ -4766,16 +4986,27 @@ export function buildBeneficiaryIdentityLaneForRequest(requestNode, odataDetails
     };
   }
 
+  // Helper: safely extract string from OData field that may be {Id, UId, Value} object
+  const safeStr = (val) => {
+    if (val == null) return null;
+    if (typeof val === 'string') return val;
+    if (typeof val === 'object') return val.DisplayName || val.Value || val.Name || null;
+    return String(val);
+  };
+
   // Merge OData enrichment fields if available
-  const email = odataDetails?.EMAIL || beneficiary.email;
-  const jobTitle = odataDetails?.JOBTITLE || beneficiary.jobTitle;
-  const employeeId = odataDetails?.EMPLOYEEID || beneficiary.employeeId;
-  const department = odataDetails?.OUREF?.DisplayName || odataDetails?.OUREF?.Value || (typeof odataDetails?.OUREF === 'string' ? odataDetails.OUREF : null) || beneficiary.department;
-  const identityCategory = odataDetails?.IDENTITYCATEGORY || beneficiary.identityCategory;
-  const identityStatus = odataDetails?.IDENTITYSTATUS || beneficiary.identityStatus;
-  const displayName = odataDetails?.DISPLAYNAME ||
+  const email = safeStr(odataDetails?.EMAIL) || beneficiary.email;
+  const jobTitle = safeStr(odataDetails?.JOBTITLE) || beneficiary.jobTitle;
+  const employeeId = safeStr(odataDetails?.EMPLOYEEID) || beneficiary.employeeId;
+  const department = safeStr(odataDetails?.OUREF) || beneficiary.department;
+  const identityCategory = safeStr(odataDetails?.IDENTITYCATEGORY) || beneficiary.identityCategory;
+  const identityStatus = safeStr(odataDetails?.IDENTITYSTATUS) || beneficiary.identityStatus;
+  const firstName = safeStr(odataDetails?.FIRSTNAME) || beneficiary.firstName || '';
+  const lastName = safeStr(odataDetails?.LASTNAME) || beneficiary.lastName || '';
+  const userName = safeStr(odataDetails?.C_OBJECTID) || beneficiary.userName || safeStr(odataDetails?.IDENTITYID) || beneficiary.identityId || '';
+  const displayName = safeStr(odataDetails?.DISPLAYNAME) ||
     beneficiary.displayName ||
-    `${odataDetails?.FIRSTNAME || beneficiary.firstName || ''} ${odataDetails?.LASTNAME || beneficiary.lastName || ''}`.trim() ||
+    `${firstName} ${lastName}`.trim() ||
     'Unknown';
 
   const item = {
@@ -4785,8 +5016,8 @@ export function buildBeneficiaryIdentityLaneForRequest(requestNode, odataDetails
       displayName,
       status: identityStatus || null,
       badges: [
-        jobTitle,
-        beneficiary.identityId || odataDetails?.IDENTITYID
+        userName,
+        `${firstName} ${lastName}`.trim() || null
       ].filter(Boolean),
       metadata: {
         email,
@@ -4795,6 +5026,9 @@ export function buildBeneficiaryIdentityLaneForRequest(requestNode, odataDetails
         title: jobTitle,
         identityCategory,
         identityStatus,
+        userName,
+        firstName,
+        lastName,
         _raw: odataDetails || beneficiary
       },
       rawData: odataDetails || beneficiary
@@ -4808,6 +5042,73 @@ export function buildBeneficiaryIdentityLaneForRequest(requestNode, odataDetails
     allItemsData: [odataDetails || beneficiary],
     canLoadMore: false,
     apiSource: 'derived:beneficiary'
+  };
+}
+
+/**
+ * Build the Approvers lane for a Request pivot
+ * Takes the result from getApprovalInfoForRequest and creates lane items
+ * Each workflow step becomes a group, each assignee becomes an identity item
+ * @param {Object} approvalInfo - Result from getApprovalInfoForRequest
+ * @returns {Object} Lane data with items
+ */
+export function buildApproversLaneForRequest(approvalInfo) {
+  if (!approvalInfo?.approvalSteps?.length) {
+    return {
+      laneType: LaneTypes.APPROVERS,
+      totalCount: 0,
+      items: [],
+      allItemsData: [],
+      canLoadMore: false,
+      apiSource: 'derived:approvalWorkflow'
+    };
+  }
+
+  const items = [];
+
+  for (const step of approvalInfo.approvalSteps) {
+    // Build a label for the workflow step
+    const stepTitle = step.workflowStepTitle || step.workflowStep || 'Approval Step';
+    const stepStatus = step.workflow?.[0]?.approvalStatus || 'Pending';
+
+    for (const wfStep of (step.workflow || [])) {
+      for (const assignee of (wfStep.assignees || [])) {
+        const displayName = assignee.displayName || `${assignee.firstName || ''} ${assignee.lastName || ''}`.trim() || 'Unknown';
+
+        items.push({
+          node: {
+            id: assignee.id || assignee.userName || `approver-${items.length}`,
+            type: NodeTypes.IDENTITY,
+            displayName,
+            status: wfStep.active ? stepStatus : (wfStep.approvalStatus || 'Complete'),
+            badges: [
+              stepTitle,
+              wfStep.active ? 'Active' : null
+            ].filter(Boolean),
+            metadata: {
+              email: assignee.email || assignee.userName,
+              title: assignee.jobTitle || null,
+              department: assignee.department || null,
+              workflowStep: stepTitle,
+              approvalStatus: wfStep.approvalStatus,
+              active: wfStep.active,
+              completeTime: wfStep.completeTime,
+              _raw: assignee
+            },
+            rawData: assignee.odataDetails || assignee
+          }
+        });
+      }
+    }
+  }
+
+  return {
+    laneType: LaneTypes.APPROVERS,
+    totalCount: items.length,
+    items,
+    allItemsData: items.map(i => i.node.rawData),
+    canLoadMore: false,
+    apiSource: 'derived:approvalWorkflow'
   };
 }
 
@@ -4835,9 +5136,11 @@ export default {
   buildLanesFromAssignments,
   buildLanesForEntitlement,
   buildRequestsLaneForEntitlement,
+  buildRequestsLaneForIdentity,
   buildApprovalsLaneForEntitlement,
   enrichApprovalsWithWorkflowStatus,
   buildResourceLaneForRequest,
+  buildSystemLaneForRequest,
   buildRequesterIdentityLaneForRequest,
   buildBeneficiaryIdentityLaneForRequest,
   buildAssignmentPoliciesLane,

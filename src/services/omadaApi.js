@@ -741,6 +741,68 @@ export const accessRequestApi = {
   },
 
   /**
+   * Get access requests filtered by beneficiary displayName
+   * Used for Identity-centric view to show access requests where the identity is the beneficiary
+   * @param {string} beneficiaryDisplayName - Beneficiary display name to filter by
+   * @param {string} bearerToken - OAuth bearer token
+   * @param {string} impersonateUser - User email
+   * @param {Object} pagination - Pagination options
+   * @returns {Promise<Object>} Access requests for the beneficiary
+   */
+  getAccessRequestsForBeneficiary: async (beneficiaryDisplayName, bearerToken, impersonateUser, pagination = {}) => {
+    let requestId;
+    let endpoint;
+    try {
+      endpoint = `${API_CONFIG.baseUrl}${API_CONFIG.endpoints.graphql.v3_2}`;
+      const queryObject = GraphQLQueries.getAccessRequestsForBeneficiary(beneficiaryDisplayName, pagination);
+      const requestHeaders = await getGraphQLHeaders(bearerToken, impersonateUser);
+
+      requestId = apiLogger.logRequest('GraphQL', endpoint, {
+        functionName: 'getAccessRequestsForBeneficiary',
+        beneficiaryDisplayName,
+        pagination,
+        graphqlQuery: queryObject.query,
+        variables: queryObject.variables || {}
+      }, requestHeaders);
+
+      const result = await executeGraphQL(
+        endpoint,
+        queryObject,
+        requestHeaders
+      );
+
+      const graphqlData = result.data?.data || result.data;
+      const requests = graphqlData?.accessRequests?.data || [];
+      const total = graphqlData?.accessRequests?.total || 0;
+      const pages = graphqlData?.accessRequests?.pages || 0;
+
+      const response = {
+        status: 'success',
+        data: requests,
+        total,
+        pages
+      };
+
+      apiLogger.logResponse(requestId, 'GraphQL', endpoint, response, true, null, result.headers, result.status, result.rawResponse);
+
+      return response;
+    } catch (error) {
+      if (isAbortError(error)) {
+        return { status: 'aborted', data: [], total: 0, pages: 0 };
+      }
+      const responseHeaders = error.responseHeaders || {};
+      const statusCode = error.statusCode || null;
+      const rawResponse = error.rawResponse || null;
+
+      if (requestId) {
+        apiLogger.logResponse(requestId, 'GraphQL', endpoint, null, false, error, responseHeaders, statusCode, rawResponse);
+      }
+
+      return handleApiError(error, 'getAccessRequestsForBeneficiary');
+    }
+  },
+
+  /**
    * Get pending approvals filtered by resource name
    * Used for Entitlement-centric view to show pending approval questions for a resource
    * @param {string} resourceName - Resource name to filter by
@@ -855,6 +917,181 @@ export const accessRequestApi = {
       }
 
       return handleApiError(error, 'getApprovalWorkflowStatus');
+    }
+  },
+
+  /**
+   * Get approval survey questions filtered by resource AND identity (beneficiary)
+   * Step 2 of the approval chain: narrows to the specific approval entry for a request
+   * @param {string} resourceName - Resource name to filter by
+   * @param {string} identityName - Beneficiary display name to filter by
+   * @param {string} bearerToken - OAuth bearer token
+   * @param {string} impersonateUser - User email
+   * @param {Object} pagination - Pagination options
+   * @returns {Promise<Object>} Matching approval survey questions
+   */
+  getApprovalsForRequest: async (resourceName, identityName, bearerToken, impersonateUser, pagination = {}) => {
+    let requestId;
+    let endpoint;
+    try {
+      endpoint = `${API_CONFIG.baseUrl}${API_CONFIG.endpoints.graphql.v3_2}`;
+      const queryObject = GraphQLQueries.getApprovalsForRequest(resourceName, identityName, pagination);
+      const requestHeaders = await getGraphQLHeaders(bearerToken, impersonateUser);
+
+      requestId = apiLogger.logRequest('GraphQL', endpoint, {
+        functionName: 'getApprovalsForRequest',
+        resourceName,
+        identityName,
+        pagination,
+        graphqlQuery: queryObject.query,
+        variables: queryObject.variables || {}
+      }, requestHeaders);
+
+      const result = await executeGraphQL(
+        endpoint,
+        queryObject,
+        requestHeaders
+      );
+
+      const graphqlData = result.data?.data || result.data;
+      const approvals = graphqlData?.accessRequestApprovalSurveyQuestions?.data || [];
+      const total = graphqlData?.accessRequestApprovalSurveyQuestions?.total || 0;
+      const pages = graphqlData?.accessRequestApprovalSurveyQuestions?.pages || 0;
+
+      const response = {
+        status: 'success',
+        data: approvals,
+        total,
+        pages
+      };
+
+      apiLogger.logResponse(requestId, 'GraphQL', endpoint, response, true, null, result.headers, result.status, result.rawResponse);
+
+      return response;
+    } catch (error) {
+      if (isAbortError(error)) {
+        return { status: 'aborted', data: [], total: 0, pages: 0 };
+      }
+      const responseHeaders = error.responseHeaders || {};
+      const statusCode = error.statusCode || null;
+      const rawResponse = error.rawResponse || null;
+
+      if (requestId) {
+        apiLogger.logResponse(requestId, 'GraphQL', endpoint, null, false, error, responseHeaders, statusCode, rawResponse);
+      }
+
+      return handleApiError(error, 'getApprovalsForRequest');
+    }
+  },
+
+  /**
+   * Get full approval info for a request — chains Steps 2→3→4 of the approval flow
+   * Step 2: Get approval survey questions (filtered by resource + beneficiary)
+   * Step 3: Get workflow status for each survey object (assignees, approval status)
+   * Step 4: Enrich assignee identities with OData details
+   *
+   * @param {string} resourceName - Resource name from the request
+   * @param {string} beneficiaryName - Beneficiary display name from the request
+   * @param {string} bearerToken - OAuth bearer token
+   * @param {string} impersonateUser - User email
+   * @returns {Promise<Object>} Full approval info with workflow steps and enriched assignees
+   */
+  getApprovalInfoForRequest: async (resourceName, beneficiaryName, bearerToken, impersonateUser) => {
+    try {
+      // Step 2: Get approval survey questions filtered by resource + beneficiary
+      const approvalsResult = await accessRequestApi.getApprovalsForRequest(
+        resourceName, beneficiaryName, bearerToken, impersonateUser, { page: 1, rows: 50 }
+      );
+
+      if (approvalsResult.status !== 'success' || !approvalsResult.data?.length) {
+        return { status: 'success', data: [], approvalSteps: [] };
+      }
+
+      // Step 3: For each approval entry, get workflow status using surveyObjectKey
+      const approvalSteps = [];
+      for (const approval of approvalsResult.data) {
+        const surveyObjectKey = approval.surveyObjectKey;
+        if (!surveyObjectKey) continue;
+
+        let workflowData = null;
+        try {
+          const workflowResult = await accessRequestApi.getApprovalWorkflowStatus(
+            surveyObjectKey, bearerToken, impersonateUser
+          );
+          if (workflowResult.status === 'success' && workflowResult.data?.length > 0) {
+            workflowData = workflowResult.data;
+          }
+        } catch (err) {
+          // Non-critical — continue without workflow data for this approval
+        }
+
+        // Step 4: Enrich assignee identities with OData (email → full identity)
+        const enrichedWorkflowSteps = [];
+        if (workflowData) {
+          for (const step of workflowData) {
+            const enrichedAssignees = [];
+            if (step.assignees?.length > 0) {
+              for (const assignee of step.assignees) {
+                // Try to enrich via OData using userName (which is typically an email)
+                let odataDetails = null;
+                if (assignee.userName) {
+                  try {
+                    const identityResult = await omadaApi.identity.searchIdentities(
+                      null, bearerToken, impersonateUser,
+                      {
+                        filter: `IDENTITYID eq '${assignee.userName}'`,
+                        select: 'UId,Id,FIRSTNAME,LASTNAME,DISPLAYNAME,EMAIL,EMPLOYEEID,IDENTITYID,JOBTITLE,OUREF,IDENTITYCATEGORY,IDENTITYSTATUS'
+                      }
+                    );
+                    if (identityResult.status === 'success' && identityResult.data?.length > 0) {
+                      odataDetails = identityResult.data[0];
+                    }
+                  } catch (err) {
+                    // Non-critical
+                  }
+                }
+                enrichedAssignees.push({
+                  ...assignee,
+                  displayName: assignee.displayName || odataDetails?.DISPLAYNAME || `${assignee.firstName || ''} ${assignee.lastName || ''}`.trim(),
+                  email: odataDetails?.EMAIL || assignee.userName,
+                  jobTitle: odataDetails?.JOBTITLE || null,
+                  department: odataDetails?.OUREF || null,
+                  odataDetails
+                });
+              }
+            }
+            enrichedWorkflowSteps.push({
+              stepName: step.displayName || step.name,
+              approvalStatus: step.approvalStatus,
+              active: step.active,
+              completeTime: step.completeTime,
+              surveyObjectKey: step.surveyObjectKey,
+              assignees: enrichedAssignees
+            });
+          }
+        }
+
+        approvalSteps.push({
+          surveyObjectKey,
+          surveyId: approval.surveyId,
+          reason: approval.reason,
+          workflowStep: approval.workflowStep,
+          workflowStepTitle: approval.workflowStepTitle,
+          routeTime: approval.routeTime,
+          resourceName: approval.resourceAssignment?.resource?.name,
+          beneficiaryName: approval.resourceAssignment?.identity?.displayName,
+          requestType: approval.requestType?.name,
+          workflow: enrichedWorkflowSteps
+        });
+      }
+
+      return {
+        status: 'success',
+        data: approvalsResult.data,
+        approvalSteps
+      };
+    } catch (error) {
+      return handleApiError(error, 'getApprovalInfoForRequest');
     }
   },
 
@@ -2059,6 +2296,10 @@ export const omadaApi = {
       accessRequestApi.getAccessRequestsForSystem,
       (systemName, _token, impersonateUser, pagination) => [impersonateUser, systemName, pagination]
     ),
+    getAccessRequestsForBeneficiary: withApiCache('accessRequest', 'getAccessRequestsForBeneficiary',
+      accessRequestApi.getAccessRequestsForBeneficiary,
+      (beneficiaryDisplayName, _token, impersonateUser, pagination) => [impersonateUser, beneficiaryDisplayName, pagination]
+    ),
     getApprovalsForResource: withApiCache('accessRequest', 'getApprovalsForResource',
       accessRequestApi.getApprovalsForResource,
       (resourceName, _token, impersonateUser, pagination) => [impersonateUser, resourceName, pagination]
@@ -2067,6 +2308,12 @@ export const omadaApi = {
       accessRequestApi.getApprovalWorkflowStatus,
       (surveyObjectId, _token, impersonateUser) => [impersonateUser, surveyObjectId]
     ),
+    getApprovalsForRequest: withApiCache('accessRequest', 'getApprovalsForRequest',
+      accessRequestApi.getApprovalsForRequest,
+      (resourceName, identityName, _token, impersonateUser, pagination) => [impersonateUser, resourceName, identityName, pagination]
+    ),
+    // Not cached — chains multiple API calls internally
+    getApprovalInfoForRequest: accessRequestApi.getApprovalInfoForRequest,
     getResourcesForBeneficiary: withApiCache('accessRequest', 'getResourcesForBeneficiary',
       accessRequestApi.getResourcesForBeneficiary,
       (identityUId, _token, impersonateUser, filters) => [impersonateUser, identityUId, filters]

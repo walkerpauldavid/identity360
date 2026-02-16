@@ -802,6 +802,82 @@ export const GraphQLQueries = {
   },
 
   /**
+   * Get approval survey questions filtered by resource AND identity (beneficiary)
+   * Used to find the specific approval entry for a given access request
+   * @param {string} resourceName - Resource name to filter by
+   * @param {string} identityName - Beneficiary display name to filter by
+   * @param {Object} pagination - Pagination options
+   * @returns {Object} GraphQL query object
+   */
+  getApprovalsForRequest: (resourceName, identityName, pagination = {}) => {
+    const paginationConfig = GRAPHQL_PAGINATION.ACCESS_REQUESTS_FOR_RESOURCE;
+    const page = pagination.page ?? GRAPHQL_PAGINATION.DEFAULT_PAGE;
+    const rows = pagination.rows ?? paginationConfig.DEFAULT_ROWS;
+
+    // Build filter clause — resource + identity for precise matching
+    const filters = [];
+    if (resourceName) filters.push(`resource: {filterValue: "${resourceName}", operator: EQUALS}`);
+    if (identityName) filters.push(`identity: {filterValue: "${identityName}", operator: EQUALS}`);
+    const filterClause = filters.length > 0 ? `filters: {${filters.join(', ')}}` : '';
+
+    return {
+      query: `
+        query GetApprovalsForRequest {
+          accessRequestApprovalSurveyQuestions(
+            ${filterClause}
+            pagination: {page: ${page}, rows: ${rows}}
+          ) {
+            pages
+            total
+            data {
+              reason
+              surveyId
+              validTo
+              workflowStep
+              workflowStepTitle
+              routeTime
+              history
+              surveyObjectKey
+              context {
+                id
+                type
+                typeId
+              }
+              resourceAssignment {
+                accountName
+                id
+                resource {
+                  id
+                  description
+                  name
+                  childResourceIds
+                  system {
+                    name
+                    id
+                  }
+                }
+                validTo
+                validFrom
+                identity {
+                  id
+                  firstName
+                  displayName
+                  lastName
+                  identityId
+                }
+              }
+              requestType {
+                id
+                name
+              }
+            }
+          }
+        }
+      `
+    };
+  },
+
+  /**
    * Get approval workflow status for a specific survey object
    * Returns assignee names and approval status for the workflow step
    * @param {string} surveyObjectId - The surveyObjectKey from an approval item
@@ -869,6 +945,102 @@ export const GraphQLQueries = {
               requestedBy { firstName id displayName lastName userName }
               requestedTime
               resource { id name description system { id name } }
+            }
+          }
+        }
+      `
+    };
+  },
+
+  /**
+   * Get access requests filtered by beneficiary displayName
+   * Used for Identity-centric view to show access requests where the identity is the beneficiary
+   * @param {string} beneficiaryDisplayName - Beneficiary display name to filter by (uses EQUALS operator)
+   * @param {Object} pagination - Pagination options
+   * @returns {Object} GraphQL query object
+   */
+  getAccessRequestsForBeneficiary: (beneficiaryDisplayName, pagination = {}) => {
+    const paginationConfig = GRAPHQL_PAGINATION.ACCESS_REQUESTS_FOR_RESOURCE;
+    const page = pagination.page ?? GRAPHQL_PAGINATION.DEFAULT_PAGE;
+    const rows = pagination.rows ?? paginationConfig.DEFAULT_ROWS;
+    return {
+      query: `
+        query GetAccessRequestsForBeneficiary {
+          accessRequests(
+            filters: {beneficiary: {filterValue: "${beneficiaryDisplayName}", operator: EQUALS}}
+            sorting: {sortBy: REQUESTED_TIME, sortOrder: ASCENDING}
+            pagination: {page: ${page}, rows: ${rows}}
+          ) {
+            pages
+            total
+            data {
+              id
+              reason
+              validTo
+              validFrom
+              effectiveValidFrom
+              effectiveValidTo
+              accessReferenceKey
+              requestedTime
+              resourceAssignmentId
+              resource {
+                id
+                name
+                description
+                system {
+                  id
+                  name
+                }
+                resourceType {
+                  id
+                  name
+                }
+                accountTypes {
+                  id
+                  name
+                }
+              }
+              status {
+                approvalStatus
+                provisioningStatus
+                provisioningStatusText
+                violationStatus
+                accessApprovalStatusEnum
+                requestAssignmentState
+                violationStatusText
+              }
+              beneficiary {
+                firstName
+                displayName
+                id
+                identityId
+                lastName
+              }
+              requestedBy {
+                id
+                lastName
+                userName
+                firstName
+                displayName
+              }
+              childAssignments {
+                validFrom
+                validTo
+                id
+                resource {
+                  name
+                  id
+                  description
+                  system {
+                    name
+                    id
+                  }
+                  resourceType {
+                    name
+                    id
+                  }
+                }
+              }
             }
           }
         }

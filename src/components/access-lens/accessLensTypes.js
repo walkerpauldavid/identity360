@@ -565,7 +565,7 @@ export const LaneSchema = {
     dataType: NodeTypes.IDENTITY,
     selectionStateKey: 'requesterIdentityId',
     displayRule: 'SINGLE_COLUMN',
-    rows: 1,
+    rows: 2,
     icon: '📤',
     color: '#5e81ac',
     label: 'Requester',
@@ -584,7 +584,7 @@ export const LaneSchema = {
     dataType: NodeTypes.IDENTITY,
     selectionStateKey: 'beneficiaryIdentityId',
     displayRule: 'SINGLE_COLUMN',
-    rows: 1,
+    rows: 2,
     icon: '📥',
     color: '#a3be8c',
     label: 'Beneficiary',
@@ -597,6 +597,25 @@ export const LaneSchema = {
       priority: 1
     },
     apiSource: { type: 'derived', from: 'focusNode', extract: 'beneficiary' }
+  },
+
+  [LaneTypes.APPROVERS]: {
+    dataType: NodeTypes.IDENTITY,
+    selectionStateKey: 'approverId',
+    displayRule: 'SINGLE_COLUMN',
+    rows: 4,
+    icon: '🛡️',
+    color: '#ebcb8b',
+    label: 'Approvers',
+    description: 'Approval workflow steps and assigned approvers for this request',
+    sortable: false,
+    collapsible: true,
+    exclusionList: [],
+    defaultPosition: {
+      compass: CompassOrientation.S,
+      priority: 2
+    },
+    apiSource: { type: 'derived', from: 'approvalWorkflow' }
   }
 };
 
@@ -1103,9 +1122,15 @@ export const LaneConfigSchema = {
         apiSource: { type: 'derived', from: 'calculatedAssignments', extract: 'systems' },
         position: { x: -380, y: -220 },
         crossLaneFilters: {
-          filtersLanes: [LaneTypes.ACCOUNTS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.CONTEXTS],
-          filteredByLanes: [LaneTypes.ACCOUNTS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.VIOLATIONS, LaneTypes.CONTEXTS],
+          filtersLanes: [LaneTypes.ACCOUNTS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.CONTEXTS, LaneTypes.REQUESTS],
+          filteredByLanes: [LaneTypes.ACCOUNTS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.VIOLATIONS, LaneTypes.CONTEXTS, LaneTypes.REQUESTS],
           filterMappings: {
+            // When System is selected, filter Requests to those for resources on this system
+            [LaneTypes.REQUESTS]: {
+              type: CrossLaneFilterType.MULTI_FIELD_MATCH,
+              sourceFields: ['id', 'displayName'],
+              targetFields: ['metadata.systemId', 'metadata.system']
+            },
             // When System is selected, filter Accounts by system
             [LaneTypes.ACCOUNTS]: {
               type: CrossLaneFilterType.MULTI_FIELD_MATCH,
@@ -1165,9 +1190,15 @@ export const LaneConfigSchema = {
         apiSource: { type: 'derived', from: 'calculatedAssignments', extract: 'accounts' },
         position: { x: 750, y: -380 },  // North-East - matches COMPASS_POSITIONS[NE]
         crossLaneFilters: {
-          filtersLanes: [LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.SYSTEMS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.CONTEXTS],
-          filteredByLanes: [LaneTypes.SYSTEMS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.VIOLATIONS, LaneTypes.CONTEXTS],
+          filtersLanes: [LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.SYSTEMS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.CONTEXTS, LaneTypes.REQUESTS],
+          filteredByLanes: [LaneTypes.SYSTEMS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.VIOLATIONS, LaneTypes.CONTEXTS, LaneTypes.REQUESTS],
           filterMappings: {
+            // When Account is selected, filter Requests to those for resources on this account's system
+            [LaneTypes.REQUESTS]: {
+              type: CrossLaneFilterType.MULTI_FIELD_MATCH,
+              sourceFields: ['metadata.systemId', 'metadata.system'],
+              targetFields: ['metadata.systemId', 'metadata.system']
+            },
             // When Account is selected, filter Entitlements by account
             // Uses ARRAY_CONTAINS because deduplicated entitlements store arrays of accountIds
             [LaneTypes.EFFECTIVE_ENTITLEMENTS]: {
@@ -1231,9 +1262,15 @@ export const LaneConfigSchema = {
         position: { x: -380, y: 80 },
         crossLaneFilters: {
           // When an entitlement is selected, filter related lanes to show only relevant items
-          filtersLanes: [LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.SYSTEMS, LaneTypes.ACCOUNTS, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.CONTEXTS, LaneTypes.VIOLATIONS],
-          filteredByLanes: [LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.VIOLATIONS, LaneTypes.CONTEXTS],
+          filtersLanes: [LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.SYSTEMS, LaneTypes.ACCOUNTS, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.CONTEXTS, LaneTypes.VIOLATIONS, LaneTypes.REQUESTS],
+          filteredByLanes: [LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.VIOLATIONS, LaneTypes.CONTEXTS, LaneTypes.REQUESTS],
           filterMappings: {
+            // When Entitlement is selected, filter Requests to those for this resource
+            [LaneTypes.REQUESTS]: {
+              type: CrossLaneFilterType.MULTI_FIELD_MATCH,
+              sourceFields: ['displayName'],
+              targetFields: ['metadata.resourceName']
+            },
             // When Entitlement is selected, filter Logical Applications to show only the one this entitlement belongs to
             [LaneTypes.LOGICAL_APPLICATIONS]: {
               type: CrossLaneFilterType.MULTI_FIELD_MATCH,
@@ -1382,9 +1419,15 @@ export const LaneConfigSchema = {
         apiSource: { type: 'derived', from: 'calculatedAssignments', extract: 'logicalApps' },
         position: { x: 600, y: 80 },
         crossLaneFilters: {
-          filtersLanes: [LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.SYSTEMS, LaneTypes.ACCOUNTS, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.CONTEXTS],
+          filtersLanes: [LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.SYSTEMS, LaneTypes.ACCOUNTS, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.CONTEXTS, LaneTypes.REQUESTS],
           filteredByLanes: [LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.VIOLATIONS, LaneTypes.CONTEXTS],
           filterMappings: {
+            // When Logical App is selected, filter Requests to those for resources on this system
+            [LaneTypes.REQUESTS]: {
+              type: CrossLaneFilterType.MULTI_FIELD_MATCH,
+              sourceFields: ['id', 'displayName'],
+              targetFields: ['metadata.systemId', 'metadata.system']
+            },
             // When Logical App is selected, filter Entitlements to those on this logical system
             [LaneTypes.EFFECTIVE_ENTITLEMENTS]: {
               type: CrossLaneFilterType.MULTI_FIELD_MATCH,
@@ -1554,6 +1597,38 @@ export const LaneConfigSchema = {
               type: CrossLaneFilterType.ARRAY_CONTAINS,
               sourceField: 'metadata.resourceIds',
               targetField: 'metadata.resourceIds'  // Policy's resourceIds array should contain the violation's resourceIds
+            }
+          }
+        }
+      },
+      {
+        laneType: LaneTypes.REQUESTS,
+        title: 'Access Requests',
+        description: 'Access requests where this identity is the beneficiary',
+        required: false,
+        apiSource: { type: 'async', from: 'GraphQL', extract: 'getAccessRequestsForBeneficiary' },
+        position: { x: -520, y: 380 },
+        crossLaneFilters: {
+          filtersLanes: [LaneTypes.SYSTEMS, LaneTypes.ACCOUNTS, LaneTypes.EFFECTIVE_ENTITLEMENTS],
+          filteredByLanes: [LaneTypes.SYSTEMS, LaneTypes.ACCOUNTS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.LOGICAL_APPLICATIONS],
+          filterMappings: {
+            // Request → Systems: match request's system to system lane items
+            [LaneTypes.SYSTEMS]: {
+              type: CrossLaneFilterType.MULTI_FIELD_MATCH,
+              sourceFields: ['metadata.systemId', 'metadata.system'],
+              targetFields: ['id', 'displayName']
+            },
+            // Request → Accounts: match request's system to account's system
+            [LaneTypes.ACCOUNTS]: {
+              type: CrossLaneFilterType.MULTI_FIELD_MATCH,
+              sourceFields: ['metadata.systemId', 'metadata.system'],
+              targetFields: ['metadata.systemId', 'metadata.system']
+            },
+            // Request → Entitlements: match request's resource name to entitlement name
+            [LaneTypes.EFFECTIVE_ENTITLEMENTS]: {
+              type: CrossLaneFilterType.MULTI_FIELD_MATCH,
+              sourceFields: ['metadata.resourceName'],
+              targetFields: ['displayName']
             }
           }
         }
@@ -2424,6 +2499,24 @@ export const LaneConfigSchema = {
         apiSource: { type: 'derived', from: 'focusNode', extract: 'beneficiary' },
         position: { x: 400, y: 100 },
         crossLaneFilters: null
+      },
+      {
+        laneType: LaneTypes.SYSTEMS,
+        title: 'System',
+        description: 'The system the requested resource belongs to',
+        required: false,
+        apiSource: { type: 'derived', from: 'focusNode', extract: 'requestSystem' },
+        position: { x: 0, y: 300 },
+        crossLaneFilters: null
+      },
+      {
+        laneType: LaneTypes.APPROVERS,
+        title: 'Approvers',
+        description: 'Approval workflow steps and assigned approvers',
+        required: false,
+        apiSource: { type: 'derived', from: 'approvalWorkflow' },
+        position: { x: 0, y: -300 },
+        crossLaneFilters: null
       }
     ]
   },
@@ -2602,7 +2695,7 @@ export const getLanesForNodeType = (nodeType) => {
   // Fallback for node types not yet defined in LaneConfigSchema
   switch (nodeType) {
     case NodeTypes.IDENTITY:
-      return [LaneTypes.SYSTEMS, LaneTypes.ACCOUNTS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.CONTEXTS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.ROLES, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.VIOLATIONS];
+      return [LaneTypes.SYSTEMS, LaneTypes.ACCOUNTS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.CONTEXTS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.ROLES, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.VIOLATIONS, LaneTypes.REQUESTS];
     case NodeTypes.ROLE:
       return [LaneTypes.IDENTITIES, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.POLICIES];
     case NodeTypes.ENTITLEMENT:
@@ -2616,7 +2709,7 @@ export const getLanesForNodeType = (nodeType) => {
     case NodeTypes.ASSIGNMENT_POLICY:
       return [LaneTypes.IDENTITIES, LaneTypes.SYSTEMS, LaneTypes.CONTEXTS, LaneTypes.ACCOUNTS, LaneTypes.EFFECTIVE_ENTITLEMENTS];
     case NodeTypes.REQUEST:
-      return [LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.REQUESTER_IDENTITY, LaneTypes.BENEFICIARY_IDENTITY];
+      return [LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.REQUESTER_IDENTITY, LaneTypes.BENEFICIARY_IDENTITY, LaneTypes.SYSTEMS];
     default:
       return [LaneTypes.IDENTITIES];
   }

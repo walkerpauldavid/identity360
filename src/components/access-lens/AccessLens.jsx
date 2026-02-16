@@ -26,7 +26,7 @@ const getSelectionForLane = (laneType, selections) => {
   const key = LaneSchema[laneType]?.selectionStateKey;
   return key ? (selections[key] || null) : null;
 };
-import accessLensDataService, { buildContextsLane, buildLanesFromAssignments, extractUniqueReasonTypes, extractUniqueComplianceStatuses, extractViolationCount, enrichPoliciesWithOData, enrichResourceFoldersWithOData, fetchChildResourcesForEntitlement, fetchChildResourcesFromIds, buildRequestsLaneForEntitlement, buildApprovalsLaneForEntitlement, enrichApprovalsWithWorkflowStatus } from './accessLensDataService';
+import accessLensDataService, { buildContextsLane, buildLanesFromAssignments, extractUniqueReasonTypes, extractUniqueComplianceStatuses, extractViolationCount, enrichPoliciesWithOData, enrichResourceFoldersWithOData, fetchChildResourcesForEntitlement, fetchChildResourcesFromIds, buildRequestsLaneForEntitlement, buildRequestsLaneForIdentity, buildApprovalsLaneForEntitlement, enrichApprovalsWithWorkflowStatus } from './accessLensDataService';
 import { usePreferences } from '../../contexts/PreferencesContext';
 import {
   applyCrossLaneFilters,
@@ -44,6 +44,7 @@ import FocusCard from './FocusCard';
 import LaneCard from './LaneCard';
 import ObjectInspector from './ObjectInspector';
 import { getStringValue } from './accessLensUtils';
+import { apiLogger } from '../../services/apiLogger';
 import './AccessLens.css';
 import './AccessLensTheme.css';
 
@@ -399,20 +400,21 @@ const FOCUS_NODE_POSITION_OVERRIDES = {
   [NodeTypes.IDENTITY]: {
     [LaneTypes.VIOLATIONS]:            { x: 0, y: -368 },     // N  - Violations top-center (pushed 15% further north)
     [LaneTypes.EFFECTIVE_ENTITLEMENTS]: { x: -530, y: -350 },  // NW - Entitlements top-left (700px wide, pushed out ~10%)
-    [LaneTypes.ACCOUNTS]:              { x: 480, y: -352 },   // NE - Accounts top-right (pushed 10% further north)
+    [LaneTypes.ACCOUNTS]:              { x: 480, y: -373 },   // NE - Accounts top-right (8% south)
     [LaneTypes.ROLES]:                 { x: -520, y: 60 },    // W  - Roles left
     [LaneTypes.LOGICAL_APPLICATIONS]:  { x: 520, y: 60 },     // E  - Logical Apps right
     [LaneTypes.SYSTEMS]:               { x: 480, y: 380 },    // SE - Systems bottom-right
-    [LaneTypes.ASSIGNMENT_POLICIES]:   { x: 0, y: 420 },      // S  - Assignment Policies bottom-center
-    [LaneTypes.CONTEXTS]:              { x: -480, y: 323 },   // SW - Contexts bottom-left (pushed 15% further north)
+    [LaneTypes.ASSIGNMENT_POLICIES]:   { x: -84, y: 420 },    // S  - Assignment Policies (20% more west)
+    [LaneTypes.CONTEXTS]:              { x: -528, y: 115 },   // SW - Contexts (10% more north)
+    [LaneTypes.REQUESTS]:              { x: -520, y: 380 },    // W/SW - Requests west (below Contexts)
   },
   [NodeTypes.SYSTEM]: {
-    [LaneTypes.EFFECTIVE_ENTITLEMENTS]: { x: -380, y: -260 },  // NW - Entitlements top-left
+    [LaneTypes.EFFECTIVE_ENTITLEMENTS]: { x: -494, y: -260 },  // NW - Entitlements top-left (pushed 30% more west)
     [LaneTypes.VIOLATIONS]:            { x: 0, y: -280 },     // N  - Violations top-center
-    [LaneTypes.ACCOUNTS]:              { x: 380, y: -260 },   // NE - Accounts top-right
+    [LaneTypes.ASSIGNMENT_POLICIES]:   { x: 380, y: -260 },   // NE - Assignment Policies top-right (swapped with Accounts)
     [LaneTypes.CONTEXTS]:              { x: -420, y: 50 },    // W  - Contexts left
-    [LaneTypes.IDENTITIES]:            { x: 420, y: 50 },     // E  - Identities right
-    [LaneTypes.ASSIGNMENT_POLICIES]:   { x: -380, y: 320 },   // SW - Assignment Policies bottom-left
+    [LaneTypes.IDENTITIES]:            { x: 525, y: 50 },     // E  - Identities right (pushed 25% more east)
+    [LaneTypes.ACCOUNTS]:              { x: -380, y: 320 },   // SW - Accounts bottom-left (swapped with Assignment Policies)
     [LaneTypes.REQUESTS]:              { x: 380, y: 320 },    // SE - Requests bottom-right
     [LaneTypes.LOGICAL_APPLICATIONS]:  { x: 0, y: 400 },      // S  - Logical Apps bottom-center
   }
@@ -955,6 +957,7 @@ const AccessLens = ({
   // Refs for stable callback access (H-01 fix: avoid recreating handleItemClick on every state change)
   const showObjectInspectorRef = useRef(false);
   const inspectorCollapsedRef = useRef(false);
+  const focusNodeTypeRef = useRef(null);
 
   // ============================================================================
   // CONSOLIDATED STATE (useReducer)
@@ -1068,6 +1071,7 @@ const AccessLens = ({
   // Keep refs in sync for stable callback access (H-01 fix)
   showObjectInspectorRef.current = showObjectInspector;
   inspectorCollapsedRef.current = inspectorCollapsed;
+  focusNodeTypeRef.current = focusNode?.type || null;
 
   // Initialize lane positions when lanes change - only persist user-dragged positions
   // Dynamic positioning is calculated at render time for lanes without manual positions
@@ -1609,16 +1613,26 @@ const AccessLens = ({
     fetchChildResources();
   }, [lanes, apiContext, focusNode]);
 
-  // Fetch access requests for Entitlement or System focus node and build Requests lane
+  // Fetch access requests for Entitlement, System, or Identity focus node and build Requests lane
   useEffect(() => {
     const fetchRequests = async () => {
-      if (requestsEnrichedRef.current) return;
+      if (requestsEnrichedRef.current) {
+        return;
+      }
 
       const isEntitlement = focusNode?.type === NodeTypes.ENTITLEMENT || focusNode?.type === 'Entitlement';
       const isSystem = focusNode?.type === NodeTypes.SYSTEM || focusNode?.type === 'System';
+      const isIdentity = focusNode?.type === NodeTypes.IDENTITY || focusNode?.type === 'Identity';
 
-      if (!focusNode || (!isEntitlement && !isSystem)) return;
-      if (!apiContext || !lanes || lanes.length === 0) return;
+      if (!focusNode || (!isEntitlement && !isSystem && !isIdentity)) {
+        return;
+      }
+      if (!apiContext) {
+        return;
+      }
+      if (!lanes || lanes.length === 0) {
+        return;
+      }
 
       // Check if we already have a Requests lane with API data
       const existingRequestsLane = lanes.find(l => l.laneType === LaneTypes.REQUESTS);
@@ -1643,7 +1657,7 @@ const AccessLens = ({
             apiContext.bearerToken,
             apiContext.impersonateUser
           );
-        } else {
+        } else if (isSystem) {
           // System focus node — filter by system name
           const systemName = focusNode.displayName || focusNode.rawData?.Name || focusNode.rawData?.name || focusNode.rawData?.DisplayName;
           if (!systemName) {
@@ -1655,10 +1669,25 @@ const AccessLens = ({
             apiContext.bearerToken,
             apiContext.impersonateUser
           );
+        } else {
+          // Identity focus node — filter by beneficiary displayName
+          const displayName = focusNode.displayName || focusNode.rawData?.DISPLAYNAME || focusNode.rawData?.DisplayName;
+          if (!displayName) {
+            requestsEnrichedRef.current = false;
+            return;
+          }
+          result = await apiContext.omadaApi.accessRequest.getAccessRequestsForBeneficiary(
+            displayName,
+            apiContext.bearerToken,
+            apiContext.impersonateUser
+          );
         }
 
         if (result.status === 'success' && result.data && result.data.length > 0) {
-          const requestsLane = buildRequestsLaneForEntitlement(result.data);
+          // Use identity-specific builder for Identity focus, generic for others
+          const requestsLane = isIdentity
+            ? buildRequestsLaneForIdentity(result.data)
+            : buildRequestsLaneForEntitlement(result.data);
 
           setLanes(prevLanes => {
             const hasRequestsLane = prevLanes.some(l => l.laneType === LaneTypes.REQUESTS);
@@ -1669,10 +1698,8 @@ const AccessLens = ({
             }
             return [...prevLanes, requestsLane];
           });
-          console.log(`[AccessLens] Fetched ${result.data.length} access requests for ${focusNode.type} focus node`);
         }
       } catch (error) {
-        console.warn('[AccessLens] Failed to fetch access requests:', error.message);
         requestsEnrichedRef.current = false;
       }
     };
@@ -1914,7 +1941,6 @@ const AccessLens = ({
     // All other lane selections are cleared so the clicked lane takes control
     const selectionKey = LaneSchema[laneType]?.selectionStateKey;
     if (selectionKey) {
-      console.warn(`[AccessLens] Item clicked in ${laneType} lane, item.node.id:`, item.node.id);
       setLaneSelections(prev => {
         // Toggle: if clicking the same item, deselect (clear all)
         if (prev[selectionKey] === item.node.id) return {};
@@ -1954,7 +1980,7 @@ const AccessLens = ({
     // Fetch full object details from OData if callback is provided
     if (onFetchObjectDetails) {
       try {
-        const result = await onFetchObjectDetails(laneType, item);
+        const result = await onFetchObjectDetails(laneType, item, { focusNodeType: focusNodeTypeRef.current });
 
         if (result?.data) {
           setExplanation({
@@ -1964,6 +1990,7 @@ const AccessLens = ({
             reasons: item.reasons || [],
             facts: [],
             rawData: result.data,
+            relatedIdentities: result.relatedIdentities || null,
             inspectorConfig: result.inspectorConfig,
             objectType: result.objectType,
             laneType: result.laneType
@@ -2076,10 +2103,15 @@ const AccessLens = ({
     setSelectedItem(null);
     setExplanation(null);
 
-    // Show loading state and reset animation
+    // Show loading state and reset animation — clear everything synchronously
+    // to prevent ghost drawings of previous access cards
+    apiLogger.resetStats();
     setIsLoading(true);
     setLanesLoading(true);
     setLanes([]);
+    setCentralNodeRevealed(false);
+    setRevealedLanes(new Set());
+    setLanePositions({});
     setPivotLoadingStatus(`Loading ${node.type || 'node'} details...`);
 
     // If callback is provided, use it to fetch data for the new node
@@ -2343,6 +2375,9 @@ const AccessLens = ({
   // ============================================================================
   const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0 });
 
+  // API activity tracking for loading spinner
+  const [apiActivity, setApiActivity] = useState({ odataRequests: 0, graphqlRequests: 0, odataResponses: 0, graphqlResponses: 0, activeCount: 0 });
+
   const handleCanvasContextMenu = useCallback((e) => {
     // Only show context menu if clicking on the canvas background, not on lanes or other elements
     if (e.target.closest('.lane-card') || e.target.closest('.fulcrum-wrapper') || e.target.closest('.focus-card')) {
@@ -2372,6 +2407,24 @@ const AccessLens = ({
         break;
     }
   }, [handleExpandAll, handleResetPositions]);
+
+  // Subscribe to API activity events during loading
+  useEffect(() => {
+    if (!isLoading) {
+      setApiActivity({ odataRequests: 0, graphqlRequests: 0, odataResponses: 0, graphqlResponses: 0, activeCount: 0 });
+      return;
+    }
+    const unsub = apiLogger.onActivity((event) => {
+      setApiActivity({
+        odataRequests: event.stats.odataRequests,
+        graphqlRequests: event.stats.graphqlRequests,
+        odataResponses: event.stats.odataResponses,
+        graphqlResponses: event.stats.graphqlResponses,
+        activeCount: event.activeCount
+      });
+    });
+    return unsub;
+  }, [isLoading]);
 
   // Close context menu when clicking elsewhere
   useEffect(() => {
@@ -3080,9 +3133,31 @@ const AccessLens = ({
           {/* Pivot Loading Overlay - shows when changing central node */}
           {isLoading && focusNode && (
             <div className="pivot-loading-overlay">
-              <div className="pivot-loading-spinner"></div>
+              <div
+                className={`pivot-loading-spinner ${apiActivity.activeCount > 0 ? 'api-active' : ''}`}
+                style={apiActivity.activeCount > 0 ? { animationDuration: `${Math.max(0.25, 0.8 / apiActivity.activeCount)}s` } : undefined}
+              ></div>
               <h3 className="pivot-loading-title">Updating Identity360</h3>
               <p className="pivot-loading-status">{pivotLoadingStatus || 'Loading...'}</p>
+              {(apiActivity.odataRequests > 0 || apiActivity.graphqlRequests > 0) && (
+                <div className="pivot-loading-api-stats">
+                  {apiActivity.odataRequests > 0 && (
+                    <span className="api-stat odata">
+                      OData {apiActivity.odataResponses}/{apiActivity.odataRequests}
+                    </span>
+                  )}
+                  {apiActivity.graphqlRequests > 0 && (
+                    <span className="api-stat graphql">
+                      GraphQL {apiActivity.graphqlResponses}/{apiActivity.graphqlRequests}
+                    </span>
+                  )}
+                  {apiActivity.activeCount > 0 && (
+                    <span className="api-stat in-flight">
+                      {apiActivity.activeCount} in-flight
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -3097,28 +3172,6 @@ const AccessLens = ({
               transformOrigin: '50% 40%'
             }}
           >
-          {/* Context Menu */}
-          {contextMenu.visible && (
-            <div
-              className="canvas-context-menu"
-              style={{ left: contextMenu.x, top: contextMenu.y }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <button className="context-menu-item" onClick={() => handleContextMenuAction('expandAll')}>
-                <span className="context-menu-icon">⬇️</span>
-                Expand All Cards
-              </button>
-              <button className="context-menu-item" onClick={() => handleContextMenuAction('resetLayout')}>
-                <span className="context-menu-icon">🔄</span>
-                Reset Layout
-              </button>
-              <div className="context-menu-divider"></div>
-              <button className="context-menu-item" onClick={() => handleContextMenuAction('toggleInspector')}>
-                <span className="context-menu-icon">{showObjectInspector ? '👁️' : '👁️‍🗨️'}</span>
-                {showObjectInspector ? 'Hide Object Inspector' : 'Show Object Inspector'}
-              </button>
-            </div>
-          )}
           {/* Connector Lines SVG - only show for revealed lanes */}
           {/* C-02 fix: Pass laneRefs to avoid querySelector and enable batched DOM reads */}
           <ConnectorLines
@@ -3223,6 +3276,28 @@ const AccessLens = ({
               title="Zoom in (Ctrl+Scroll up)"
             >+</button>
           </div>
+          {/* Context Menu - rendered outside scaled canvas so position:fixed works correctly */}
+          {contextMenu.visible && (
+            <div
+              className="canvas-context-menu"
+              style={{ left: contextMenu.x, top: contextMenu.y }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button className="context-menu-item" onClick={() => handleContextMenuAction('expandAll')}>
+                <span className="context-menu-icon">⬇️</span>
+                Expand All Cards
+              </button>
+              <button className="context-menu-item" onClick={() => handleContextMenuAction('resetLayout')}>
+                <span className="context-menu-icon">🔄</span>
+                Reset Layout
+              </button>
+              <div className="context-menu-divider"></div>
+              <button className="context-menu-item" onClick={() => handleContextMenuAction('toggleInspector')}>
+                <span className="context-menu-icon">{showObjectInspector ? '👁️' : '👁️‍🗨️'}</span>
+                {showObjectInspector ? 'Hide Object Inspector' : 'Show Object Inspector'}
+              </button>
+            </div>
+          )}
         </div>{/* end canvas-scroll-container */}
 
         {/* Object Inspector Panel - only render when enabled */}

@@ -47,6 +47,32 @@ export const AuthProvider = ({ children }) => {
     return () => window.removeEventListener('auth:unauthorized', handleUnauthorized);
   }, []);
 
+  // Proactive token expiry check — runs every 30 seconds while authenticated
+  // Attempts silent refresh; if refresh fails, redirects to login
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const checkTokenExpiry = async () => {
+      try {
+        const token = await authService.ensureValidToken();
+        if (!token) {
+          console.warn('[AuthContext] Token expired and refresh failed — redirecting to login');
+          setIsAuthenticated(false);
+          setUser(null);
+          setError('Your session has expired. Please log in again.');
+        }
+      } catch (err) {
+        console.error('[AuthContext] Token expiry check error:', err);
+        setIsAuthenticated(false);
+        setUser(null);
+        setError('Your session has expired. Please log in again.');
+      }
+    };
+
+    const intervalId = setInterval(checkTokenExpiry, 30 * 1000);
+    return () => clearInterval(intervalId);
+  }, [isAuthenticated]);
+
   const checkAuth = () => {
     try {
       console.log('=== Checking Authentication ===');

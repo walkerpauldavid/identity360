@@ -21,7 +21,7 @@ const Breadcrumbs = ({ history, currentIndex, onNavigate, onRemove }) => {
 
   return (
     <div className="access-lens-breadcrumbs">
-      <span className="breadcrumb-label">Navigation:</span>
+      <span className="breadcrumb-label">Navigation History:</span>
       {history.map((node, index) => (
         <span key={node.id} className="breadcrumb-item">
           {index > 0 && <span className="breadcrumb-separator">→</span>}

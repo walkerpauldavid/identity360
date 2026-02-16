@@ -102,7 +102,6 @@ const applyArrayContainsWithNameFallback = (item, sourceValue, targetField, fall
     const sourceStr = sourceValue != null ? String(sourceValue) : '';
     const targetSet = new Set(targetValue.map(tv => String(tv)));
     if (targetSet.has(sourceStr)) {
-      console.log(`[NameFallback] ✅ ID match for "${itemName}": sourceId=${sourceStr}`);
       return true;
     }
   }
@@ -119,14 +118,9 @@ const applyArrayContainsWithNameFallback = (item, sourceValue, targetField, fall
           return normalizedTarget === normalizedSource;
         });
         if (matched) {
-          console.log(`[NameFallback] ✅ NAME match for "${itemName}": sourceName="${normalizedSource}" in [${fallbackTargetValue.join(', ')}]`);
           return true;
-        } else {
-          console.log(`[NameFallback] ❌ No match for "${itemName}": sourceName="${normalizedSource}" vs targetNames=[${fallbackTargetValue.join(', ')}]`);
         }
       }
-    } else {
-      console.log(`[NameFallback] ⚠️ "${itemName}" has no contextNames array`);
     }
   }
 
@@ -357,7 +351,6 @@ const applyCascadedWithNameFallback = (targetItems, selectedNode, filterMapping,
   // Find the intermediate lane (e.g., Assignment Policies)
   const intermediateL = allLanes.find(l => l.laneType === intermediateLane);
   if (!intermediateL || !intermediateL.items) {
-    console.log(`[CascadedNameFallback] Intermediate lane ${intermediateLane} not found`);
     return targetItems;
   }
 
@@ -393,8 +386,6 @@ const applyCascadedWithNameFallback = (targetItems, selectedNode, filterMapping,
     return false;
   });
 
-  console.log(`[CascadedNameFallback] Filtered ${intermediateL.items.length} -> ${filteredIntermediateItems.length} intermediate items`);
-
   if (filteredIntermediateItems.length === 0) {
     return [];
   }
@@ -415,8 +406,6 @@ const applyCascadedWithNameFallback = (targetItems, selectedNode, filterMapping,
       }
     }
   }
-
-  console.log(`[CascadedNameFallback] Extracted ${extractedValuesSet.size} values from intermediate items`);
 
   if (extractedValuesSet.size === 0) {
     return [];
@@ -440,8 +429,6 @@ const applyCascadedWithNameFallback = (targetItems, selectedNode, filterMapping,
     }
     return false;
   });
-
-  console.log(`[CascadedNameFallback] Filtered ${targetItems.length} -> ${filteredTargetItems.length} target items`);
 
   return filteredTargetItems;
 };
@@ -487,18 +474,14 @@ const applyTripleCascadedWithNameFallback = (targetItems, selectedNode, filterMa
      getNestedValue(selectedNode, `metadata.${fallbackSourceField}`)) : null;
 
   if (!sourceValue && !fallbackSourceValue) {
-    console.log('[TripleCascaded] No source values found');
     return targetItems;
   }
-
-  console.log(`[TripleCascaded] Starting 3-level cascade from source: ${sourceValue || fallbackSourceValue}`);
 
   // Find intermediate lanes
   const intermediate1L = allLanes.find(l => l.laneType === intermediate1Lane);
   const intermediate2L = allLanes.find(l => l.laneType === intermediate2Lane);
 
   if (!intermediate1L?.items || !intermediate2L?.items) {
-    console.log(`[TripleCascaded] Missing intermediate lanes: ${intermediate1Lane}=${!!intermediate1L?.items}, ${intermediate2Lane}=${!!intermediate2L?.items}`);
     return targetItems;
   }
 
@@ -530,8 +513,6 @@ const applyTripleCascadedWithNameFallback = (targetItems, selectedNode, filterMa
     return false;
   });
 
-  console.log(`[TripleCascaded] Level 1: ${intermediate1L.items.length} -> ${filteredIntermediate1Items.length} ${intermediate1Lane}`);
-
   if (filteredIntermediate1Items.length === 0) {
     return [];
   }
@@ -551,8 +532,6 @@ const applyTripleCascadedWithNameFallback = (targetItems, selectedNode, filterMa
     }
   }
 
-  console.log(`[TripleCascaded] Level 1 extracted ${intermediate1ExtractedSet.size} values for Level 2 matching`);
-
   if (intermediate1ExtractedSet.size === 0) {
     return [];
   }
@@ -568,8 +547,6 @@ const applyTripleCascadedWithNameFallback = (targetItems, selectedNode, filterMa
       return intermediate1ExtractedSet.has(String(targetValue));
     }
   });
-
-  console.log(`[TripleCascaded] Level 2: ${intermediate2L.items.length} -> ${filteredIntermediate2Items.length} ${intermediate2Lane}`);
 
   if (filteredIntermediate2Items.length === 0) {
     return [];
@@ -591,8 +568,6 @@ const applyTripleCascadedWithNameFallback = (targetItems, selectedNode, filterMa
       }
     }
   }
-
-  console.log(`[TripleCascaded] Level 2 extracted ${intermediate2ExtractedSet.size} values for Level 3 matching`);
 
   if (intermediate2ExtractedSet.size === 0) {
     return [];
@@ -616,8 +591,6 @@ const applyTripleCascadedWithNameFallback = (targetItems, selectedNode, filterMa
     }
     return false;
   });
-
-  console.log(`[TripleCascaded] Level 3: ${targetItems.length} -> ${filteredTargetItems.length} target items`);
 
   return filteredTargetItems;
 };
@@ -831,25 +804,6 @@ export const applyCrossLaneFilters = (
   additionalFilters = {},
   previousFilteredLanes = []
 ) => {
-  // Debug: Always log when filtering with a policy selection
-  if (selections.policyId) {
-    console.warn('[CrossLaneFilter] ⚠️ FILTERING WITH POLICY SELECTION:', selections.policyId);
-    console.warn('[CrossLaneFilter] Available lanes:', lanes?.map(l => l.laneType));
-    const contextsLane = lanes?.find(l => l.laneType === 'Contexts');
-    console.warn('[CrossLaneFilter] Contexts lane exists:', !!contextsLane, 'items:', contextsLane?.items?.length);
-  }
-
-  // Debug: Log when filtering with a context selection
-  if (selections.contextId) {
-    console.warn('[CrossLaneFilter] ⚠️ FILTERING WITH CONTEXT SELECTION:', selections.contextId);
-    console.warn('[CrossLaneFilter] Available lanes:', lanes?.map(l => l.laneType));
-    const policiesLane = lanes?.find(l => l.laneType === 'AssignmentPolicies');
-    console.warn('[CrossLaneFilter] Policies lane exists:', !!policiesLane, 'items:', policiesLane?.items?.length);
-    if (policiesLane?.items?.length > 0) {
-      console.warn('[CrossLaneFilter] First policy contextIds:', policiesLane.items[0]?.node?.metadata?.contextIds);
-    }
-  }
-
   if (!lanes || !focusNodeType) return lanes;
 
   const config = LaneConfigSchema[focusNodeType];
@@ -874,7 +828,8 @@ export const applyCrossLaneFilters = (
     [selections.policyId, LaneTypes.ASSIGNMENT_POLICIES],
     [selections.entitlementId, LaneTypes.EFFECTIVE_ENTITLEMENTS],
     [selections.violationId, LaneTypes.VIOLATIONS],
-    [selections.contextId, LaneTypes.CONTEXTS]
+    [selections.contextId, LaneTypes.CONTEXTS],
+    [selections.requestId, LaneTypes.REQUESTS]
   ];
 
   for (const [selectionId, laneType] of selectionLaneTypes) {
@@ -898,12 +853,6 @@ export const applyCrossLaneFilters = (
         selectionMap[laneType] = selectedItem.node;
       }
     }
-  }
-
-  // Debug: Log selection map when Assignment Policies is selected
-  if (selectionMap[LaneTypes.ASSIGNMENT_POLICIES]) {
-    console.log('[CrossLaneFilter] Policy selected:', selectionMap[LaneTypes.ASSIGNMENT_POLICIES]?.displayName);
-    console.log('[CrossLaneFilter] Policy contextIds:', selectionMap[LaneTypes.ASSIGNMENT_POLICIES]?.metadata?.contextIds);
   }
 
   // Track which lanes have been filtered
@@ -935,31 +884,9 @@ export const applyCrossLaneFilters = (
     let filteredItems = [...lane.items];
     let wasFiltered = false;
 
-    // Debug: Log for Contexts lane processing
-    if (lane.laneType === LaneTypes.CONTEXTS || lane.laneType === 'Contexts') {
-      console.log(`[CrossLaneFilter] Processing Contexts lane, items: ${lane.items?.length}`);
-      console.log(`[CrossLaneFilter] Contexts filteredByLanes:`, laneConfig.crossLaneFilters.filteredByLanes);
-      console.log(`[CrossLaneFilter] Current selectionMap keys:`, Object.keys(selectionMap));
-    }
-
-    // Debug: Log for Assignment Policies lane processing when Context is selected
-    if ((lane.laneType === LaneTypes.ASSIGNMENT_POLICIES || lane.laneType === 'AssignmentPolicies') &&
-        selectionMap[LaneTypes.CONTEXTS]) {
-      console.warn(`[CrossLaneFilter] ⚠️ Processing AssignmentPolicies lane (Context selected)`);
-      console.warn(`[CrossLaneFilter] Policies filteredByLanes:`, laneConfig.crossLaneFilters?.filteredByLanes);
-      console.warn(`[CrossLaneFilter] Selected context node:`, selectionMap[LaneTypes.CONTEXTS]);
-    }
-
     // Check each lane type that can filter this lane
     for (const filteringLaneType of laneConfig.crossLaneFilters.filteredByLanes) {
       const selectedNode = selectionMap[filteringLaneType];
-
-      // Debug: Log for Contexts being filtered by Assignment Policies
-      if ((lane.laneType === LaneTypes.CONTEXTS || lane.laneType === 'Contexts') &&
-          (filteringLaneType === LaneTypes.ASSIGNMENT_POLICIES || filteringLaneType === 'AssignmentPolicies')) {
-        console.log(`[CrossLaneFilter] Checking if Assignment Policies filters Contexts`);
-        console.log(`[CrossLaneFilter] selectedNode for Assignment Policies:`, selectedNode ? selectedNode.displayName : 'NOT FOUND');
-      }
 
       if (!selectedNode) continue;
 
@@ -974,32 +901,15 @@ export const applyCrossLaneFilters = (
       if (filterMapping) {
         const beforeCount = filteredItems.length;
 
-        // Debug: Log filter mapping details for Contexts lane
-        if (lane.laneType === LaneTypes.CONTEXTS || lane.laneType === 'Contexts') {
-          console.log(`[CrossLaneFilter] Filtering Contexts by ${filteringLaneType}`);
-          console.log(`[CrossLaneFilter] Filter mapping:`, filterMapping);
-          console.log(`[CrossLaneFilter] Policy contextIds:`, selectedNode?.metadata?.contextIds);
-          // Show context IDs as strings for easy comparison
-          const contextItemIds = filteredItems.map(i => i.node?.id);
-          console.log(`[CrossLaneFilter] Context item IDs:`, contextItemIds);
-          console.log(`[CrossLaneFilter] ID types - Policy: ${typeof selectedNode?.metadata?.contextIds?.[0]}, Context: ${typeof contextItemIds[0]}`);
-        }
-
         // Pass all lanes for cascaded filters that need to access intermediate lanes
         filteredItems = applyFilterMapping(filteredItems, selectedNode, filterMapping, lanes);
 
-        // Debug: Always log for Assignment Policies -> Contexts filtering
-        if (lane.laneType === LaneTypes.CONTEXTS || lane.laneType === 'Contexts') {
-          console.log(`[CrossLaneFilter] Contexts filter result: ${beforeCount} -> ${filteredItems.length} items`);
-        }
+        // A filter mapping was found and applied — mark as filtered regardless of whether
+        // item count changed. Even if all items pass the filter, the lane IS being filtered
+        // by the active cross-lane selection (user expects "Filtered" visual indicator).
+        wasFiltered = true;
+        filteredLaneTypes.add(lane.laneType);
 
-        if (filteredItems.length !== beforeCount) {
-          wasFiltered = true;
-          filteredLaneTypes.add(lane.laneType);
-          if (shouldLog('FILTERS')) {
-            console.log(`[CrossLaneFilter] ${filteringLaneType} -> ${lane.laneType}: ${beforeCount} -> ${filteredItems.length} items`);
-          }
-        }
       }
     }
 

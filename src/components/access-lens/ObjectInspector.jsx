@@ -642,6 +642,23 @@ const ExplanationPanel = ({
           </div>
         )}
 
+        {/* Assigned Identities - shown when an entitlement is selected in Request pivot */}
+        {explanation.relatedIdentities && explanation.relatedIdentities.length > 0 && (
+          <div className="explanation-facts">
+            <h4>Assigned Identities ({explanation.relatedIdentities.length})</h4>
+            <div className="facts-list">
+              {explanation.relatedIdentities.map((identity, i) => (
+                <div key={i} className="fact-item identity-list-item">
+                  <span className="fact-label">{identity.displayName}</span>
+                  {identity.email && (
+                    <span className="fact-value">{identity.email}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Reasons List */}
         {reasons && reasons.length > 0 && (
           <div className="explanation-reasons">

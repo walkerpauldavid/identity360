@@ -49,6 +49,10 @@ class ApiLogger {
     this.sendToBackend = false; // Set to false to disable backend logging
     this.instanceId = Math.random().toString(36).substr(2, 9);
     this.excludedRequestIds = new Set(); // Track request IDs to exclude from console logging
+    // Activity tracking for loading spinner integration
+    this._activityListeners = new Set();
+    this._activeRequests = new Map(); // requestId -> { apiType, startTime }
+    this._stats = { odataRequests: 0, graphqlRequests: 0, odataResponses: 0, graphqlResponses: 0 };
     if (DEBUG_CONSOLE_LOGGING) {
       console.log(`[ApiLogger] Instance created with ID: ${this.instanceId}, logs: ${this.logs.length}`);
     }
@@ -59,6 +63,36 @@ class ApiLogger {
     } catch (e) {
       // Ignore
     }
+  }
+
+  /**
+   * Subscribe to API activity events (for loading spinner)
+   * Listener receives: { type: 'request'|'response', apiType: 'OData'|'GraphQL', activeCount, stats }
+   */
+  onActivity(listener) {
+    this._activityListeners.add(listener);
+    return () => this._activityListeners.delete(listener);
+  }
+
+  /** Reset activity stats (call when starting a new loading session) */
+  resetStats() {
+    this._stats = { odataRequests: 0, graphqlRequests: 0, odataResponses: 0, graphqlResponses: 0 };
+    this._activeRequests.clear();
+  }
+
+  /** Get current activity stats snapshot */
+  getActivityStats() {
+    return { ...this._stats, activeCount: this._activeRequests.size };
+  }
+
+  _emitActivity(eventType, apiType) {
+    const event = {
+      type: eventType,
+      apiType,
+      activeCount: this._activeRequests.size,
+      stats: { ...this._stats }
+    };
+    this._activityListeners.forEach(fn => { try { fn(event); } catch(e) { /* ignore */ } });
   }
 
   /**
@@ -118,6 +152,12 @@ class ApiLogger {
       console.log(`%c[ApiLogger ${this.instanceId}] Added REQUEST, total logs: ${this.logs.length}`, 'color: #0066cc;');
     }
 
+    // Activity tracking
+    this._activeRequests.set(logEntry.requestId, { apiType: type, startTime: Date.now() });
+    if (type === 'OData') this._stats.odataRequests++;
+    else if (type === 'GraphQL') this._stats.graphqlRequests++;
+    this._emitActivity('request', type);
+
     return logEntry.requestId;
   }
 
@@ -148,6 +188,12 @@ class ApiLogger {
     this.logs.push(logEntry);
     this.trimLogs();
     this.sendLogToBackend(logEntry);
+
+    // Activity tracking
+    this._activeRequests.delete(requestId);
+    if (type === 'OData') this._stats.odataResponses++;
+    else if (type === 'GraphQL') this._stats.graphqlResponses++;
+    this._emitActivity('response', type);
 
     // Debug: Bright colored console log to verify logging is working
     // Skip console logging for excluded request IDs

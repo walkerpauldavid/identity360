@@ -177,6 +177,33 @@ const AccessLensPage = () => {
   }, []);
 
   /**
+   * Fetch identity details from OData by userName (IDENTITYID filter)
+   * Used for Request requester lookup where GraphQL id is not a valid OData UId.
+   * @param {string} userName - The identity userName (email-format identifier from GraphQL)
+   * @returns {Promise<object>} Identity details from OData
+   */
+  const fetchIdentityDetailsByUserName = useCallback(async (userName, bearerToken, impersonateUser) => {
+    if (!userName) return null;
+    try {
+      const result = await omadaApi.identity.searchIdentities(
+        null,
+        bearerToken,
+        impersonateUser,
+        {
+          filter: `IDENTITYID eq '${userName}'`,
+          select: 'UId,Id,FIRSTNAME,LASTNAME,DISPLAYNAME,EMAIL,EMPLOYEEID,IDENTITYID,JOBTITLE,OUREF,IDENTITYCATEGORY,IDENTITYSTATUS,RISKLEVEL'
+        }
+      );
+      if (result.status === 'success' && result.data?.length > 0) {
+        return result.data[0];
+      }
+      return null;
+    } catch (err) {
+      return null;
+    }
+  }, []);
+
+  /**
    * Fetch identity details from OData by identity UId (UUID)
    * Extracts: EMAIL, JOBTITLE, EMPLOYEEID, DEPARTMENT, etc.
    * @param {string} identityUId - The identity UId (UUID format from GraphQL)
@@ -638,7 +665,7 @@ const AccessLensPage = () => {
    * @param {object} item - The clicked item with node data
    * @returns {Promise<object>} The full object details from OData
    */
-  const fetchObjectDetails = useCallback(async (laneType, item) => {
+  const fetchObjectDetails = useCallback(async (laneType, item, context = {}) => {
     const laneConfig = LaneSchema[laneType];
     if (!laneConfig?.apiSource) {
       console.warn('No API source configured for lane type:', laneType);
@@ -676,8 +703,42 @@ const AccessLensPage = () => {
       );
 
       if (result.status === 'success' && result.data?.length > 0) {
+        // Fetch assigned identities for entitlements in Request pivot
+        let relatedIdentities = null;
+
+        if (laneType === LaneTypes.EFFECTIVE_ENTITLEMENTS && context.focusNodeType === 'Request') {
+          const resourceId = item.node?.id || item.node?.rawData?.id;
+          if (resourceId) {
+            try {
+              const assignmentResult = await omadaApi.assignment.getIdentitiesHavingResource(
+                resourceId, null, bearerToken, impersonateUser,
+                { page: 1, rows: 100 },
+                null, null, includeDisabledAssignments
+              );
+              if (assignmentResult.status === 'success' && assignmentResult.data?.length > 0) {
+                const identityMap = new Map();
+                assignmentResult.data.forEach(assignment => {
+                  const identity = assignment.identity;
+                  if (identity?.id && !identityMap.has(identity.id)) {
+                    identityMap.set(identity.id, {
+                      displayName: identity.displayName || `${identity.firstName || ''} ${identity.lastName || ''}`.trim(),
+                      email: identity.identityId || '',
+                      firstName: identity.firstName,
+                      lastName: identity.lastName
+                    });
+                  }
+                });
+                relatedIdentities = Array.from(identityMap.values());
+              }
+            } catch (err) {
+              // Non-critical — skip identity list
+            }
+          }
+        }
+
         return {
           data: result.data[0],
+          relatedIdentities,
           inspectorConfig,
           objectType: laneConfig.dataType,
           laneType
@@ -688,7 +749,7 @@ const AccessLensPage = () => {
       console.error(`Error fetching ${endpoint} details:`, err.message);
       return null;
     }
-  }, [getBearerToken, user]);
+  }, [getBearerToken, user, includeDisabledAssignments]);
 
   /**
    * Handle pivot to a different node - fetch data appropriate for that node type
@@ -719,8 +780,10 @@ const AccessLensPage = () => {
         buildSystemsLane,
         buildEntitlementsLaneFromAPResources,
         buildResourceLaneForRequest,
+        buildSystemLaneForRequest,
         buildRequesterIdentityLaneForRequest,
-        buildBeneficiaryIdentityLaneForRequest
+        buildBeneficiaryIdentityLaneForRequest,
+        buildApproversLaneForRequest
       } = await import('./accessLensDataService');
 
       // Different handling based on node type
@@ -1712,35 +1775,109 @@ const AccessLensPage = () => {
 
         case 'Request': {
           // ============================================================
-          // Request Pivot — 3 access cards: Resource, Requester, Beneficiary
-          // Enriches identity cards with OData details via fetchIdentityDetails
+          // Request Pivot — 4 lanes: Resource, System, Requester, Beneficiary
+          // Requester uses userName (IDENTITYID) lookup; Beneficiary uses UId lookup
+          // System cards enriched with OData details
           // ============================================================
-          const requesterId = node.rawData?.requestedBy?.id;
+          const requestedBy = node.rawData?.requestedBy;
+          const requesterId = requestedBy?.id;
+          const requesterUserName = requestedBy?.userName;
+          const requesterIdentityId = requestedBy?.identityId;
           const beneficiaryId = node.rawData?.beneficiary?.id;
 
           // Fetch OData enrichment for requester and beneficiary identities
           let requesterOData = null;
           let beneficiaryOData = null;
 
-          if (requesterId && beneficiaryId && requesterId === beneficiaryId) {
-            // Same person — fetch once and reuse
-            requesterOData = await fetchIdentityDetails(requesterId, bearerToken, impersonateUser);
-            beneficiaryOData = requesterOData;
-          } else {
-            const odataPromises = [];
-            if (requesterId) odataPromises.push(fetchIdentityDetails(requesterId, bearerToken, impersonateUser));
-            else odataPromises.push(Promise.resolve(null));
-            if (beneficiaryId) odataPromises.push(fetchIdentityDetails(beneficiaryId, bearerToken, impersonateUser));
-            else odataPromises.push(Promise.resolve(null));
-            [requesterOData, beneficiaryOData] = await Promise.all(odataPromises);
+          // Collect unique system UIds for OData enrichment
+          const systemIds = new Set();
+          if (node.rawData?.resource?.system?.id) systemIds.add(node.rawData.resource.system.id);
+          if (Array.isArray(node.rawData?.childAssignments)) {
+            node.rawData.childAssignments.forEach(child => {
+              if (child.resource?.system?.id) systemIds.add(child.resource.system.id);
+            });
           }
 
-          // Build 3 lanes
+          // Check if requester and beneficiary are the same person
+          const requesterIsBeneficiary = requesterUserName && node.rawData?.beneficiary?.userName
+            && requesterUserName === node.rawData.beneficiary.userName;
+
+          if (requesterIsBeneficiary) {
+            // Same person — fetch beneficiary by UId (reliable), then reuse for requester
+            beneficiaryOData = await fetchIdentityDetails(beneficiaryId, bearerToken, impersonateUser);
+            requesterOData = beneficiaryOData;
+          } else {
+            // Different people — fetch in parallel
+            // Requester: try UId first (same as beneficiary), then IDENTITYID, then EMAIL fallbacks
+            // Beneficiary: search by UId (works correctly)
+            const odataPromises = [];
+            odataPromises.push(requesterId
+              ? fetchIdentityDetails(requesterId, bearerToken, impersonateUser)
+              : Promise.resolve(null));
+            odataPromises.push(beneficiaryId
+              ? fetchIdentityDetails(beneficiaryId, bearerToken, impersonateUser)
+              : Promise.resolve(null));
+            [requesterOData, beneficiaryOData] = await Promise.all(odataPromises);
+
+            // Fallback chain if UId lookup failed for requester
+            if (!requesterOData) {
+              // Try IDENTITYID lookup (userName or identityId from GraphQL)
+              const identityIdValue = requesterIdentityId || requesterUserName;
+              if (identityIdValue) {
+                requesterOData = await fetchIdentityDetailsByUserName(identityIdValue, bearerToken, impersonateUser);
+              }
+              // Try EMAIL lookup as last resort
+              if (!requesterOData && requesterUserName) {
+                try {
+                  const emailResult = await omadaApi.identity.searchIdentities(
+                    null, bearerToken, impersonateUser,
+                    {
+                      filter: `EMAIL eq '${requesterUserName}'`,
+                      select: 'UId,Id,FIRSTNAME,LASTNAME,DISPLAYNAME,EMAIL,EMPLOYEEID,IDENTITYID,JOBTITLE,OUREF,IDENTITYCATEGORY,IDENTITYSTATUS,RISKLEVEL'
+                    }
+                  );
+                  if (emailResult.status === 'success' && emailResult.data?.length > 0) {
+                    requesterOData = emailResult.data[0];
+                  }
+                } catch (err) {
+                  // Non-critical — continue without OData enrichment for requester
+                }
+              }
+            }
+          }
+
+          // Fetch system OData in parallel
+          const systemODataMap = {};
+          if (systemIds.size > 0) {
+            const systemPromises = Array.from(systemIds).map(async (sysId) => {
+              const details = await fetchSystemDetails(sysId, bearerToken, impersonateUser);
+              if (details) systemODataMap[sysId] = details;
+            });
+            await Promise.all(systemPromises);
+          }
+
+          // Fetch approval workflow info (Steps 2→3→4) in parallel with lane building
+          let approvalInfo = null;
+          const resourceName = node.rawData?.resource?.name;
+          const beneficiaryName = node.rawData?.beneficiary?.displayName;
+          if (resourceName && beneficiaryName) {
+            try {
+              approvalInfo = await omadaApi.accessRequest.getApprovalInfoForRequest(
+                resourceName, beneficiaryName, bearerToken, impersonateUser
+              );
+            } catch (err) {
+              if (shouldLog('PIVOT')) console.warn('[Request Pivot] Failed to fetch approval info:', err.message);
+            }
+          }
+
+          // Build lanes — Resource, System, Requester, Beneficiary, + Approvers (if data exists)
           const resourceLane = buildResourceLaneForRequest(node);
+          const systemLane = buildSystemLaneForRequest(node, systemODataMap);
           const requesterLane = buildRequesterIdentityLaneForRequest(node, requesterOData);
           const beneficiaryLane = buildBeneficiaryIdentityLaneForRequest(node, beneficiaryOData);
+          const approversLane = buildApproversLaneForRequest(approvalInfo);
 
-          const lanes = [resourceLane, requesterLane, beneficiaryLane].filter(l => l.items.length > 0);
+          const lanes = [resourceLane, systemLane, requesterLane, beneficiaryLane, approversLane].filter(l => l.items.length > 0);
 
           // Build enriched focus node with badges
           const enrichedFocusNode = {
@@ -1752,7 +1889,7 @@ const AccessLensPage = () => {
             ].filter(Boolean)
           };
 
-          if (shouldLog('PIVOT')) console.log(`[Request Pivot] Built ${lanes.length} lanes: Resource, Requester, Beneficiary`);
+          if (shouldLog('PIVOT')) console.log(`[Request Pivot] Built ${lanes.length} lanes (incl ${approversLane.items.length} approvers)`);
 
           return {
             focusNode: enrichedFocusNode,

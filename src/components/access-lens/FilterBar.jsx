@@ -113,6 +113,7 @@ const FilterBar = ({
         {[
           ...(focusNodeType === 'Request' ? [
             { type: LaneTypes.EFFECTIVE_ENTITLEMENTS, label: 'Resource', icon: '🔑' },
+            { type: LaneTypes.SYSTEMS, label: 'System', icon: '🖥️' },
             { type: LaneTypes.REQUESTER_IDENTITY, label: 'Requester', icon: '📤' },
             { type: LaneTypes.BENEFICIARY_IDENTITY, label: 'Beneficiary', icon: '📥' }
           ] : [
@@ -123,7 +124,7 @@ const FilterBar = ({
             { type: LaneTypes.SYSTEMS, label: 'Systems', icon: '🖥️' },
             { type: LaneTypes.IDENTITIES, label: 'Identities', icon: '👤' },
             ...(focusNodeType === 'Identity' ? [{ type: LaneTypes.CONTEXTS, label: 'Contexts', icon: '📂' }] : []),
-            ...(['Entitlement', 'System'].includes(focusNodeType) ? [{ type: LaneTypes.REQUESTS, label: 'Requests', icon: '\u{1F4DD}' }] : []),
+            ...(['Entitlement', 'System', 'Identity'].includes(focusNodeType) ? [{ type: LaneTypes.REQUESTS, label: 'Requests', icon: '\u{1F4DD}' }] : []),
             ...(focusNodeType === 'Entitlement' ? [{ type: LaneTypes.APPROVALS, label: 'Approvals', icon: '\u2705' }] : [])
           ])
         ].map(({ type, label, icon }) => (

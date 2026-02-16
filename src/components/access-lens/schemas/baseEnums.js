@@ -70,7 +70,8 @@ export const LaneTypes = Object.freeze({
   REQUESTS: 'Requests',
   APPROVALS: 'Approvals',
   REQUESTER_IDENTITY: 'RequesterIdentity',
-  BENEFICIARY_IDENTITY: 'BeneficiaryIdentity'
+  BENEFICIARY_IDENTITY: 'BeneficiaryIdentity',
+  APPROVERS: 'Approvers'
 });
 
 // View modes
