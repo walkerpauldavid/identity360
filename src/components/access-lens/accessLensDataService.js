@@ -4477,18 +4477,48 @@ export async function enrichPoliciesWithOData(policiesLane, apiContext) {
     return policiesLane;
   }
 
-  if (shouldLog('POLICIES')) {
-    console.log(`[enrichPoliciesWithOData] Enriching ${policiesLane.items.length} policies with OData details`);
-  }
+  console.log(`[enrichPoliciesWithOData] Enriching ${policiesLane.items.length} policies with OData details`);
 
-  // Fetch policy details for each policy with a valid causeObjectKey (policy ID)
+  // Helper to enrich a single item from OData policy data
+  const enrichItemFromOData = (item, policyData) => {
+    const apContexts = policyData.AP_CONTEXTS || [];
+
+    const contextIds = apContexts
+      .map(ctx => ctx.UId || ctx.uId || ctx.Id || ctx.id)
+      .filter(Boolean);
+
+    const contextNames = apContexts
+      .map(ctx => {
+        const name = ctx.DisplayName || ctx.displayName || ctx.Name || ctx.name || '';
+        return name.replace(/\s*\[.*?\]\s*$/, '').trim().toLowerCase();
+      })
+      .filter(Boolean);
+
+    item.node.metadata.contextIds = contextIds;
+    item.node.metadata.contextNames = contextNames;
+    item.node.metadata.apContexts = apContexts;
+    item.node.rawData = {
+      ...item.node.rawData,
+      AP_CONTEXTS: apContexts,
+      contextIds: contextIds
+    };
+    item.rawData = {
+      ...item.rawData,
+      AP_CONTEXTS: apContexts,
+      contextIds: contextIds
+    };
+
+    console.log(`[enrichPoliciesWithOData] "${item.node?.displayName}" → ${apContexts.length} contexts, contextNames: [${contextNames.join(', ')}]`);
+  };
+
+  // First pass: try individual lookup by causeObjectKey
+  const unenrichedItems = [];
+
   const enrichmentPromises = policiesLane.items.map(async (item) => {
     const policyId = item.node?.rawData?.causeObjectKey || item.rawData?.causeObjectKey;
 
     if (!policyId) {
-      if (shouldLog('POLICIES')) {
-        console.log(`[enrichPoliciesWithOData] No policy ID for "${item.node?.displayName}", skipping`);
-      }
+      unenrichedItems.push(item);
       return item;
     }
 
@@ -4500,64 +4530,66 @@ export async function enrichPoliciesWithOData(policiesLane, apiContext) {
       );
 
       if (result.status === 'success' && result.data) {
-        const policyData = result.data;
-        const apContexts = policyData.AP_CONTEXTS || [];
-
-        // Extract context IDs for cross-lane filtering
-        // Use UId (UUID) to match GraphQL id field which returns UUIDs
-        const contextIds = apContexts
-          .map(ctx => ctx.UId || ctx.uId || ctx.Id || ctx.id)
-          .filter(Boolean);
-
-        // Also extract context names for fallback matching (GraphQL and OData may have different UUIDs)
-        const contextNames = apContexts
-          .map(ctx => {
-            const name = ctx.DisplayName || ctx.displayName || ctx.Name || ctx.name || '';
-            // Normalize: remove bracketed suffixes like "[GBG]" for matching
-            return name.replace(/\s*\[.*?\]\s*$/, '').trim().toLowerCase();
-          })
-          .filter(Boolean);
-
-        if (shouldLog('POLICIES')) {
-          console.log(`[enrichPoliciesWithOData] "${item.node?.displayName}" raw AP_CONTEXTS:`,
-            apContexts.length > 0 ? JSON.stringify(apContexts[0]) : 'empty');
-          console.log(`[enrichPoliciesWithOData] "${item.node?.displayName}" extracted contextIds:`, contextIds);
-          console.log(`[enrichPoliciesWithOData] "${item.node?.displayName}" extracted contextNames:`, contextNames);
-        }
-
-        // Enrich the item with AP_CONTEXTS data
-        item.node.metadata.contextIds = contextIds;
-        item.node.metadata.contextNames = contextNames;  // For fallback name-based matching
-        item.node.metadata.apContexts = apContexts;
-        item.node.rawData = {
-          ...item.node.rawData,
-          AP_CONTEXTS: apContexts,
-          contextIds: contextIds
-        };
-        item.rawData = {
-          ...item.rawData,
-          AP_CONTEXTS: apContexts,
-          contextIds: contextIds
-        };
-
-        if (shouldLog('POLICIES')) {
-          console.log(`[enrichPoliciesWithOData] "${item.node?.displayName}" has ${apContexts.length} contexts:`,
-            apContexts.map(c => c.DisplayName).join(', '));
-        }
+        enrichItemFromOData(item, result.data);
+      } else {
+        unenrichedItems.push(item);
       }
     } catch (error) {
-      console.warn(`[enrichPoliciesWithOData] Failed to fetch details for policy "${item.node?.displayName}":`, error.message);
+      console.warn(`[enrichPoliciesWithOData] Failed individual lookup for "${item.node?.displayName}":`, error.message);
+      unenrichedItems.push(item);
     }
 
     return item;
   });
 
-  // Wait for all enrichment to complete
   await Promise.all(enrichmentPromises);
 
-  if (shouldLog('POLICIES')) {
-    console.log('[enrichPoliciesWithOData] Enrichment complete');
+  // Second pass: for items without causeObjectKey, fetch all policies and match by name
+  if (unenrichedItems.length > 0) {
+    console.log(`[enrichPoliciesWithOData] ${unenrichedItems.length} policies need name-based matching, fetching all policies...`);
+
+    try {
+      const allPoliciesResult = await omadaApi.assignmentPolicy.getAssignmentPolicies(
+        bearerToken,
+        impersonateUser,
+        { top: 500 }
+      );
+
+      if (allPoliciesResult.status === 'success' && allPoliciesResult.data?.length > 0) {
+        // Build a normalized name → OData policy map
+        const odataPolicyMap = new Map();
+        allPoliciesResult.data.forEach(policy => {
+          const name = (policy.DISPLAYNAME || policy.DisplayName || policy.Name || '').trim().toLowerCase();
+          if (name) {
+            odataPolicyMap.set(name, policy);
+          }
+        });
+
+        console.log(`[enrichPoliciesWithOData] Fetched ${allPoliciesResult.data.length} OData policies for matching`);
+
+        // Match each unenriched lane policy to an OData policy by name
+        unenrichedItems.forEach(item => {
+          const lanePolicyName = (item.node?.displayName || '').trim().toLowerCase();
+          const matchedPolicy = odataPolicyMap.get(lanePolicyName);
+
+          if (matchedPolicy) {
+            enrichItemFromOData(item, matchedPolicy);
+          } else {
+            console.log(`[enrichPoliciesWithOData] No OData match for "${item.node?.displayName}"`);
+            // Set empty arrays so metadata exists (prevents undefined)
+            item.node.metadata.contextIds = [];
+            item.node.metadata.contextNames = [];
+          }
+        });
+      } else {
+        console.warn('[enrichPoliciesWithOData] Failed to fetch all policies for name-based matching');
+      }
+    } catch (error) {
+      console.warn('[enrichPoliciesWithOData] Error in name-based matching fallback:', error.message);
+    }
   }
+
+  console.log('[enrichPoliciesWithOData] Enrichment complete');
 
   return policiesLane;
 }

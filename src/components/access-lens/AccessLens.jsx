@@ -1341,6 +1341,10 @@ const AccessLens = ({
       const complianceStatuses = extractUniqueComplianceStatuses(calculatedAssignments);
       setAvailableComplianceStatuses(complianceStatuses);
 
+      // Reset enrichment flag so policies get re-enriched with OData data
+      // (the new policy items from buildLanesFromAssignments don't have contextIds/contextNames)
+      policiesEnrichedRef.current = false;
+
       setLanes(prevLanes => {
         // Keep the contexts lane if it exists, replace others
         const contextsLane = prevLanes.find(l => l.laneType === LaneTypes.CONTEXTS);

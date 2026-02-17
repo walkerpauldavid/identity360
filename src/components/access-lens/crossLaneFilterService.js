@@ -95,7 +95,6 @@ const normalizeName = (name) => {
  */
 const applyArrayContainsWithNameFallback = (item, sourceValue, targetField, fallbackSourceValue, fallbackTargetField) => {
   const targetValue = getItemValue(item, targetField);
-  const itemName = item.node?.displayName || 'unknown';
 
   // First try: ID-based matching
   if (targetValue && Array.isArray(targetValue)) {
@@ -112,9 +111,8 @@ const applyArrayContainsWithNameFallback = (item, sourceValue, targetField, fall
     if (fallbackTargetValue && Array.isArray(fallbackTargetValue)) {
       const normalizedSource = normalizeName(String(fallbackSourceValue));
       if (normalizedSource) {
-        // Check if any target name matches the normalized source name
         const matched = fallbackTargetValue.some(tv => {
-          const normalizedTarget = typeof tv === 'string' ? tv : normalizeName(String(tv));
+          const normalizedTarget = normalizeName(String(tv));
           return normalizedTarget === normalizedSource;
         });
         if (matched) {
@@ -868,16 +866,18 @@ export const applyCrossLaneFilters = (
     // If this lane has a selection (is the master filter source),
     // preserve its current items to avoid visual refresh/repopulation
     // The clicked lane becomes the filter source, so don't filter it
-    // IMPORTANT: Use the PREVIOUS filtered state, not the raw lane data
+    // IMPORTANT: Use the PREVIOUS filtered state, not the raw lane data — but only
+    // if the previous state has at least as many items as the current raw lane.
+    // When toolbar filters (compliance, reason type) are cleared, the raw lane may
+    // have MORE items than the stale previousLane (which was filtered). In that case
+    // we must use the raw lane to avoid showing stale compliance-filtered results.
     if (selectionMap[lane.laneType]) {
-      // Find this lane in the previous filtered state
       const previousLane = previousFilteredLanes.find(pl => pl.laneType === lane.laneType);
-      // If we have a previous filtered state for this lane, use it to preserve the filtered items
-      // This prevents the access card from repopulating when an item within it is selected
-      if (previousLane && previousLane.items) {
+      // Only use the previous state if it's not stale (i.e. not fewer items than raw)
+      if (previousLane && previousLane.items && previousLane.items.length >= lane.items.length) {
         return previousLane;
       }
-      // Fallback to raw lane if no previous state exists (first selection)
+      // Fallback to raw lane (first selection, or previous state was stale from cleared toolbar filters)
       return lane;
     }
 
