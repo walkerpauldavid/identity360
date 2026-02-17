@@ -1323,9 +1323,9 @@ export const LaneConfigSchema = {
         apiSource: { type: 'GraphQL', query: 'getIdentityContexts', idParam: 'identityUId' },
         position: { x: 380, y: 80 },
         crossLaneFilters: {
-          filtersLanes: [LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.IDENTITIES, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS, LaneTypes.LOGICAL_APPLICATIONS],
-          // Contexts can be filtered by: Assignment Policies directly, or via cascaded filters from Entitlements/Accounts/Systems/Logical Apps
-          filteredByLanes: [LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS, LaneTypes.LOGICAL_APPLICATIONS],
+          filtersLanes: [LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.IDENTITIES, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.REQUESTS],
+          // Contexts can be filtered by: Assignment Policies directly, or via cascaded filters from Entitlements/Accounts/Systems/Logical Apps/Requests
+          filteredByLanes: [LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.REQUESTS],
           filterMappings: {
             // When Context is selected, filter Assignment Policies to show only those that reference this context
             // Uses name-based fallback because GraphQL and OData return different UUIDs for the same context
@@ -1408,6 +1408,24 @@ export const LaneConfigSchema = {
               intermediate2ExtractFields: ['metadata.systemId', 'metadata.system'],  // Extract systemId or system name
               // Level 3: Entitlements -> Logical Applications
               targetFields: ['id', 'displayName']             // Match against logical app's id or displayName
+            },
+            // When Context is selected, filter Requests via triple cascade
+            // Context → Policies (by contextIds/contextNames) → Entitlements (by resourceIds) → Requests (by resourceName)
+            [LaneTypes.REQUESTS]: {
+              type: CrossLaneFilterType.TRIPLE_CASCADED_WITH_NAME_FALLBACK,
+              // Level 1: Context → Assignment Policies
+              intermediate1Lane: LaneTypes.ASSIGNMENT_POLICIES,
+              sourceField: 'id',
+              fallbackSourceField: 'displayName',
+              intermediate1TargetField: 'metadata.contextIds',
+              fallbackIntermediate1TargetField: 'metadata.contextNames',
+              intermediate1ExtractField: 'metadata.resourceIds',
+              // Level 2: Assignment Policies → Entitlements
+              intermediate2Lane: LaneTypes.EFFECTIVE_ENTITLEMENTS,
+              intermediate2TargetField: 'id',
+              intermediate2ExtractField: 'displayName',
+              // Level 3: Entitlements → Requests
+              targetField: 'metadata.resourceName'
             }
           }
         }
@@ -1420,7 +1438,7 @@ export const LaneConfigSchema = {
         position: { x: 600, y: 80 },
         crossLaneFilters: {
           filtersLanes: [LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.SYSTEMS, LaneTypes.ACCOUNTS, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.CONTEXTS, LaneTypes.REQUESTS],
-          filteredByLanes: [LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.VIOLATIONS, LaneTypes.CONTEXTS],
+          filteredByLanes: [LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.VIOLATIONS, LaneTypes.CONTEXTS, LaneTypes.REQUESTS],
           filterMappings: {
             // When Logical App is selected, filter Requests to those for resources on this system
             [LaneTypes.REQUESTS]: {
@@ -1496,8 +1514,8 @@ export const LaneConfigSchema = {
         apiSource: { type: 'derived', from: 'calculatedAssignments', extract: 'assignmentPolicies' },
         position: { x: -600, y: 80 },
         crossLaneFilters: {
-          filtersLanes: [LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.CONTEXTS],
-          filteredByLanes: [LaneTypes.VIOLATIONS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS, LaneTypes.CONTEXTS],  // Policies are filtered when a violation, logical app, entitlement, account, system, or context is selected
+          filtersLanes: [LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.CONTEXTS, LaneTypes.REQUESTS],
+          filteredByLanes: [LaneTypes.VIOLATIONS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS, LaneTypes.CONTEXTS, LaneTypes.REQUESTS],
           filterMappings: {
             // When Policy is selected, filter Entitlements to show only those assigned by this policy
             [LaneTypes.EFFECTIVE_ENTITLEMENTS]: {
@@ -1544,6 +1562,16 @@ export const LaneConfigSchema = {
               type: CrossLaneFilterType.ARRAY_CONTAINS,
               sourceField: 'metadata.contextIds',  // Array of context Ids from AP_CONTEXTS
               targetField: 'id'                    // Match against context's id (from GraphQL)
+            },
+            // When Policy is selected, filter Requests to those for entitlements assigned by this policy
+            // Policy → Entitlements (by resourceIds) → Requests (by resourceName/displayName)
+            [LaneTypes.REQUESTS]: {
+              type: CrossLaneFilterType.CASCADED_THROUGH,
+              intermediateLane: LaneTypes.EFFECTIVE_ENTITLEMENTS,
+              sourceField: 'metadata.resourceIds',
+              intermediateTargetField: 'id',
+              intermediateExtractField: 'displayName',
+              targetField: 'metadata.resourceName'
             }
           }
         }
@@ -1556,8 +1584,8 @@ export const LaneConfigSchema = {
         position: { x: 0, y: -380 },  // Position above center (North) - matches COMPASS_POSITIONS
         crossLaneFilters: {
           // Violations filter other lanes to show only related items
-          filtersLanes: [LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.ASSIGNMENT_POLICIES],
-          filteredByLanes: [],  // Violations are not filtered by other lanes
+          filtersLanes: [LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.ACCOUNTS, LaneTypes.SYSTEMS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.REQUESTS],
+          filteredByLanes: [LaneTypes.REQUESTS],  // Violations can be filtered when a Request is selected
           filterMappings: {
             // When Violation is selected, filter Entitlements to show only those involved in the violation
             [LaneTypes.EFFECTIVE_ENTITLEMENTS]: {
@@ -1597,6 +1625,16 @@ export const LaneConfigSchema = {
               type: CrossLaneFilterType.ARRAY_CONTAINS,
               sourceField: 'metadata.resourceIds',
               targetField: 'metadata.resourceIds'  // Policy's resourceIds array should contain the violation's resourceIds
+            },
+            // When Violation is selected, filter Requests to those for the violating entitlements
+            // Violation → Entitlements (by resourceIds) → Requests (by resourceName)
+            [LaneTypes.REQUESTS]: {
+              type: CrossLaneFilterType.CASCADED_THROUGH,
+              intermediateLane: LaneTypes.EFFECTIVE_ENTITLEMENTS,
+              sourceField: 'metadata.resourceIds',
+              intermediateTargetField: 'id',
+              intermediateExtractField: 'displayName',
+              targetField: 'metadata.resourceName'
             }
           }
         }
@@ -1609,8 +1647,8 @@ export const LaneConfigSchema = {
         apiSource: { type: 'async', from: 'GraphQL', extract: 'getAccessRequestsForBeneficiary' },
         position: { x: -520, y: 380 },
         crossLaneFilters: {
-          filtersLanes: [LaneTypes.SYSTEMS, LaneTypes.ACCOUNTS, LaneTypes.EFFECTIVE_ENTITLEMENTS],
-          filteredByLanes: [LaneTypes.SYSTEMS, LaneTypes.ACCOUNTS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.LOGICAL_APPLICATIONS],
+          filtersLanes: [LaneTypes.SYSTEMS, LaneTypes.ACCOUNTS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.CONTEXTS, LaneTypes.VIOLATIONS],
+          filteredByLanes: [LaneTypes.SYSTEMS, LaneTypes.ACCOUNTS, LaneTypes.EFFECTIVE_ENTITLEMENTS, LaneTypes.LOGICAL_APPLICATIONS, LaneTypes.ASSIGNMENT_POLICIES, LaneTypes.CONTEXTS, LaneTypes.VIOLATIONS],
           filterMappings: {
             // Request → Systems: match request's system to system lane items
             [LaneTypes.SYSTEMS]: {
@@ -1629,6 +1667,50 @@ export const LaneConfigSchema = {
               type: CrossLaneFilterType.MULTI_FIELD_MATCH,
               sourceFields: ['metadata.resourceName'],
               targetFields: ['displayName']
+            },
+            // Request → Logical Applications: match request's system to logical app
+            [LaneTypes.LOGICAL_APPLICATIONS]: {
+              type: CrossLaneFilterType.MULTI_FIELD_MATCH,
+              sourceFields: ['metadata.systemId', 'metadata.system'],
+              targetFields: ['id', 'displayName']
+            },
+            // Request → Assignment Policies: cascaded through Entitlements
+            // Request → Entitlements (by resourceName/displayName) → Policies (by resourceIds)
+            [LaneTypes.ASSIGNMENT_POLICIES]: {
+              type: CrossLaneFilterType.CASCADED_THROUGH,
+              intermediateLane: LaneTypes.EFFECTIVE_ENTITLEMENTS,
+              sourceField: 'metadata.resourceName',
+              intermediateTargetField: 'displayName',
+              intermediateExtractField: 'id',
+              targetField: 'metadata.resourceIds'
+            },
+            // Request → Contexts: triple cascaded through Entitlements → Policies
+            // Request → Entitlements (by resourceName) → Policies (by resourceIds) → Contexts (by contextIds/contextNames)
+            [LaneTypes.CONTEXTS]: {
+              type: CrossLaneFilterType.TRIPLE_CASCADED_WITH_NAME_FALLBACK,
+              // Level 1: Request → Entitlements
+              intermediate1Lane: LaneTypes.EFFECTIVE_ENTITLEMENTS,
+              sourceField: 'metadata.resourceName',
+              intermediate1TargetField: 'displayName',
+              intermediate1ExtractField: 'id',
+              // Level 2: Entitlements → Assignment Policies
+              intermediate2Lane: LaneTypes.ASSIGNMENT_POLICIES,
+              intermediate2TargetField: 'metadata.resourceIds',
+              intermediate2ExtractField: 'metadata.contextIds',
+              fallbackIntermediate2ExtractField: 'metadata.contextNames',
+              // Level 3: Assignment Policies → Contexts
+              targetField: 'id',
+              fallbackTargetField: 'displayName'
+            },
+            // Request → Violations: cascaded through Entitlements
+            // Request → Entitlements (by resourceName) → Violations (by resourceIds)
+            [LaneTypes.VIOLATIONS]: {
+              type: CrossLaneFilterType.CASCADED_THROUGH,
+              intermediateLane: LaneTypes.EFFECTIVE_ENTITLEMENTS,
+              sourceField: 'metadata.resourceName',
+              intermediateTargetField: 'displayName',
+              intermediateExtractField: 'id',
+              targetField: 'metadata.resourceIds'
             }
           }
         }
