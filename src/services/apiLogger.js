@@ -31,7 +31,7 @@ const EXCLUDE_FROM_CONSOLE = [
 class ApiLogger {
   constructor() {
     this.logs = [];
-    this.maxLogs = 100; // Keep last 100 log entries
+    this.maxLogs = 1000; // Keep last 1000 log entries
     this.backendUrl = 'http://localhost:3001/api/log';
     this.sendToBackend = false; // Set to false to disable backend logging
     this.instanceId = Math.random().toString(36).substr(2, 9);
