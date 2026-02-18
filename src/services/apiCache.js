@@ -87,11 +87,14 @@ export function withApiCache(namespace, fnName, fn, cacheKeyFn) {
             `(age: ${Math.round((Date.now() - cached.timestamp) / 1000)}s)`
           );
         }
-        // Notify UI of cache hit (spinner green flash)
+        // Log cache hit in apiLogger so it appears in LogViewer
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('omada-cache-hit', {
             detail: { namespace, fnName }
           }));
+          if (window.__apiLoggerInstance?.logCacheHit) {
+            window.__apiLoggerInstance.logCacheHit(namespace, fnName, Date.now() - cached.timestamp, cached.data);
+          }
         }
         return cached.data;
       }

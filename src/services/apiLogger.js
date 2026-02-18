@@ -20,21 +20,8 @@ const getInitialConsoleLoggingSetting = () => {
   return true; // Default to enabled
 };
 
-// M-15 fix: Check if logging is completely disabled (no console, no storage)
-const getCompletelyDisabledSetting = () => {
-  try {
-    const stored = localStorage.getItem('app_user_preferences');
-    if (stored) {
-      const prefs = JSON.parse(stored);
-      return prefs.debugDisableApiLogging === true;
-    }
-  } catch (e) { /* ignore */ }
-  return false;
-};
-
 // Debug configuration - read from user preferences
 let DEBUG_CONSOLE_LOGGING = getInitialConsoleLoggingSetting();
-let LOGGING_COMPLETELY_DISABLED = getCompletelyDisabledSetting();
 
 // Functions to exclude from console logging (still logged internally)
 const EXCLUDE_FROM_CONSOLE = [
@@ -44,7 +31,7 @@ const EXCLUDE_FROM_CONSOLE = [
 class ApiLogger {
   constructor() {
     this.logs = [];
-    this.maxLogs = 30; // Keep last 30 log entries (reduced to prevent localStorage quota issues)
+    this.maxLogs = 100; // Keep last 100 log entries
     this.backendUrl = 'http://localhost:3001/api/log';
     this.sendToBackend = false; // Set to false to disable backend logging
     this.instanceId = Math.random().toString(36).substr(2, 9);
@@ -118,11 +105,6 @@ class ApiLogger {
    * Log an API request
    */
   logRequest(type, endpoint, params = {}, requestHeaders = {}) {
-    // M-15 fix: Early return if logging is completely disabled (avoids object creation)
-    if (LOGGING_COMPLETELY_DISABLED) {
-      return `disabled-${Date.now()}`; // Return dummy ID
-    }
-
     const logEntry = {
       timestamp: new Date().toISOString(),
       type: 'REQUEST',
@@ -165,11 +147,6 @@ class ApiLogger {
    * Log an API response
    */
   logResponse(requestId, type, endpoint, response, success = true, error = null, responseHeaders = {}, statusCode = null, rawResponse = null) {
-    // M-15 fix: Early return if logging is completely disabled (avoids object creation)
-    if (LOGGING_COMPLETELY_DISABLED) {
-      return;
-    }
-
     const logEntry = {
       timestamp: new Date().toISOString(),
       type: 'RESPONSE',
@@ -210,6 +187,53 @@ class ApiLogger {
         console.error('Error:', error);
       }
       console.log(`%c[ApiLogger ${this.instanceId}] Added RESPONSE, total logs: ${this.logs.length}`, 'color: #28a745;');
+    }
+  }
+
+  /**
+   * Log a cache hit — creates a paired REQUEST + RESPONSE entry so cache hits
+   * are visible in the LogViewer alongside real API calls.
+   * @param {string} namespace - Cache namespace (e.g., 'identity')
+   * @param {string} fnName - Function name (e.g., 'searchIdentities')
+   * @param {number} ageMs - Age of the cached entry in milliseconds
+   * @param {Object} cachedData - The cached response data
+   */
+  logCacheHit(namespace, fnName, ageMs, cachedData) {
+    const apiType = namespace === 'graphql' || fnName.startsWith('get') ? 'mixed' : 'OData';
+    const endpoint = `[CACHE] ${namespace}.${fnName}`;
+    const requestId = this.generateRequestId();
+
+    const requestEntry = {
+      timestamp: new Date().toISOString(),
+      type: 'REQUEST',
+      apiType,
+      endpoint,
+      params: { functionName: fnName, cached: true, cacheAge: `${Math.round(ageMs / 1000)}s` },
+      requestHeaders: {},
+      requestId
+    };
+
+    const responseEntry = {
+      timestamp: new Date().toISOString(),
+      type: 'RESPONSE',
+      apiType,
+      endpoint,
+      requestId,
+      success: true,
+      response: cachedData ? { status: cachedData.status, total: cachedData.total, dataCount: cachedData.data?.length } : null,
+      rawResponse: null,
+      error: null,
+      status: 'CACHE_HIT',
+      responseHeaders: {},
+      statusCode: 'cached'
+    };
+
+    this.logs.push(requestEntry);
+    this.logs.push(responseEntry);
+    this.trimLogs();
+
+    if (DEBUG_CONSOLE_LOGGING) {
+      console.log(`%c[API CACHE HIT] ${namespace}.${fnName} (age: ${Math.round(ageMs / 1000)}s)`, 'background: #ff9800; color: white; padding: 2px 6px; border-radius: 3px;');
     }
   }
 
@@ -446,23 +470,6 @@ class ApiLogger {
    */
   isConsoleLoggingEnabled() {
     return DEBUG_CONSOLE_LOGGING;
-  }
-
-  /**
-   * M-15 fix: Completely disable all logging (for performance)
-   * @param {boolean} disabled - Whether to completely disable logging
-   */
-  setLoggingDisabled(disabled) {
-    LOGGING_COMPLETELY_DISABLED = disabled;
-    console.log(`[ApiLogger] Logging completely ${disabled ? 'DISABLED (no overhead)' : 'ENABLED'}`);
-  }
-
-  /**
-   * M-15 fix: Check if logging is completely disabled
-   * @returns {boolean} Whether logging is completely disabled
-   */
-  isLoggingDisabled() {
-    return LOGGING_COMPLETELY_DISABLED;
   }
 
   /**
