@@ -137,6 +137,47 @@
   flex-shrink: 0;
 }
 
+/* Filter Active Bar — full-width indicator when any filter is active */
+.filter-active-bar {
+  display: flex;
+  align-items: center;
+  padding: 0.35rem 0.75rem;
+  background: linear-gradient(135deg, #bf616a 0%, #d08770 100%);
+  flex-shrink: 0;
+  width: 100%;
+}
+
+.filter-active-label {
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 600;
+  flex: 1;
+}
+
+.filter-active-spacer {
+  flex: 1;
+}
+
+.filter-active-clear {
+  background: rgba(255, 255, 255, 0.2);
+  border: 2px solid #fff;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 0.3rem 1.2rem;
+  cursor: pointer;
+  transition: all 0.15s;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.filter-active-clear:hover {
+  background: rgba(255, 255, 255, 0.35);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
 /* Filter Bar */
 .filter-bar {
   display: flex;
@@ -407,16 +448,7 @@
   text-transform: uppercase;
   letter-spacing: 0.5px;
   border-radius: 3px;
-  animation: pulse-glow 2s ease-in-out infinite;
-}
-
-@keyframes pulse-glow {
-  0%, 100% {
-    box-shadow: 0 0 5px rgba(129, 161, 193, 0.5);
-  }
-  50% {
-    box-shadow: 0 0 15px rgba(129, 161, 193, 0.8);
-  }
+  box-shadow: 0 0 10px rgba(129, 161, 193, 0.6);
 }
 
 /* Compliance filter active state */
@@ -610,7 +642,7 @@
   align-items: center;
   gap: 2px;
   background: rgba(30, 30, 50, 0.85);
-  backdrop-filter: blur(8px);
+  /* backdrop-filter: blur(8px); — disabled for performance */
   border: 1px solid rgba(136, 192, 208, 0.2);
   border-radius: 8px;
   padding: 4px;
@@ -871,7 +903,8 @@
 .lane-toggle-btn,
 .lane-maximize-btn,
 .lane-grid-btn,
-.lane-grid-controls {
+.lane-grid-controls,
+.lane-close-btn {
   position: relative;
   z-index: 20 !important;
   pointer-events: auto;
@@ -1442,6 +1475,24 @@
   border-color: #88c0d0;
 }
 
+.lane-close-btn {
+  background: none;
+  border: none;
+  color: #d8dee9;
+  font-size: 0.75rem;
+  padding: 0.1rem 0.3rem;
+  cursor: pointer;
+  transition: all 0.15s;
+  pointer-events: auto;
+  flex-shrink: 0;
+  line-height: 1;
+  margin-left: 0.2rem;
+}
+
+.lane-close-btn:hover {
+  color: #bf616a;
+}
+
 .lane-filter-badge {
   padding: 0.15rem 0.4rem;
   background: rgba(163, 190, 140, 0.2);
@@ -1459,11 +1510,41 @@
 /* Resource Type Filter Bar - chip-based filter below header */
 .lane-type-filter-bar {
   display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.75rem;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.35rem 0.75rem;
   background: #151515;
   border-bottom: 1px solid #2a2a2a;
+}
+
+.type-chips-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: none;
+  border: none;
+  color: #808080;
+  font-size: 0.7rem;
+  cursor: pointer;
+  padding: 0.1rem 0;
+  font-family: inherit;
+}
+
+.type-chips-toggle:hover {
+  color: #c0c0c0;
+}
+
+.type-chips-toggle .toggle-arrow {
+  font-size: 0.65rem;
+}
+
+.type-chips-toggle .toggle-label {
+  font-weight: 600;
+}
+
+.type-chips-toggle .toggle-active-count {
+  color: #88c0d0;
+  font-size: 0.6rem;
 }
 
 .type-chips-container {
@@ -1495,6 +1576,13 @@
   background: rgba(136, 192, 208, 0.2);
   border-color: #88c0d0;
   color: #88c0d0;
+}
+
+.type-chip.highlighted {
+  background: rgba(235, 203, 139, 0.15);
+  border-color: #ebcb8b;
+  color: #ebcb8b;
+  box-shadow: 0 0 4px rgba(235, 203, 139, 0.3);
 }
 
 .type-clear-btn {
@@ -2269,12 +2357,6 @@
   background: rgba(235, 203, 139, 0.25);
   color: #ebcb8b;
   border: 1px solid rgba(235, 203, 139, 0.4);
-  animation: pulse-warning 2s ease-in-out infinite;
-}
-
-@keyframes pulse-warning {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.7; }
 }
 
 /* Reasons row - contains compliance, validity, and reason chips */
@@ -3095,7 +3177,7 @@
   justify-content: center;
   background: rgba(13, 13, 13, 0.92);
   z-index: 100;
-  backdrop-filter: blur(4px);
+  /* backdrop-filter: blur(4px); — disabled for performance */
   animation: fadeIn 0.2s ease-out;
 }
 
@@ -3160,12 +3242,7 @@
   background: rgba(235, 203, 139, 0.15);
   color: #ebcb8b;
   border: 1px solid rgba(235, 203, 139, 0.3);
-  animation: pulseInFlight 0.6s ease-in-out infinite alternate;
-}
 
-@keyframes pulseInFlight {
-  from { opacity: 0.7; }
-  to { opacity: 1; }
 }
 
 /* Spinner speeds up when API calls are active */

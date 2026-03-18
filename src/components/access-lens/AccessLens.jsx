@@ -771,12 +771,12 @@ const ConnectorLines = ({ lanePositions, fulcrumRef, isDragging = false, laneRef
 
     // Initial update (skip throttle for first render)
     updateLines(true);
-    window.addEventListener('resize', () => updateLines(true));
+    const onResize = () => updateLines(true);
+    window.addEventListener('resize', onResize);
 
-    // Use requestAnimationFrame for smooth updates during drag
-    // Otherwise use a longer interval for normal state
+    // Use requestAnimationFrame for smooth updates during drag only
+    // No interval when idle — lines are static and don't need polling
     let rafId = null;
-    let intervalId = null;
 
     if (isDragging) {
       // C-02 fix: During drag, use rAF but throttle internally to 30fps
@@ -786,15 +786,11 @@ const ConnectorLines = ({ lanePositions, fulcrumRef, isDragging = false, laneRef
         rafId = requestAnimationFrame(animate);
       };
       rafId = requestAnimationFrame(animate);
-    } else {
-      // When not dragging, update less frequently
-      intervalId = setInterval(() => updateLines(true), 200);
     }
 
     return () => {
-      window.removeEventListener('resize', () => updateLines(true));
+      window.removeEventListener('resize', onResize);
       if (rafId) cancelAnimationFrame(rafId);
-      if (intervalId) clearInterval(intervalId);
     };
   }, [lanePositions, fulcrumRef, isDragging, laneRefs, zoomLevel]);
 
@@ -806,42 +802,9 @@ const ConnectorLines = ({ lanePositions, fulcrumRef, isDragging = false, laneRef
           <stop offset="50%" stopColor="#a3be8c" stopOpacity="0.6" />
           <stop offset="100%" stopColor="#88c0d0" stopOpacity="0.3" />
         </linearGradient>
-        <filter id="glow">
-          <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
-          <feMerge>
-            <feMergeNode in="coloredBlur"/>
-            <feMergeNode in="SourceGraphic"/>
-          </feMerge>
-        </filter>
-        <filter id="softGlow">
-          <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
-          <feMerge>
-            <feMergeNode in="coloredBlur"/>
-            <feMergeNode in="SourceGraphic"/>
-          </feMerge>
-        </filter>
       </defs>
       {lines.map((line) => (
         <g key={line.id}>
-          {/* Outer glow effect */}
-          <path
-            d={line.path}
-            fill="none"
-            stroke="#88c0d0"
-            strokeWidth="8"
-            strokeOpacity="0.1"
-            filter="url(#softGlow)"
-          />
-          {/* Middle glow */}
-          <path
-            d={line.path}
-            fill="none"
-            stroke="#88c0d0"
-            strokeWidth="4"
-            strokeOpacity="0.2"
-            filter="url(#glow)"
-          />
-          {/* Main curved line */}
           <path
             d={line.path}
             fill="none"
@@ -850,23 +813,6 @@ const ConnectorLines = ({ lanePositions, fulcrumRef, isDragging = false, laneRef
             strokeLinecap="round"
             className="connector-line"
           />
-          {/* Animated dot traveling along the curve - slow and subtle */}
-          <circle r="3" fill="#88c0d0" className="connector-dot" opacity="0.6">
-            <animateMotion
-              dur="12s"
-              repeatCount="indefinite"
-              path={line.path}
-            />
-          </circle>
-          {/* Second dot for gentle flow effect */}
-          <circle r="2" fill="#a3be8c" className="connector-dot" opacity="0.4">
-            <animateMotion
-              dur="12s"
-              repeatCount="indefinite"
-              begin="6s"
-              path={line.path}
-            />
-          </circle>
         </g>
       ))}
     </svg>
@@ -958,6 +904,13 @@ const AccessLens = ({
   const showObjectInspectorRef = useRef(false);
   const inspectorCollapsedRef = useRef(false);
   const focusNodeTypeRef = useRef(null);
+  // Refs for lane state — avoids adding objects to useEffect deps (which triggers on every reducer dispatch)
+  const laneExpandedStatesRef = useRef({});
+  const lanesForceCollapsedRef = useRef(false);
+  // Refs for rozibot actions — stable access without useEffect deps
+  const handleItemClickRef = useRef(null);
+  const lanesRef = useRef([]);
+  const lastPillLaneTypeRef = useRef(null); // Track last lane type selected via RoZiBoT pill
 
   // ============================================================================
   // CONSOLIDATED STATE (useReducer)
@@ -1000,6 +953,11 @@ const AccessLens = ({
     laneExpandedStates
   } = state;
 
+  // Keep refs in sync for useEffect consumers (avoids adding objects to dep arrays)
+  laneExpandedStatesRef.current = laneExpandedStates;
+  lanesForceCollapsedRef.current = lanesForceCollapsed;
+  lanesRef.current = lanes;
+
   // Setter wrapper functions - maintain same API as useState for backwards compatibility
   // These support both direct values and functional updates: setFocusNode(value) or setFocusNode(prev => newValue)
   const setFocusNode = useCallback((value) => dispatch({ type: 'SET_FOCUS_NODE', payload: value }), []);
@@ -1034,10 +992,33 @@ const AccessLens = ({
   const setZoomLevel = useCallback((value) => dispatch({ type: 'SET_ZOOM_LEVEL', payload: value }), []);
   const setLaneExpandedStates = useCallback((value) => dispatch({ type: 'SET_LANE_EXPANDED_STATES', payload: value }), []);
 
+  // Parent-controlled search queries for each lane (survives LaneCard re-mounts)
+  const [laneSearchQueries, setLaneSearchQueries] = useState({});
+
+  // Pending search-and-select state for IGA Agent item pill clicks
+  const [pendingLaneSearch, setPendingLaneSearch] = useState(null); // { laneType, displayName }
+  const handlePendingSearchConsumed = useCallback(() => setPendingLaneSearch(null), []);
+
+  // Signal to clear all lane search boxes (incremented on pill clicks)
+  const [clearSearchSignal, setClearSearchSignal] = useState(0);
+
+  // Callback for LaneCard to report search query changes back to parent
+  const handleLaneSearchChange = useCallback((laneType, query) => {
+    setLaneSearchQueries(prev => ({ ...prev, [laneType]: query }));
+  }, []);
+
   // Callback for LaneCard to report its expanded state back to parent
   const handleLaneExpandedChange = useCallback((laneType, expanded) => {
     setLaneExpandedStates(prev => ({ ...prev, [laneType]: expanded }));
   }, [setLaneExpandedStates]);
+
+  // Hide a lane card by removing it from visibleLanes
+  const handleHideLane = useCallback((laneType) => {
+    setFilters(prev => ({
+      ...prev,
+      visibleLanes: prev.visibleLanes.filter(lt => lt !== laneType)
+    }));
+  }, [setFilters]);
 
   // Configure drag sensors for smoother experience
   // PointerSensor with activation constraint prevents accidental drags
@@ -1346,10 +1327,10 @@ const AccessLens = ({
       policiesEnrichedRef.current = false;
 
       setLanes(prevLanes => {
-        // Keep the contexts lane if it exists, replace others
-        const contextsLane = prevLanes.find(l => l.laneType === LaneTypes.CONTEXTS);
-        const newLanes = contextsLane ? [...assignmentLanes, contextsLane] : assignmentLanes;
-        return newLanes;
+        // Keep non-assignment lanes (Contexts, Requests, etc.) that were loaded separately
+        const assignmentLaneTypes = new Set(assignmentLanes.map(l => l.laneType));
+        const preservedLanes = prevLanes.filter(l => !assignmentLaneTypes.has(l.laneType));
+        return [...assignmentLanes, ...preservedLanes];
       });
 
       // Mark lanes as loaded after a brief delay to allow render
@@ -1702,6 +1683,8 @@ const AccessLens = ({
             }
             return [...prevLanes, requestsLane];
           });
+          // Ensure the re-added lane starts collapsed
+          setLaneExpandedStates(prev => ({ ...prev, [LaneTypes.REQUESTS]: false }));
         }
       } catch (error) {
         requestsEnrichedRef.current = false;
@@ -2039,6 +2022,9 @@ const AccessLens = ({
     setExplanationLoading(false);
   }, [onFetchObjectDetails]);
 
+  // Keep ref in sync for rozibot actions
+  handleItemClickRef.current = handleItemClick;
+
   // Handle central node (Identity) click - show all attributes in Object Inspector
   const handleCentralNodeClick = useCallback(() => {
     if (!focusNode) return;
@@ -2355,8 +2341,22 @@ const AccessLens = ({
     setLanePositions({});
     // Clear all selection/filter states
     setLaneSelections({});
-    // Clear persisted expanded states — all lanes fall back to collapsed default
-    setLaneExpandedStates({});
+    setSelectedItem(null);
+    setExplanation(null);
+    setFilters(prev => ({ ...prev, complianceStatuses: [], reasonTypes: [] }));
+    setLaneSearchQueries({});
+    // Clear stale previous visible lanes so filtering starts fresh
+    previousVisibleLanesRef.current = [];
+    // Reset enrichment refs so Requests/Approvals get re-fetched if dropped
+    requestsEnrichedRef.current = false;
+    approvalsEnrichedRef.current = false;
+    // Collapse all access cards
+    setLanesForceExpanded(false);
+    setLanesForceCollapsed(false);
+    // Explicitly set every lane to collapsed
+    const allCollapsed = {};
+    (lanesRef.current || []).forEach(lane => { allCollapsed[lane.laneType] = false; });
+    setLaneExpandedStates(allCollapsed);
   }, []);
 
   // Expand all lanes by setting all known lane types to expanded
@@ -2449,13 +2449,28 @@ const AccessLens = ({
   // ============================================================================
 
   // Check if any cross-lane filter (lane selection) is active (schema-driven)
-  const hasActiveCrossLaneFilter = Object.keys(laneSelections).length > 0;
+  const hasActiveCrossLaneFilter = Object.keys(laneSelections).length > 0
+    || (filters.complianceStatuses?.length > 0)
+    || (filters.reasonTypes?.length > 0);
 
   // Handler to clear all lane selections (cross-lane filters)
   const handleClearAllSelections = useCallback(() => {
     setLaneSelections({});
     setSelectedItem(null);
     setExplanation(null);
+    setFilters(prev => ({ ...prev, complianceStatuses: [], reasonTypes: [] }));
+    setLaneSearchQueries({});
+    // Clear stale previous visible lanes so filtering starts fresh
+    previousVisibleLanesRef.current = [];
+    // Reset enrichment refs so lanes like Requests get re-fetched if they were dropped
+    requestsEnrichedRef.current = false;
+    approvalsEnrichedRef.current = false;
+    // Collapse all cards
+    const allCollapsed = {};
+    (lanesRef.current || []).forEach(lane => { allCollapsed[lane.laneType] = false; });
+    setLaneExpandedStates(allCollapsed);
+    setLanesForceExpanded(false);
+    setLanesForceCollapsed(false);
   }, []);
 
   // Selections object for cross-lane filter service — just use laneSelections directly
@@ -3066,6 +3081,150 @@ const AccessLens = ({
     };
   }, [laneSelections, focusNode?.type, lanes]);
 
+  // Expose lane data to window for RoziBot context extraction (reads all items even when collapsed)
+  useEffect(() => {
+    window.__rozibotContext = {
+      focusNode,
+      lanes: (lanes || []).map(lane => ({
+        laneType: lane.laneType,
+        label: lane.label || lane.laneType,
+        icon: lane.icon,
+        itemCount: lane.items?.length || 0,
+        items: (lane.items || []).slice(0, 10).map(item => {
+          const node = item.node || {};
+          const meta = node.metadata || {};
+          // Only include non-empty fields to reduce context size
+          const entry = { displayName: node.displayName || meta.displayName || meta.name || 'Unknown' };
+          if (node.type) entry.type = node.type;
+          if (node.status || meta.status) entry.status = node.status || meta.status;
+          if (node.riskScore) entry.riskScore = node.riskScore;
+          if (meta.role || meta.resourceType) entry.role = meta.role || meta.resourceType;
+          if (meta.scope) entry.scope = meta.scope;
+          if (meta.complianceStatus) entry.compliance = meta.complianceStatus;
+          if (meta.permissionName) entry.permissionName = meta.permissionName;
+          if (meta.type) entry.permissionType = meta.type;
+          if (meta.roleType) entry.roleType = meta.roleType;
+          if (meta.violationStatus) entry.violationStatus = meta.violationStatus;
+          if (meta.accountType) entry.accountType = meta.accountType;
+          if (node.badges?.length) entry.badges = node.badges;
+          return entry;
+        }),
+        totalItems: lane.items?.length || 0,
+      })),
+      selectedItem,
+      isLoading,
+      lanesLoading,
+      // Lane expanded/collapsed state — read from refs to avoid dep-array churn
+      laneExpandedStates: laneExpandedStatesRef.current,
+      lanesForceCollapsed: lanesForceCollapsedRef.current,
+      // Filter state — lets RoziBot see what filters are available and active
+      filters: {
+        visibleLanes: filters.visibleLanes,
+        reasonTypes: filters.reasonTypes,
+        complianceStatuses: filters.complianceStatuses,
+        entitlementType: filters.entitlementType,
+        multiPathOnly: filters.multiPathOnly,
+        highRiskOnly: filters.highRiskOnly,
+      },
+      availableReasonTypes,
+      availableComplianceStatuses,
+    };
+    return () => { delete window.__rozibotContext; };
+  }, [focusNode, lanes, selectedItem, isLoading, lanesLoading, filters, availableReasonTypes, availableComplianceStatuses]);
+
+  // Expose lane actions to window for RoziBot to programmatically expand/collapse lanes
+  // No dependencies — reads lanes from __rozibotContext at call time to avoid re-renders
+  useEffect(() => {
+    window.__rozibotActions = {
+      // Clear all cross-lane selections and lane search boxes before any pill action
+      _clearSelections() {
+        dispatch({ type: 'SET_LANE_SELECTIONS', payload: {} });
+        dispatch({ type: 'SET_SELECTED_ITEM', payload: null });
+        dispatch({ type: 'SET_EXPLANATION', payload: null });
+        dispatch({ type: 'SET_FILTERS', payload: prev => ({ ...prev, complianceStatuses: [], reasonTypes: [] }) });
+        setLaneSearchQueries({});
+        setClearSearchSignal(prev => prev + 1);
+        // Reset enrichment refs so Requests/Approvals get re-fetched if dropped
+        requestsEnrichedRef.current = false;
+        approvalsEnrichedRef.current = false;
+      },
+      expandLane(laneType) {
+        this._clearSelections();
+        lastPillLaneTypeRef.current = laneType;
+        // Collapse all lanes, then expand only the target lane
+        const currentLanes = window.__rozibotContext?.lanes || [];
+        const allCollapsed = {};
+        currentLanes.forEach(lane => { allCollapsed[lane.laneType] = false; });
+        allCollapsed[laneType] = true;
+        dispatch({ type: 'SET_LANES_FORCE_EXPANDED', payload: false });
+        dispatch({ type: 'SET_LANES_FORCE_COLLAPSED', payload: false });
+        dispatch({ type: 'SET_LANE_EXPANDED_STATES', payload: allCollapsed });
+        dispatch({ type: 'SET_FOCUS_CARD_MINIMIZED', payload: true });
+      },
+      collapseLane(laneType) {
+        dispatch({ type: 'SET_LANE_EXPANDED_STATES', payload: prev => ({ ...prev, [laneType]: false }) });
+      },
+      expandAll() {
+        const currentLanes = window.__rozibotContext?.lanes || [];
+        const allExpanded = {};
+        currentLanes.forEach(lane => { allExpanded[lane.laneType] = true; });
+        dispatch({ type: 'SET_LANE_EXPANDED_STATES', payload: allExpanded });
+        dispatch({ type: 'SET_LANES_FORCE_COLLAPSED', payload: false });
+        dispatch({ type: 'SET_LANES_FORCE_EXPANDED', payload: true });
+      },
+      collapseAll() {
+        dispatch({ type: 'SET_LANES_FORCE_EXPANDED', payload: false });
+        dispatch({ type: 'SET_LANES_FORCE_COLLAPSED', payload: true });
+        dispatch({ type: 'SET_LANE_EXPANDED_STATES', payload: {} });
+      },
+      selectItem(laneType, displayName) {
+        this._clearSelections();
+        // Verify the item exists in the lane data
+        const lane = (lanesRef.current || []).find(l => l.laneType === laneType);
+        if (!lane?.items) return false;
+        const item = lane.items.find(i => {
+          const name = i.node?.displayName || i.node?.metadata?.displayName || '';
+          return name.toLowerCase() === displayName.toLowerCase();
+        });
+        if (!item) return false;
+
+        const sameLaneType = lastPillLaneTypeRef.current === laneType;
+        lastPillLaneTypeRef.current = laneType;
+
+        if (sameLaneType) {
+          // Same type as last pill click — preserve access card states, just expand target
+          dispatch({ type: 'SET_LANE_EXPANDED_STATES', payload: prev => ({ ...prev, [laneType]: true }) });
+          dispatch({ type: 'SET_LANES_FORCE_COLLAPSED', payload: false });
+        } else {
+          // Different type — collapse all, then expand only the target lane
+          const currentLanes = window.__rozibotContext?.lanes || [];
+          const allCollapsed = {};
+          currentLanes.forEach(lane => { allCollapsed[lane.laneType] = false; });
+          allCollapsed[laneType] = true;
+          dispatch({ type: 'SET_LANES_FORCE_EXPANDED', payload: false });
+          dispatch({ type: 'SET_LANES_FORCE_COLLAPSED', payload: false });
+          dispatch({ type: 'SET_LANE_EXPANDED_STATES', payload: allCollapsed });
+        }
+        dispatch({ type: 'SET_FOCUS_CARD_MINIMIZED', payload: true });
+        // Set the search query in parent state (survives LaneCard re-mounts)
+        setLaneSearchQueries({ [laneType]: displayName });
+        // Trigger search-and-select flow to auto-click the matching item
+        setPendingLaneSearch({ laneType, displayName });
+        return true;
+      },
+      setFilter(filterType, value) {
+        // filterType: 'compliance' or 'reason'
+        // value: the status/reason string to set (replaces existing filter, not additive)
+        if (filterType === 'compliance') {
+          dispatch({ type: 'SET_FILTERS', payload: prev => ({ ...prev, complianceStatuses: [value] }) });
+        } else if (filterType === 'reason') {
+          dispatch({ type: 'SET_FILTERS', payload: prev => ({ ...prev, reasonTypes: [value] }) });
+        }
+      },
+    };
+    return () => { delete window.__rozibotActions; };
+  }, []);
+
   // Render loading state
   if (isLoading && !focusNode) {
     return (
@@ -3127,6 +3286,27 @@ const AccessLens = ({
             onNavigate={handleBreadcrumbNavigate}
             onRemove={handleRemoveBreadcrumb}
           />
+        </div>
+      )}
+
+      {/* Filter Active Bar — full-width indicator shown when any filter is active */}
+      {hasActiveCrossLaneFilter && (
+        <div className="filter-active-bar">
+          <span className="filter-active-label">
+            Filter activated, all cards are now filtered by : {
+              selectedItem?.node?.displayName
+                ? `"${selectedItem.node.displayName}"`
+                : filters.complianceStatuses?.length > 0
+                  ? `"${filters.complianceStatuses.join(', ')}"`
+                  : filters.reasonTypes?.length > 0
+                    ? `"${filters.reasonTypes.join(', ')}"`
+                    : ''
+            }{focusNode?.displayName ? ` for ${focusNode.displayName}` : ''}
+          </span>
+          <button className="filter-active-clear" onClick={handleClearAllSelections}>
+            ✕ Remove Filter
+          </button>
+          <span className="filter-active-spacer"></span>
         </div>
       )}
 
@@ -3253,6 +3433,12 @@ const AccessLens = ({
                   isFiltered={lane.isFiltered && getSelectionForLane(lane.laneType, laneSelections) === null}
                   parentExpanded={laneExpandedStates[lane.laneType] ?? !lanesForceCollapsed}
                   onExpandedChange={handleLaneExpandedChange}
+                  pendingSearch={pendingLaneSearch?.laneType === lane.laneType ? pendingLaneSearch : null}
+                  onPendingSearchConsumed={handlePendingSearchConsumed}
+                  clearSearchSignal={clearSearchSignal}
+                  parentSearchQuery={laneSearchQueries[lane.laneType] || ''}
+                  onSearchQueryChange={handleLaneSearchChange}
+                  onHideLane={handleHideLane}
                 />
               </DraggableLane>
             ))}

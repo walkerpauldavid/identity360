@@ -33,6 +33,13 @@ export default defineConfig({
         target: 'https://pawa-poc2.omada.cloud',
         changeOrigin: true,
         secure: false,
+      },
+      // Proxy Anthropic Claude API to avoid CORS issues in development
+      '/anthropic-api': {
+        target: 'https://api.anthropic.com',
+        changeOrigin: true,
+        secure: true,
+        rewrite: (path) => path.replace(/^\/anthropic-api/, ''),
       }
     }
   }

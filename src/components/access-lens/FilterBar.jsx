@@ -107,10 +107,9 @@ const FilterBar = ({
 
       <div className="filter-divider"></div>
 
-      {/* Lane Toggles */}
-      <div className="filter-group lane-toggles">
-        <span className="filter-label">Show:</span>
-        {[
+      {/* Lane Toggles — only show buttons for hidden (closed) lanes so the user can re-open them */}
+      {(() => {
+        const allLaneButtons = [
           ...(focusNodeType === 'Request' ? [
             { type: LaneTypes.EFFECTIVE_ENTITLEMENTS, label: 'Resource', icon: '🔑' },
             { type: LaneTypes.SYSTEMS, label: 'System', icon: '🖥️' },
@@ -127,41 +126,36 @@ const FilterBar = ({
             ...(['Entitlement', 'System', 'Identity'].includes(focusNodeType) ? [{ type: LaneTypes.REQUESTS, label: 'Requests', icon: '\u{1F4DD}' }] : []),
             ...(focusNodeType === 'Entitlement' ? [{ type: LaneTypes.APPROVALS, label: 'Approvals', icon: '\u2705' }] : [])
           ])
-        ].map(({ type, label, icon }) => (
-          <button
-            key={type}
-            className={`toggle-btn ${visibleLanes.includes(type) ? 'active' : ''}`}
-            onClick={() => toggleLane(type)}
-            title={label}
-          >
-            {icon}
-          </button>
-        ))}
-        {/* Object Inspector Toggle */}
-        <button
-          className={`toggle-btn inspector-toggle ${showObjectInspector ? 'active' : ''}`}
-          onClick={onToggleObjectInspector}
-          title={showObjectInspector ? 'Hide Object Inspector' : 'Show Object Inspector'}
-        >
-          🔍
-        </button>
-      </div>
-
-      {/* Clear All Selections Button - only show when cross-lane filtering is active */}
-      {hasActiveCrossLaneFilter && (
-        <>
-          <div className="filter-divider"></div>
-          <div className="filter-group">
+        ];
+        const hiddenLanes = allLaneButtons.filter(({ type }) => !visibleLanes.includes(type));
+        return (
+          <div className="filter-group lane-toggles">
+            {hiddenLanes.length > 0 && (
+              <>
+                <span className="filter-label">Show:</span>
+                {hiddenLanes.map(({ type, label, icon }) => (
+                  <button
+                    key={type}
+                    className="toggle-btn"
+                    onClick={() => toggleLane(type)}
+                    title={`Show ${label}`}
+                  >
+                    {icon} {label}
+                  </button>
+                ))}
+              </>
+            )}
+            {/* Object Inspector Toggle */}
             <button
-              className="clear-selections-btn"
-              onClick={onClearAllSelections}
-              title="Clear all access card selections"
+              className={`toggle-btn inspector-toggle ${showObjectInspector ? 'active' : ''}`}
+              onClick={onToggleObjectInspector}
+              title={showObjectInspector ? 'Hide Object Inspector' : 'Show Object Inspector'}
             >
-              ✕ Clear Selections
+              🔍
             </button>
           </div>
-        </>
-      )}
+        );
+      })()}
 
       {/* Divider */}
       <div className="filter-divider"></div>

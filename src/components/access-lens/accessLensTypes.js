@@ -395,7 +395,7 @@ export const LaneSchema = {
     minColumns: 2,  // Minimum columns for entitlements (enforced in LaneCard)
     icon: '🔑',
     color: '#ebcb8b',
-    label: 'Effective Entitlements',
+    label: 'Entitlements',
     description: 'All effective entitlements for this identity',
     sortable: true,
     collapsible: true,

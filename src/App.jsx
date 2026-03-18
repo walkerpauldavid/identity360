@@ -234,9 +234,9 @@ function App() {
           <button
             className={`agent-float-btn ${isChatOpen ? 'chat-open' : ''}`}
             onClick={() => setIsChatOpen(true)}
-            title="Open IGAgent Assistant"
+            title="Open IGA Agent"
           >
-            👾
+            <span className="float-btn-robot">🤖</span>
           </button>
 
           {/* Agent Chat */}

@@ -58,6 +58,7 @@
 }
 
 .agent-avatar {
+  position: relative;
   width: 36px;
   height: 36px;
   background: white;
@@ -67,6 +68,44 @@
   justify-content: center;
   font-size: 1.2rem;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+}
+
+/* Avatar image — circular crop */
+.rozibot-avatar-img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+/* Emoji fallback when image is missing */
+.emoji-fallback {
+  font-size: inherit;
+  line-height: 1;
+}
+
+.error-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background: #e53935;
+  color: white;
+  font-size: 0.6rem;
+  font-weight: 700;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #5e81ac;
+  animation: error-pulse 2s ease-in-out infinite;
+}
+
+@keyframes error-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
 }
 
 .agent-info h3 {
@@ -90,6 +129,11 @@
   background: #4caf50;
   border-radius: 50%;
   animation: pulse 2s ease-in-out infinite;
+}
+
+.status-dot.offline {
+  background: #ff9800;
+  animation: none;
 }
 
 @keyframes pulse {
@@ -239,12 +283,17 @@
   transition: all 0.2s ease;
 }
 
-.quick-action-pill:hover {
+.quick-action-pill:hover:not(:disabled) {
   background: #88c0d0;
   color: white;
   border-color: #88c0d0;
   transform: translateY(-2px);
   box-shadow: 0 2px 8px rgba(136, 192, 208, 0.3);
+}
+
+.quick-action-pill:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .pill-icon {
@@ -438,7 +487,189 @@
   background: #88c0d0;
 }
 
+/* Inline Item Pills — clickable references to lane items */
+.item-pill {
+  display: inline;
+  padding: 0.15rem 0.5rem;
+  margin: 0 0.1rem;
+  background: rgba(136, 192, 208, 0.15);
+  border: 1px solid rgba(136, 192, 208, 0.35);
+  border-radius: 10px;
+  color: #88c0d0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  line-height: 1.4;
+}
+
+.item-pill:hover {
+  background: rgba(136, 192, 208, 0.3);
+  border-color: rgba(136, 192, 208, 0.6);
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+.item-pill.violation {
+  background: rgba(191, 97, 106, 0.15);
+  border-color: rgba(191, 97, 106, 0.4);
+  color: #bf616a;
+}
+
+.item-pill.violation:hover {
+  background: rgba(191, 97, 106, 0.3);
+  border-color: rgba(191, 97, 106, 0.6);
+  color: #fff;
+}
+
+/* Lane Pills — clickable lane name keywords that expand the lane */
+.lane-pill {
+  display: inline;
+  padding: 0.1rem 0.4rem;
+  margin: 0 0.05rem;
+  background: rgba(163, 190, 140, 0.12);
+  border: 1px solid rgba(163, 190, 140, 0.3);
+  border-radius: 10px;
+  color: #a3be8c;
+  font-size: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  line-height: 1.4;
+}
+
+.lane-pill:hover {
+  background: rgba(163, 190, 140, 0.25);
+  border-color: rgba(163, 190, 140, 0.5);
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+.lane-pill.violation {
+  background: rgba(191, 97, 106, 0.15);
+  border-color: rgba(191, 97, 106, 0.4);
+  color: #bf616a;
+}
+
+.lane-pill.violation:hover {
+  background: rgba(191, 97, 106, 0.3);
+  border-color: rgba(191, 97, 106, 0.6);
+  color: #fff;
+}
+
+/* Filter Pills — clickable compliance/reason filter toggles */
+.filter-pill {
+  display: inline;
+  padding: 0.1rem 0.4rem;
+  margin: 0 0.05rem;
+  background: rgba(180, 142, 173, 0.15);
+  border: 1px solid rgba(180, 142, 173, 0.35);
+  border-radius: 10px;
+  color: #b48ead;
+  font-size: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  line-height: 1.4;
+}
+
+.filter-pill:hover {
+  background: rgba(180, 142, 173, 0.3);
+  border-color: rgba(180, 142, 173, 0.5);
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+.filter-pill.warning {
+  background: rgba(208, 135, 112, 0.15);
+  border-color: rgba(208, 135, 112, 0.4);
+  color: #d08770;
+}
+
+.filter-pill.warning:hover {
+  background: rgba(208, 135, 112, 0.3);
+  border-color: rgba(208, 135, 112, 0.6);
+  color: #fff;
+}
+
+/* Action Pills — Yes/No lane action prompts */
+.action-pills {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: rgba(136, 192, 208, 0.08);
+  border: 1px solid rgba(136, 192, 208, 0.15);
+  border-radius: 8px;
+  flex-wrap: wrap;
+}
+
+.action-pills.handled {
+  opacity: 0.5;
+  background: transparent;
+  border-color: rgba(136, 192, 208, 0.08);
+}
+
+.action-prompt {
+  font-size: 0.8rem;
+  color: #b0b0b0;
+  font-style: italic;
+  flex: 1 1 100%;
+  margin-bottom: 0.25rem;
+}
+
+.action-pill-yes,
+.action-pill-no {
+  padding: 0.3rem 0.75rem;
+  border-radius: 14px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid;
+  transition: all 0.2s ease;
+}
+
+.action-pill-yes {
+  background: rgba(76, 175, 80, 0.15);
+  border-color: rgba(76, 175, 80, 0.4);
+  color: #81c784;
+}
+
+.action-pill-yes:hover {
+  background: rgba(76, 175, 80, 0.3);
+  border-color: rgba(76, 175, 80, 0.6);
+  transform: translateY(-1px);
+}
+
+.action-pill-no {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.15);
+  color: #888;
+}
+
+.action-pill-no:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.25);
+  transform: translateY(-1px);
+}
+
+.action-result {
+  font-size: 0.75rem;
+  color: #888;
+  font-style: italic;
+}
+
 /* Floating Agent Button */
+/* Error message styling */
+.message.error .message-bubble {
+  border-color: #e53935;
+  color: #ff8a80;
+}
+
 .agent-float-btn {
   position: fixed;
   bottom: 2rem;
@@ -456,7 +687,32 @@
   justify-content: center;
   box-shadow: 0 4px 20px rgba(136, 192, 208, 0.5);
   transition: all 0.3s ease;
-  z-index: 999;
+  z-index: 9999;
+  overflow: hidden;
+}
+
+.agent-float-btn .rozibot-avatar-img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.float-btn-robot {
+  font-size: 1.6rem;
+  line-height: 1;
+}
+
+/* Message avatar also supports image */
+.message-avatar {
+  overflow: hidden;
+}
+
+.message-avatar .rozibot-avatar-img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
 }
 
 .agent-float-btn:hover {

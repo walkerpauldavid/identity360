@@ -31,7 +31,13 @@ const LaneCard = ({
   isFilterSource = false,  // When true, this lane is the source of filtering (shows "Filtering")
   isFiltered = false,      // When true, this lane is being filtered by another lane (shows "Filtered")
   parentExpanded = false,  // Expanded state controlled by parent (single source of truth)
-  onExpandedChange         // Callback to update expanded state in parent
+  onExpandedChange,        // Callback to update expanded state in parent
+  pendingSearch = null,    // { displayName, onComplete } — programmatic search-and-select from IGA Agent
+  onPendingSearchConsumed, // Callback to clear pendingSearch after it's been applied
+  clearSearchSignal = 0,  // Increment to clear search query from outside
+  parentSearchQuery = '', // Parent-controlled search query (survives re-mounts)
+  onSearchQueryChange,    // Callback to sync search query to parent
+  onHideLane              // Callback to hide/close this lane card
 }) => {
   // ==========================================================================
   // HOOKS SECTION - All hooks MUST be called before any early returns
@@ -46,12 +52,11 @@ const LaneCard = ({
   const displayRule = LaneSchema[laneType]?.displayRule || 'SINGLE_COLUMN';
   const isMultiColumnLane = displayRule === 'MULTI_COLUMN';
 
-  // Schema-driven: showFilters is defined on each lane schema entry
-  // For single-column lanes (Identities, Accounts), only show search if scrolling is needed (>4 items)
-  const schemaShowFilters = LaneSchema[laneType]?.showFilters === true;
+  // Search bar: always available when the lane has items
   const itemCount = items?.length || 0;
-  const needsScrolling = isMultiColumnLane ? true : itemCount > 4;  // Single-column fits ~4 items
-  const showFilters = schemaShowFilters && needsScrolling;
+  const showSearch = itemCount > 0;
+  // Resource type filter chips: schema-driven, only for lanes that define showFilters
+  const showFilters = LaneSchema[laneType]?.showFilters === true && showSearch;
 
   // Expanded state is fully controlled by parent via parentExpanded prop
   // This eliminates all local state syncing issues and survives mount/unmount cycles
@@ -60,8 +65,13 @@ const LaneCard = ({
   // State hooks (non-expanded state remains local)
   const [isMaximized, setIsMaximized] = useState(false);
   const [allItems, setAllItems] = useState(null);
-  const [searchQuery, setSearchQuery] = useState('');
+  // Search query is controlled by parent to survive re-mounts
+  const searchQuery = parentSearchQuery;
+  const setSearchQuery = useCallback((q) => {
+    if (onSearchQueryChange) onSearchQueryChange(laneType, q);
+  }, [onSearchQueryChange, laneType]);
   const [selectedResourceTypes, setSelectedResourceTypes] = useState([]);
+  const [typeChipsExpanded, setTypeChipsExpanded] = useState(false);
   const [calculatedMaxHeight, setCalculatedMaxHeight] = useState(null);
   // Grid size state - null means use defaults from schema
   const [customColumns, setCustomColumns] = useState(null);
@@ -72,6 +82,22 @@ const LaneCard = ({
 
   // Track previous filter state so we only auto-expand on transition (not on every render)
   const prevFilterActiveRef = useRef(isFilterSource || isFiltered);
+
+  // Effect: Clear search query when clearSearchSignal changes (triggered by pill clicks)
+  // Skip clearing if a pendingSearch is incoming — it will set its own search query
+  const prevClearSignalRef = useRef(clearSearchSignal);
+  useEffect(() => {
+    if (clearSearchSignal !== prevClearSignalRef.current) {
+      prevClearSignalRef.current = clearSearchSignal;
+      if (!pendingSearch) {
+        setSearchQuery('');
+        setSelectedResourceTypes([]);
+      }
+    }
+  }, [clearSearchSignal, pendingSearch, setSearchQuery]);
+
+  // Track pending search state for the search-and-select flow
+  const pendingSearchAppliedRef = useRef(null);
 
   // Effect: Auto-expand lanes when filtering transitions from inactive to active
   // This ensures lanes that become visible due to filter changes are shown expanded
@@ -128,7 +154,7 @@ const LaneCard = ({
   // Memo: Apply local filters (search and resource type)
   const displayItems = useMemo(() => {
     const hasTypeFilter = showFilters && validSelectedResourceTypes.length > 0;
-    const hasSearchFilter = showFilters && searchQuery.trim();
+    const hasSearchFilter = showSearch && searchQuery.trim();
 
     if (!hasTypeFilter && !hasSearchFilter) {
       return baseItems;
@@ -152,7 +178,42 @@ const LaneCard = ({
       }
       return true;
     });
-  }, [baseItems, showFilters, validSelectedResourceTypes, searchQuery]);
+  }, [baseItems, showFilters, showSearch, validSelectedResourceTypes, searchQuery]);
+
+  // Effect: Handle programmatic search-and-select from IGA Agent item pills
+  // When pendingSearch is set, enter the text in the search box and select the matching item
+  useEffect(() => {
+    if (!pendingSearch) {
+      pendingSearchAppliedRef.current = null;
+      return;
+    }
+
+    const { displayName } = pendingSearch;
+
+    // Phase 1: Set the search query (first time seeing this pendingSearch)
+    if (pendingSearchAppliedRef.current !== displayName) {
+      pendingSearchAppliedRef.current = displayName;
+      setSearchQuery(displayName);
+      return;
+    }
+
+    // Phase 2: Search query is applied, displayItems is filtered — find and click the match
+    const match = displayItems.find(item => {
+      const name = (item.node?.displayName || '').toLowerCase();
+      return name === displayName.toLowerCase();
+    }) || baseItems.find(item => {
+      const name = (item.node?.displayName || '').toLowerCase();
+      return name === displayName.toLowerCase();
+    });
+
+    if (match) {
+      onItemClick?.(match, laneType);
+    }
+
+    if (onPendingSearchConsumed) {
+      onPendingSearchConsumed();
+    }
+  }, [pendingSearch, displayItems, baseItems, laneType, onItemClick, onPendingSearchConsumed]);
 
   // Callback: Handle maximize - show all items with constrained height
   const handleMaximize = useCallback(() => {
@@ -191,6 +252,13 @@ const LaneCard = ({
   // Schema-driven: showReasons defines which focus node types trigger reason pills
   const laneSchema = LaneSchema[laneType];
   const showReasons = laneSchema?.showReasons?.whenFocusNodeType?.includes(focusNodeType) ?? false;
+
+  // Determine the resource type of the currently selected item in this lane
+  const selectedItemResourceType = (() => {
+    if (!selectedItemId || !items) return null;
+    const sel = items.find(i => i.node?.id === selectedItemId);
+    return sel ? getItemResourceType(sel) : null;
+  })();
 
   // Grid size: use custom values if set, otherwise use defaults from schema
   // Schema minColumns overrides global minimum (e.g., Entitlements requires min 2 columns)
@@ -355,14 +423,30 @@ const LaneCard = ({
           }}
           onMouseDown={(e) => e.stopPropagation()}
           onPointerDown={(e) => e.stopPropagation()}
-          title={isExpanded ? 'Collapse lane' : 'Expand lane'}
+          title={isExpanded ? 'Collapse card' : 'Expand card'}
         >
           {isExpanded ? '▼' : '▶'}
         </button>
+
+        {onHideLane && (
+          <button
+            className="lane-close-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              onHideLane(laneType);
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+            title="Close this card"
+          >
+            ✕
+          </button>
+        )}
       </div>
 
       {/* Search filter bar - below header, full width */}
-      {showFilters && isExpanded && (
+      {showSearch && isExpanded && (
         <div
           className="lane-search-bar"
           onClick={(e) => e.stopPropagation()}
@@ -394,42 +478,62 @@ const LaneCard = ({
         </div>
       )}
 
-      {/* Resource Type Filter Bar - only for Effective Entitlements lane */}
+      {/* Resource Type Filter Bar - collapsible toggle with type chips */}
       {showFilters && isExpanded && allResourceTypes.length > 0 && (
         <div
           className="lane-type-filter-bar"
           onClick={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
         >
-          <div className="type-chips-container">
-            {allResourceTypes.map(type => (
-              <button
-                key={type}
-                className={`type-chip ${selectedResourceTypes.includes(type) ? 'selected' : ''}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toggleResourceType(type);
-                }}
-                onMouseDown={(e) => e.stopPropagation()}
-                onPointerDown={(e) => e.stopPropagation()}
-              >
-                {type}
-              </button>
-            ))}
-          </div>
-          {selectedResourceTypes.length > 0 && (
-            <button
-              className="type-clear-btn"
-              onClick={(e) => {
-                e.stopPropagation();
-                clearResourceTypes();
-              }}
-              onMouseDown={(e) => e.stopPropagation()}
-              onPointerDown={(e) => e.stopPropagation()}
-              title="Clear all type filters"
-            >
-              Clear
-            </button>
+          <button
+            className="type-chips-toggle"
+            onClick={(e) => {
+              e.stopPropagation();
+              setTypeChipsExpanded(prev => !prev);
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+            title={typeChipsExpanded ? 'Hide resource types' : 'Show resource types'}
+          >
+            <span className="toggle-arrow">{typeChipsExpanded ? '▾' : '▸'}</span>
+            <span className="toggle-label">Types ({allResourceTypes.length})</span>
+            {selectedResourceTypes.length > 0 && (
+              <span className="toggle-active-count">{selectedResourceTypes.length} active</span>
+            )}
+          </button>
+          {typeChipsExpanded && (
+            <>
+              <div className="type-chips-container">
+                {allResourceTypes.map(type => (
+                  <button
+                    key={type}
+                    className={`type-chip ${selectedResourceTypes.includes(type) ? 'selected' : ''} ${selectedItemResourceType === type ? 'highlighted' : ''}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleResourceType(type);
+                    }}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onPointerDown={(e) => e.stopPropagation()}
+                  >
+                    {type}
+                  </button>
+                ))}
+              </div>
+              {selectedResourceTypes.length > 0 && (
+                <button
+                  className="type-clear-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    clearResourceTypes();
+                  }}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  title="Clear all type filters"
+                >
+                  Clear
+                </button>
+              )}
+            </>
           )}
         </div>
       )}
