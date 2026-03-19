@@ -39,8 +39,8 @@ const Dashboard = () => {
 
   // Get tile configuration from preferences
   const dashboardTiles = getPreference('dashboardTiles', {
-    order: ['identities', 'myTeam', 'approvals', 'reviews', 'other'],
-    hidden: []
+    order: ['identities', 'approvals'],
+    hidden: ['myTeam', 'reviews', 'other']
   });
 
   // Get tile layout preference (horizontal or vertical)
@@ -102,9 +102,12 @@ const Dashboard = () => {
     setExpandedTiles(prev => ({ ...prev, [tileName]: !prev[tileName] }));
   };
 
-  // Filter visible tiles (exclude hidden)
+  // Tiles permanently removed from the dashboard
+  const removedTiles = new Set(['myTeam', 'reviews', 'other']);
+
+  // Filter visible tiles (exclude hidden and permanently removed)
   const visibleTileIds = dashboardTiles.order.filter(
-    id => !dashboardTiles.hidden.includes(id)
+    id => !dashboardTiles.hidden.includes(id) && !removedTiles.has(id)
   );
 
   const allExpanded = visibleTileIds.every(id => expandedTiles[id]);

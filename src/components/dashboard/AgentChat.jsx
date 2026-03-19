@@ -1,5 +1,5 @@
 /**
- * Agent Chat Component — IGA Agent
+ * Agent Chat Component — Javi
  * AI assistant powered by Claude (Anthropic API)
  * Subscribes to API errors and proactively alerts the user
  * Supports dragging, docking, resizing, and fullscreen
@@ -7,29 +7,17 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
-import { sendMessageToClaude, formatErrorContext, isClaudeConfigured } from '../../services/claudeApi';
+import { sendMessageToClaude, formatErrorContext, isClaudeConfigured, SYSTEM_PROMPT, MODEL, MAX_TOKENS } from '../../services/claudeApi';
 import apiLogger from '../../services/apiLogger';
 import './AgentChat.css';
 
 /** Reusable avatar component — shows image if available, falls back to emoji */
 const RoziBotAvatar = ({ className = '' }) => (
   <img
-    src="/ronald.jpg"
-    alt="IGA Agent"
+    src="/javi.png"
+    alt="Javi"
     className={`rozibot-avatar-img ${className}`}
-    onError={(e) => {
-      // Replace broken image with emoji fallback
-      const parent = e.target.parentNode;
-      if (parent) {
-        e.target.style.display = 'none';
-        if (!parent.querySelector('.emoji-fallback')) {
-          const span = document.createElement('span');
-          span.className = 'emoji-fallback';
-          span.textContent = '\u{1F47E}';
-          parent.appendChild(span);
-        }
-      }
-    }}
+    onError={(e) => { e.target.style.display = 'none'; }}
   />
 );
 
@@ -46,7 +34,6 @@ const buildLaneKeywords = () => {
   const aliases = {
     'entitlements': 'EffectiveEntitlements',
     'entitlement': 'EffectiveEntitlements',
-    'permissions': 'EffectiveEntitlements',
     'roles': 'Roles',
     'role': 'Roles',
     'accounts': 'Accounts',
@@ -444,7 +431,7 @@ const AgentChat = ({ isOpen, onClose, isDocked, onToggleDock }) => {
     {
       id: 1,
       type: 'agent',
-      text: "Hello! I'm your IGA Agent, the Identity360 AI assistant. I can help you understand access data, assess security risks, and guide you through the Access Lens. How can I assist you today?",
+      text: "Hello! I'm your Javi, the Identity360 AI assistant. I can help you understand access data, assess security risks, and guide you through the Access Lens. How can I assist you today?",
       timestamp: new Date()
     }
   ]);
@@ -630,7 +617,7 @@ const AgentChat = ({ isOpen, onClose, isDocked, onToggleDock }) => {
       return "I can help analyze API errors, but I need an Anthropic API key to be configured. Add VITE_ANTHROPIC_API_KEY to your .env file.\n\nGet your key from: https://console.anthropic.com/settings/keys";
     }
     if (lower.includes('help')) {
-      return "I'm your IGA Agent, the Identity360 AI assistant. Once configured with an API key, I can:\n\n- Analyze API errors in real-time\n- Assess security risks in access data\n- Guide you through the Access Lens\n- Explain IGA and NHI concepts\n\nAdd VITE_ANTHROPIC_API_KEY to your .env file to get started.";
+      return "I'm your Javi, the Identity360 AI assistant. Once configured with an API key, I can:\n\n- Analyze API errors in real-time\n- Assess security risks in access data\n- Guide you through the Access Lens\n- Explain IGA and NHI concepts\n\nAdd VITE_ANTHROPIC_API_KEY to your .env file to get started.";
     }
     return "I need an Anthropic API key to provide AI-powered responses. Add VITE_ANTHROPIC_API_KEY to your .env file.\n\nGet your key from: https://console.anthropic.com/settings/keys";
   };
@@ -892,6 +879,29 @@ const AgentChat = ({ isOpen, onClose, isDocked, onToggleDock }) => {
     };
   }, [isDragging, isResizing, dragOffset, isDocked, isFullscreen, resizeDirection, resizeStart, clampPosition, size.width, size.height]);
 
+  // Download the full context payload sent to Claude as JSON
+  const handleDownloadContext = useCallback(() => {
+    const systemContext = buildSystemContext();
+    const fullSystemPrompt = systemContext
+      ? `${SYSTEM_PROMPT}\n\n--- CURRENT APPLICATION CONTEXT ---\n${systemContext}`
+      : SYSTEM_PROMPT;
+
+    const payload = {
+      model: MODEL,
+      max_tokens: MAX_TOKENS,
+      system: fullSystemPrompt,
+      messages: conversationHistoryRef.current
+    };
+
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `iga-agent-context-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [buildSystemContext]);
+
   const containerStyle = isFullscreen ? {
     left: 0,
     top: 0,
@@ -929,7 +939,7 @@ const AgentChat = ({ isOpen, onClose, isDocked, onToggleDock }) => {
             )}
           </div>
           <div className="agent-info">
-            <h3>IGA Agent</h3>
+            <h3>Javi</h3>
             <span className="agent-status">
               <span className={`status-dot ${isClaudeConfigured() ? '' : 'offline'}`}></span>
               {isClaudeConfigured() ? 'Online' : 'No API Key'}
@@ -937,6 +947,13 @@ const AgentChat = ({ isOpen, onClose, isDocked, onToggleDock }) => {
           </div>
         </div>
         <div className="header-actions">
+          <button
+            className="download-context-btn"
+            onClick={handleDownloadContext}
+            title="Download context data (JSON)"
+          >
+            <span className="icon-text">⬇</span>
+          </button>
           {!isDocked && (
             <button
               className="fullscreen-btn"
@@ -1049,7 +1066,7 @@ const AgentChat = ({ isOpen, onClose, isDocked, onToggleDock }) => {
         <textarea
           ref={inputRef}
           className="agent-input"
-          placeholder={isClaudeConfigured() ? 'Ask IGA Agent anything...' : 'API key required - see Help'}
+          placeholder={isClaudeConfigured() ? 'Ask Javi anything...' : 'API key required - see Help'}
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
           onKeyPress={handleKeyPress}

@@ -234,9 +234,9 @@ function App() {
           <button
             className={`agent-float-btn ${isChatOpen ? 'chat-open' : ''}`}
             onClick={() => setIsChatOpen(true)}
-            title="Open IGA Agent"
+            title="Open Javi"
           >
-            <span className="float-btn-robot">🤖</span>
+            <img src="/javi.png" alt="Javi" className="rozibot-avatar-img" onError={(e) => { e.target.style.display = 'none'; }} />
           </button>
 
           {/* Agent Chat */}
