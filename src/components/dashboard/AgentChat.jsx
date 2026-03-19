@@ -431,7 +431,7 @@ const AgentChat = ({ isOpen, onClose, isDocked, onToggleDock }) => {
     {
       id: 1,
       type: 'agent',
-      text: "Hello! I'm your Javi, the Identity360 AI assistant. I can help you understand access data, assess security risks, and guide you through the Access Lens. How can I assist you today?",
+      text: "Hello! I'm Javi your IGA assistant. I can help you understand access data, assess security risks, and guide you through the Identity360. How can I assist you today?",
       timestamp: new Date()
     }
   ]);
