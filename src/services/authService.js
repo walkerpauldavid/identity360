@@ -605,6 +605,9 @@ class AuthService {
       authUrl.searchParams.append('code_challenge', codeChallenge);
       authUrl.searchParams.append('code_challenge_method', 'S256');
       authUrl.searchParams.append('response_mode', 'query');
+      // Always show the account picker so users don't get silently signed in
+      // as whichever Microsoft account was most recently active in this browser.
+      authUrl.searchParams.append('prompt', 'select_account');
 
       console.log('=== Redirecting to Microsoft Login ===');
       console.log('Authorization URL:', authUrl.toString());
